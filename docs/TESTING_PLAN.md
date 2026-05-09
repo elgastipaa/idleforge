@@ -20,7 +20,7 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 - Forge craft and item upgrade actions.
 - Town upgrade costs/effects.
 - Class passive unlock and effect application.
-- Daily generation and reset at 23:00 UTC.
+- Daily generation and reset at 23:00 local device time.
 - Daily task uniqueness (3 unique tasks/day).
 - No streak penalty behavior across resets.
 - Vigor regen (+1/5m, cap 100).
@@ -28,7 +28,7 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 - Offline cap behavior (8h).
 - Combined offline cap behavior for expedition + mine + vigor.
 - Reincarnation reset/persist rules.
-- Reincarnation gate check (level 18 + region 3 boss clear).
+- Reincarnation gate check (level 10 + region 3 boss clear).
 - Save export/import validation.
 
 ## Determinism Assertions
@@ -44,7 +44,7 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 - Equip item and see stat delta.
 - Upgrade first town building.
 - Claim one daily reward.
-- Verify daily reset at 23:00 UTC with deterministic clock input.
+- Verify daily reset at 23:00 local device time with deterministic clock input.
 - Perform first reincarnation from prepared state.
 
 ## Balance Regression Checks

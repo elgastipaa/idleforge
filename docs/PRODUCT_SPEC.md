@@ -68,7 +68,7 @@ Optional only if ahead of schedule:
 - Vigor cap: `100`.
 - Vigor regen: `+1` every `5m`.
 - Daily task count: `3`.
-- Daily reset: `23:00 UTC` (`20:00 GMT-3`).
+- Daily reset: `23:00` local device time.
 - No streak punishment in v1.0.
 
 ## Pacing Targets
@@ -85,7 +85,7 @@ Optional only if ahead of schedule:
   - Production: 30 to 60 minutes.
   - Debug mode: 5 to 10 minutes.
 - Reincarnation gate for first run:
-  - level 18
+  - level 10
   - region 3 boss defeated
 
 ## Non-Goals For v1.0

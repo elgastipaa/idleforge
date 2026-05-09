@@ -1,4 +1,5 @@
 import { INVENTORY_LIMIT, RARITY_MULTIPLIER } from "./constants";
+import { getAffixEffectTotal } from "./affixes";
 import { AFFIX_POOL, RARITY_PREFIX, SLOT_BASE_NAMES } from "./content";
 import { getLootChance, getRarityMultiplier } from "./balance";
 import type { Affix, DungeonDefinition, EquipmentSlot, GameState, Item, ItemRarity, MaterialBundle, Stats } from "./types";
@@ -26,23 +27,29 @@ function weightedPick<T extends string>(rng: Rng, entries: { value: T; weight: n
 
 export function rollRarity(state: GameState, rng: Rng, bossBonus = false): ItemRarity {
   const entries = [
-    { value: "common" as const, weight: 70 },
-    { value: "rare" as const, weight: 22 },
-    { value: "epic" as const, weight: 7 },
-    { value: "legendary" as const, weight: 1 }
+    { value: "common" as const, weight: 35 },
+    { value: "rare" as const, weight: 45 },
+    { value: "epic" as const, weight: 15 },
+    { value: "legendary" as const, weight: 5 }
   ];
 
   if (bossBonus) {
-    entries[1].weight += 5;
-    entries[2].weight += 2;
-    entries[3].weight += 0.5;
+    entries[1].weight += 8;
+    entries[2].weight += 4;
+    entries[3].weight += 1.5;
   }
 
   const qualityBonus = state.prestige.upgrades.treasureOath;
-  entries[0].weight = Math.max(40, entries[0].weight - qualityBonus * 1.2);
+  entries[0].weight = Math.max(25, entries[0].weight - qualityBonus * 1.2);
   entries[1].weight += qualityBonus * 0.7;
   entries[2].weight += qualityBonus * 0.35;
   entries[3].weight += qualityBonus * 0.15;
+
+  const rareDropBonus = getAffixEffectTotal(state, "rareDropChance") * 100;
+  entries[0].weight = Math.max(28, entries[0].weight - rareDropBonus);
+  entries[1].weight += rareDropBonus * 0.64;
+  entries[2].weight += rareDropBonus * 0.26;
+  entries[3].weight += rareDropBonus * 0.1;
 
   return weightedPick(rng, entries);
 }
@@ -55,7 +62,7 @@ export function rollSlot(rng: Rng): EquipmentSlot {
 }
 
 function affixCountForRarity(rarity: ItemRarity): number {
-  if (rarity === "legendary") return 4;
+  if (rarity === "legendary") return 5;
   if (rarity === "epic") return 3;
   if (rarity === "rare") return 2;
   return 1;
@@ -97,8 +104,8 @@ function compactStats(stats: Partial<Stats>): Partial<Stats> {
   return next;
 }
 
-function pickAffixes(rng: Rng, count: number): Affix[] {
-  const pool = [...AFFIX_POOL];
+function pickAffixes(rng: Rng, count: number, slot: EquipmentSlot): Affix[] {
+  const pool = AFFIX_POOL.filter((affix) => !affix.slots || affix.slots.includes(slot));
   const affixes: Affix[] = [];
   while (affixes.length < count && pool.length > 0) {
     const index = rng.int(0, pool.length - 1);
@@ -106,6 +113,12 @@ function pickAffixes(rng: Rng, count: number): Affix[] {
     pool.splice(index, 1);
   }
   return affixes;
+}
+
+export function formatItemName(prefix: string, baseName: string, affixes: Affix[]): string {
+  const affixPrefix = affixes.find((affix) => affix.prefix)?.prefix;
+  const affixSuffix = affixes.find((affix) => affix.suffix)?.suffix;
+  return [prefix, affixPrefix, baseName, affixSuffix].filter(Boolean).join(" ");
 }
 
 export function createItem(
@@ -120,7 +133,7 @@ export function createItem(
   const slot = forced?.slot ?? rollSlot(rng);
   const baseName = rng.pick(SLOT_BASE_NAMES[slot]);
   const prefix = rng.pick(RARITY_PREFIX[rarity]);
-  const affixes = pickAffixes(rng, affixCountForRarity(rarity));
+  const affixes = pickAffixes(rng, affixCountForRarity(rarity), slot);
   const itemLevel = dungeon.lootLevel;
   const rarityMultiplier = getRarityMultiplier(rarity);
   const budget = Math.floor((itemLevel * 3 + dungeon.zoneIndex * 5 + state.town.forge * 2) * rarityMultiplier);
@@ -130,8 +143,7 @@ export function createItem(
   });
   stats = compactStats(stats);
 
-  const affixName = rarity === "common" ? affixes[0]?.name ?? "" : affixes.slice(0, 2).map((affix) => affix.name).join(" ");
-  const name = `${prefix} ${baseName}${affixName ? ` ${affixName}` : ""}`;
+  const name = formatItemName(prefix, baseName, affixes);
   const sellValue = Math.floor((12 + itemLevel * 7) * RARITY_MULTIPLIER[rarity]);
   const salvageValue: Partial<MaterialBundle> = {
     ore: Math.max(1, Math.floor(itemLevel * rarityMultiplier * (1 + state.town.mine * 0.05))),

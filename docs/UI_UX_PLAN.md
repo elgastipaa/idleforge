@@ -102,7 +102,7 @@ Buildings:
 ## Dailies Screen
 
 - 3 daily tasks.
-- Reset timer to 23:00 UTC.
+- Reset timer to 23:00 local device time.
 - Claim buttons.
 - No streak display.
 

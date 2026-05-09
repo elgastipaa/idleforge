@@ -1,4 +1,10 @@
 import { DEBUG_DURATION_MULTIPLIER, DEBUG_REWARD_MULTIPLIER, RARITY_MULTIPLIER } from "./constants";
+import {
+  getAffixEffectTotal,
+  getItemAffixEffectScore,
+  getMaterialResourceAffixMultipliers,
+  getZoneGoldAffixBonus
+} from "./affixes";
 import { BUILDINGS, DUNGEONS, HERO_CLASSES } from "./content";
 import {
   getBossSuccessPassiveBonus,
@@ -75,7 +81,7 @@ export function getDerivedStats(state: GameState): DerivedStats {
 }
 
 export function getPrestigeMultiplier(state: GameState): number {
-  return 1 + state.prestige.upgrades.guildLegacy * 0.02;
+  return 1 + state.prestige.upgrades.guildLegacy * 0.05;
 }
 
 export function getDurationMs(state: GameState, dungeon: DungeonDefinition): number {
@@ -83,10 +89,11 @@ export function getDurationMs(state: GameState, dungeon: DungeonDefinition): num
     return Math.max(5_000, Math.floor(dungeon.durationMs * DEBUG_DURATION_MULTIPLIER));
   }
 
-  const speedUpgradeReduction = Math.min(0.3, state.prestige.upgrades.swiftCharters * 0.03);
+  const speedUpgradeReduction = Math.min(0.4, state.prestige.upgrades.swiftCharters * 0.05);
   const speedStatReduction = Math.min(0.08, getDerivedStats(state).speed * 0.0006);
+  const affixDurationReduction = Math.min(0.15, getAffixEffectTotal(state, "durationReduction"));
   const passiveMultiplier = getDurationPassiveMultiplier(state);
-  const multiplier = Math.max(0.35, (1 - speedUpgradeReduction - speedStatReduction) * passiveMultiplier);
+  const multiplier = Math.max(0.35, (1 - speedUpgradeReduction - speedStatReduction - affixDurationReduction) * passiveMultiplier);
   return Math.max(10_000, Math.floor(dungeon.durationMs * multiplier));
 }
 
@@ -96,19 +103,23 @@ export function getRewardMultiplier(state: GameState): number {
 }
 
 export function getXpMultiplier(state: GameState): number {
-  return getRewardMultiplier(state) * (1 + state.town.tavern * 0.04);
+  return getRewardMultiplier(state) * (1 + state.town.tavern * 0.04 + getAffixEffectTotal(state, "xpMultiplier"));
 }
 
-export function getGoldMultiplier(state: GameState): number {
-  return getRewardMultiplier(state) * (1 + state.town.market * 0.05) * getGoldPassiveMultiplier(state);
+export function getGoldMultiplier(state: GameState, dungeon?: DungeonDefinition): number {
+  return (
+    getRewardMultiplier(state) *
+    (1 + state.town.market * 0.05 + getAffixEffectTotal(state, "goldMultiplier") + getZoneGoldAffixBonus(state, dungeon)) *
+    getGoldPassiveMultiplier(state)
+  );
 }
 
 export function getMaterialMultiplier(state: GameState): number {
-  return getRewardMultiplier(state) * (1 + state.town.mine * 0.08);
+  return getRewardMultiplier(state) * (1 + state.town.mine * 0.08 + getAffixEffectTotal(state, "materialMultiplier"));
 }
 
 export function getSellMultiplier(state: GameState): number {
-  return 1 + state.town.market * 0.1;
+  return 1 + state.town.market * 0.1 + getAffixEffectTotal(state, "sellMultiplier");
 }
 
 export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): number {
@@ -116,7 +127,9 @@ export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): 
   const classModifier = dungeon.classModifiers[state.hero.classId] ?? 0;
   const libraryBonus = Math.min(0.048, state.town.library * 0.004);
   const passiveBonus = dungeon.boss ? getBossSuccessPassiveBonus(state) : getNonBossSuccessPassiveBonus(state);
-  const bossAttunementBonus = dungeon.boss ? state.prestige.upgrades.bossAttunement * 0.015 : 0;
+  const bossAttunementBonus = dungeon.boss ? state.prestige.upgrades.bossAttunement * 0.02 : 0;
+  const bossAffixBonus = dungeon.boss ? getAffixEffectTotal(state, "bossSuccessChance") : 0;
+  const shortMissionAffixBonus = dungeon.durationMs <= 5 * 60 * 1000 ? getAffixEffectTotal(state, "shortMissionSuccessChance") : 0;
   return clamp(
     0.5 +
       ((stats.powerScore - dungeon.power) / dungeon.power) * 0.25 +
@@ -124,7 +137,10 @@ export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): 
       classModifier +
       passiveBonus +
       bossAttunementBonus +
-      libraryBonus,
+      libraryBonus +
+      getAffixEffectTotal(state, "successChance") +
+      bossAffixBonus +
+      shortMissionAffixBonus,
     0.15,
     0.96
   );
@@ -132,14 +148,17 @@ export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): 
 
 export function getLootChance(state: GameState, dungeon: DungeonDefinition): number {
   const stats = getDerivedStats(state);
+  const longMissionBonus = dungeon.durationMs >= 30 * 60 * 1000 ? getAffixEffectTotal(state, "longMissionLootChance") : 0;
   return clamp(
-    0.42 +
+    0.65 +
       dungeon.zoneIndex * 0.02 +
       stats.luck * 0.001 +
       state.prestige.upgrades.treasureOath * 0.004 +
-      getLootPassiveBonus(state),
+      getLootPassiveBonus(state) +
+      getAffixEffectTotal(state, "lootChance") +
+      longMissionBonus,
     0.35,
-    0.8
+    0.85
   );
 }
 
@@ -148,28 +167,36 @@ export function getItemScore(item: Item | null): number {
     return 0;
   }
   const stats = item.stats;
-  return Math.floor(
+  const statScore =
     (stats.power ?? 0) +
       (stats.defense ?? 0) * 0.5 +
       (stats.speed ?? 0) * 0.75 +
       (stats.luck ?? 0) * 0.6 +
-      (stats.stamina ?? 0) * 0.03
-  );
+      (stats.stamina ?? 0) * 0.03;
+  return Math.floor(statScore + getItemAffixEffectScore(item));
 }
 
 export function getRarityMultiplier(rarity: ItemRarity): number {
   return RARITY_MULTIPLIER[rarity];
 }
 
-export function scaleMaterials(materials: Partial<MaterialBundle>, multiplier: number): Partial<MaterialBundle> {
+export function scaleMaterials(
+  materials: Partial<MaterialBundle>,
+  multiplier: number,
+  resourceMultipliers: Partial<Record<keyof MaterialBundle, number>> = {}
+): Partial<MaterialBundle> {
   const scaled: Partial<MaterialBundle> = {};
   (Object.keys(materials) as (keyof MaterialBundle)[]).forEach((key) => {
     const value = materials[key] ?? 0;
     if (value > 0) {
-      scaled[key] = Math.max(1, Math.floor(value * multiplier));
+      scaled[key] = Math.max(1, Math.floor(value * multiplier * (resourceMultipliers[key] ?? 1)));
     }
   });
   return scaled;
+}
+
+export function getEquippedMaterialResourceMultipliers(state: GameState): Partial<Record<keyof MaterialBundle, number>> {
+  return getMaterialResourceAffixMultipliers(state);
 }
 
 export function getBuildingLevelTotal(state: GameState): number {

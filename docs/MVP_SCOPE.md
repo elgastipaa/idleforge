@@ -35,7 +35,7 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
   - Forge, Mine, Tavern, Market, Library, Shrine
 - Dailies:
   - exactly 3
-  - reset 23:00 UTC
+  - reset 23:00 local device time
   - no streak punishments
 - Vigor:
   - cap 100

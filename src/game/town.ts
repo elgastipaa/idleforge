@@ -1,5 +1,6 @@
 import { BUILDINGS } from "./content";
 import { refreshAchievements } from "./achievements";
+import { getDerivedStats } from "./balance";
 import { applyDailyProgress, ensureDailies } from "./dailies";
 import { cloneState } from "./state";
 import type { ActionResult, BuildingId, GameState, ResourceState } from "./types";
@@ -46,6 +47,7 @@ export function buyBuildingUpgrade(state: GameState, buildingId: BuildingId, now
   regenerateVigor(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
+  const beforePower = getDerivedStats(working).powerScore;
   (Object.keys(cost) as (keyof ResourceState)[]).forEach((resource) => {
     working.resources[resource] -= cost[resource] ?? 0;
   });
@@ -54,5 +56,8 @@ export function buyBuildingUpgrade(state: GameState, buildingId: BuildingId, now
   const progressedState = progressed.state;
   progressedState.updatedAt = now;
   const achievements = refreshAchievements(progressedState, now);
-  return { ok: true, state: achievements.state, message: `${building.name} upgraded to level ${progressedState.town[buildingId]}.` };
+  const afterPower = getDerivedStats(progressedState).powerScore;
+  const powerDelta = afterPower - beforePower;
+  const powerText = powerDelta === 0 ? "" : ` Power ${powerDelta > 0 ? "+" : ""}${powerDelta}.`;
+  return { ok: true, state: achievements.state, message: `${building.name} upgraded to level ${progressedState.town[buildingId]}.${powerText}` };
 }

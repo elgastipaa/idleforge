@@ -8,7 +8,7 @@ Reincarnation is hero rebirth, not guild reset.
 
 Fixed gate:
 
-- Reach hero level 18.
+- Reach hero level 10.
 - Defeat region 3 boss milestone.
 
 Tune so first reincarnation is 30 to 60 minutes in production.

@@ -46,10 +46,37 @@ export type HeroClassDefinition = {
   growth: Stats;
 };
 
+export type AffixEffects = {
+  xpMultiplier?: number;
+  goldMultiplier?: number;
+  zoneGoldMultiplier?: Record<string, number>;
+  materialMultiplier?: number;
+  materialResourceMultiplier?: Partial<Record<MaterialId, number>>;
+  rareDropChance?: number;
+  lootChance?: number;
+  bossRewardMultiplier?: number;
+  successChance?: number;
+  bossSuccessChance?: number;
+  shortMissionSuccessChance?: number;
+  longMissionLootChance?: number;
+  craftingDiscount?: number;
+  vigorBoostCostReduction?: number;
+  sellMultiplier?: number;
+  salvageMultiplier?: number;
+  runeMultiplier?: number;
+  durationReduction?: number;
+  failureRewardScale?: number;
+};
+
 export type Affix = {
   id: string;
   name: string;
   stats: Partial<Stats>;
+  effects?: AffixEffects;
+  description: string;
+  prefix?: string;
+  suffix?: string;
+  slots?: EquipmentSlot[];
 };
 
 export type Item = {
@@ -71,13 +98,20 @@ export type EquipmentState = Record<EquipmentSlot, Item | null>;
 
 export type BuildingState = Record<BuildingId, number>;
 
+export type BuildingMilestone = {
+  level: number;
+  label: string;
+};
+
 export type BuildingDefinition = {
   id: BuildingId;
   name: string;
   description: string;
+  purpose: string;
   maxLevel: number;
   baseCost: Partial<ResourceState>;
   effectText: (level: number) => string;
+  milestones: BuildingMilestone[];
 };
 
 export type ZoneDefinition = {
@@ -232,14 +266,31 @@ export type RewardSummary = {
   materials: Partial<MaterialBundle>;
 };
 
+export type ItemComparisonSummary = {
+  equippedItemId: string | null;
+  equippedItemName: string | null;
+  equippedScore: number;
+  itemScore: number;
+  delta: number;
+  statDeltas: Partial<Stats>;
+  effectScoreDelta: number;
+  isBetter: boolean;
+};
+
 export type ResolveSummary = {
   success: boolean;
   dungeon: DungeonDefinition;
   rewards: RewardSummary;
   item: Item | null;
   autoSalvagedItem: Item | null;
+  itemComparison: ItemComparisonSummary | null;
   vigorBoostUsed: boolean;
   levelUps: number[];
+  bossClear: boolean;
+  bossFirstClear: boolean;
+  firstGuaranteedWeapon: boolean;
+  unlockedDungeons: DungeonDefinition[];
+  unlockedZones: ZoneDefinition[];
   achievementsUnlocked: AchievementDefinition[];
   combatReport: string;
 };

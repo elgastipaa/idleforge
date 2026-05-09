@@ -155,7 +155,7 @@ Each has level-based scaling cost and direct gameplay impact.
 ## Dailies System
 
 - Exactly 3 active daily tasks.
-- Reset at 23:00 UTC (20:00 GMT-3).
+- Reset at 23:00 local device time.
 - No streak penalties.
 - Rewards focus on gold, materials, vigor, and small chest value.
 
@@ -172,7 +172,7 @@ Unlock target:
 
 - First reincarnation in 30 to 60 minutes (production).
 - Gate is fixed for MVP:
-  - hero level 18
+  - hero level 10
   - region 3 boss defeated
 
 Concept:

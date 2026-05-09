@@ -1,11 +1,13 @@
-import { INVENTORY_LIMIT } from "./constants";
-import { DUNGEONS } from "./content";
+import { FORGE_AFFIX_REROLL_REQUIRED_LEVEL, INVENTORY_LIMIT, RARITY_MULTIPLIER } from "./constants";
+import { getCraftingAffixDiscount, getRuneAffixMultiplier, getSalvageAffixMultiplier } from "./affixes";
+import { AFFIX_POOL, DUNGEONS, RARITY_PREFIX, SLOT_BASE_NAMES } from "./content";
 import { applyDailyProgress, ensureDailies } from "./dailies";
+import { getDerivedStats } from "./balance";
 import { getCraftMaterialDiscount, getRuneGainPassiveMultiplier } from "./heroes";
-import { createItem } from "./loot";
+import { createItem, formatItemName } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
-import type { ActionResult, EquipmentSlot, GameState, Item, ResourceState } from "./types";
+import type { ActionResult, Affix, EquipmentSlot, GameState, Item, ResourceState, Stats } from "./types";
 import { regenerateVigor } from "./vigor";
 import { isDungeonUnlocked } from "./expeditions";
 
@@ -36,7 +38,7 @@ function classBiasedSlot(state: GameState, rng: ReturnType<typeof createRng>): E
 }
 
 function applyMaterialDiscount(state: GameState, cost: Partial<ResourceState>): Partial<ResourceState> {
-  const discount = getCraftMaterialDiscount(state);
+  const discount = Math.min(0.5, getCraftMaterialDiscount(state) + getCraftingAffixDiscount(state));
   if (discount <= 0) {
     return cost;
   }
@@ -64,8 +66,8 @@ export function getCraftCost(state: GameState): Partial<ResourceState> {
   const dungeon = getAnchorDungeon(state);
   const level = dungeon.lootLevel;
   const base: Partial<ResourceState> = {
-    gold: Math.floor(80 + level * 22),
-    ore: Math.floor(6 + level * 0.9),
+    gold: Math.floor(45 + level * 12),
+    ore: Math.floor(3 + level * 0.7),
     crystal: Math.max(0, Math.floor((level - 8) * 0.45)),
     rune: Math.max(0, Math.floor((level - 18) * 0.22)),
     relicFragment: level >= 45 ? Math.max(1, Math.floor((level - 40) * 0.12)) : 0
@@ -74,11 +76,12 @@ export function getCraftCost(state: GameState): Partial<ResourceState> {
 }
 
 function addSalvage(state: GameState, item: Item) {
-  const runeMultiplier = getRuneGainPassiveMultiplier(state);
-  state.resources.ore += item.salvageValue.ore ?? 0;
-  state.resources.crystal += item.salvageValue.crystal ?? 0;
-  state.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * runeMultiplier);
-  state.resources.relicFragment += item.salvageValue.relicFragment ?? 0;
+  const salvageMultiplier = getSalvageAffixMultiplier(state);
+  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
+  state.resources.ore += Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier);
+  state.resources.crystal += Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier);
+  state.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier);
+  state.resources.relicFragment += Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier);
 }
 
 export function craftItem(state: GameState, now: number, options: ForgeCraftOptions = {}): ActionResult {
@@ -166,10 +169,71 @@ export function getItemUpgradeCost(state: GameState, item: Item): Partial<Resour
   return applyMaterialDiscount(state, base);
 }
 
+export function getAffixRerollCost(state: GameState, item: Item): Partial<ResourceState> {
+  const rarityMultiplier = RARITY_MULTIPLIER[item.rarity];
+  const base: Partial<ResourceState> = {
+    gold: Math.floor((30 + item.itemLevel * 9 + item.upgradeLevel * 18) * rarityMultiplier),
+    ore: Math.max(1, Math.floor((2 + item.itemLevel * 0.45 + item.upgradeLevel) * rarityMultiplier)),
+    crystal: item.rarity === "common" ? 0 : Math.max(1, Math.floor((item.itemLevel * 0.18 + item.upgradeLevel * 0.5) * rarityMultiplier)),
+    rune: item.rarity === "epic" || item.rarity === "legendary" ? Math.max(1, Math.floor(item.itemLevel * 0.04 + item.upgradeLevel * 0.35)) : 0,
+    relicFragment: item.rarity === "legendary" ? Math.max(1, Math.floor(item.upgradeLevel / 4)) : 0
+  };
+  return applyMaterialDiscount(state, base);
+}
+
+function getAffixStatScale(item: Item): number {
+  return Math.max(1, item.itemLevel / 8) * (item.rarity === "legendary" ? 1.25 : 1);
+}
+
+function getScaledAffixStats(item: Item, affix: Affix): Partial<Stats> {
+  const scale = getAffixStatScale(item);
+  const stats: Partial<Stats> = {};
+  (Object.keys(affix.stats) as (keyof Stats)[]).forEach((stat) => {
+    const value = affix.stats[stat] ?? 0;
+    if (value > 0) {
+      stats[stat] = Math.floor(value * scale);
+    }
+  });
+  return stats;
+}
+
+function applyAffixStatDelta(item: Item, previous: Affix, replacement: Affix): Item {
+  const next = structuredClone(item) as Item;
+  const previousStats = getScaledAffixStats(item, previous);
+  const replacementStats = getScaledAffixStats(item, replacement);
+  const stats: Partial<Stats> = { ...next.stats };
+
+  (["power", "defense", "speed", "luck", "stamina"] as const).forEach((stat) => {
+    const value = (stats[stat] ?? 0) - (previousStats[stat] ?? 0) + (replacementStats[stat] ?? 0);
+    if (value > 0) {
+      stats[stat] = value;
+    } else {
+      delete stats[stat];
+    }
+  });
+
+  next.stats = stats;
+  return next;
+}
+
+function pickReplacementAffix(item: Item, affixIndex: number, rng: ReturnType<typeof createRng>): Affix | null {
+  const existingIds = new Set(item.affixes.map((affix) => affix.id));
+  const current = item.affixes[affixIndex];
+  if (!current) return null;
+  const pool = AFFIX_POOL.filter((affix) => (!affix.slots || affix.slots.includes(item.slot)) && !existingIds.has(affix.id));
+  if (pool.length === 0) return null;
+  return rng.pick(pool);
+}
+
+function renameRerolledItem(item: Item, rng: ReturnType<typeof createRng>): string {
+  return formatItemName(rng.pick(RARITY_PREFIX[item.rarity]), rng.pick(SLOT_BASE_NAMES[item.slot]), item.affixes);
+}
+
 export function upgradeItem(state: GameState, itemId: string, now: number): ActionResult {
   let next = cloneState(state);
   regenerateVigor(next, now);
   next = ensureDailies(next, now).state;
+  const beforePower = getDerivedStats(next).powerScore;
 
   const located = findItem(next, itemId);
   if (!located) {
@@ -191,5 +255,57 @@ export function upgradeItem(state: GameState, itemId: string, now: number): Acti
     next.equipment[located.slot] = upgraded;
   }
   next.updatedAt = now;
-  return { ok: true, state: next, message: `${upgraded.name} upgraded to +${upgraded.upgradeLevel}.` };
+  const afterPower = getDerivedStats(next).powerScore;
+  const powerDelta = afterPower - beforePower;
+  const powerText = located.source === "equipment" && powerDelta !== 0 ? ` Power ${powerDelta > 0 ? "+" : ""}${powerDelta}.` : "";
+  return { ok: true, state: next, message: `${upgraded.name} upgraded to +${upgraded.upgradeLevel}.${powerText}` };
+}
+
+export function rerollItemAffix(state: GameState, itemId: string, affixIndex: number, now: number): ActionResult {
+  let next = cloneState(state);
+  regenerateVigor(next, now);
+  next = ensureDailies(next, now).state;
+  const beforePower = getDerivedStats(next).powerScore;
+
+  if (next.town.forge < FORGE_AFFIX_REROLL_REQUIRED_LEVEL) {
+    return { ok: false, state, error: `Forge level ${FORGE_AFFIX_REROLL_REQUIRED_LEVEL} required to reroll affixes.` };
+  }
+
+  const located = findItem(next, itemId);
+  if (!located) {
+    return { ok: false, state, error: "Item not found." };
+  }
+  if (!Number.isInteger(affixIndex) || affixIndex < 0 || affixIndex >= located.item.affixes.length) {
+    return { ok: false, state, error: "Affix not found." };
+  }
+
+  const cost = getAffixRerollCost(next, located.item);
+  if (!canAfford(next.resources, cost)) {
+    return { ok: false, state, error: "Not enough resources to reroll this affix." };
+  }
+
+  const runId = next.nextRunId;
+  next.nextRunId += 1;
+  const rng = createRng(`${next.seed}:forge-reroll:${runId}:${itemId}:${affixIndex}`);
+  const replacement = pickReplacementAffix(located.item, affixIndex, rng);
+  if (!replacement) {
+    return { ok: false, state, error: "No eligible replacement affix is available for this item." };
+  }
+
+  deductCost(next, cost);
+  const previous = located.item.affixes[affixIndex];
+  const rerolled = applyAffixStatDelta(located.item, previous, replacement);
+  rerolled.affixes[affixIndex] = replacement;
+  rerolled.name = renameRerolledItem(rerolled, rng);
+
+  if (located.source === "inventory" && typeof located.index === "number") {
+    next.inventory[located.index] = rerolled;
+  } else if (located.source === "equipment" && located.slot) {
+    next.equipment[located.slot] = rerolled;
+  }
+
+  next.updatedAt = now;
+  const afterPower = getDerivedStats(next).powerScore;
+  const powerDelta = located.source === "equipment" && afterPower !== beforePower ? ` Power ${afterPower > beforePower ? "+" : ""}${afterPower - beforePower}.` : "";
+  return { ok: true, state: next, message: `${previous.name} rerolled into ${replacement.name} on ${rerolled.name}.${powerDelta}` };
 }

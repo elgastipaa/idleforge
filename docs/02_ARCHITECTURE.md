@@ -8,6 +8,8 @@
 - Estado cliente: **Zustand**.
 - Testing: **Vitest** (entorno node).
 - Persistencia: **localStorage** (sin backend).
+- Tema visual: `data-theme` en `<html>` + overrides globales en `src/app/globals.css`.
+- Ruteo app: **una única ruta** (`src/app/page.tsx`) y **sin** `src/app/api/*`.
 - Backend: **no existe**.
 - Base de datos: **no existe**.
 - Auth: **no existe**.
@@ -25,6 +27,7 @@ src/
     types.ts
     constants.ts
     content.ts
+    affixes.ts
     state.ts
     rng.ts
     balance.ts
@@ -56,17 +59,26 @@ src/
 
 - App entrypoint: `src/app/page.tsx`.
 - Root layout/meta: `src/app/layout.tsx`.
-- Store entrypoint: `src/store/useGameStore.ts`.
+- Store principal de cliente: `src/store/useGameStore.ts`.
 - API pública de lógica: `src/game/index.ts`.
 
 ## Dónde vive cada cosa
 
 - Lógica de juego: `src/game/*`.
 - Componentes/pantallas UI: `src/app/page.tsx` (actualmente monolítico).
+- Feedback visual de UI:
+  - helpers/componentes de presentación en `src/app/page.tsx`,
+  - microfeedback CSS (`feedback-pop`, `rarity-glow`) en `src/app/globals.css`,
+  - clases semánticas de rareza (`rarity-common/rare/epic/legendary`) para controlar tint/borde/glow en light/dark.
+- Tema claro/oscuro:
+  - bootstrap inicial en `src/app/layout.tsx`,
+  - toggle/hook cliente en `src/app/page.tsx`,
+  - variables y overrides globales en `src/app/globals.css`.
 - Tipos/interfaces: `src/game/types.ts`.
 - Constantes globales: `src/game/constants.ts`.
 - Tablas de contenido/balance de contenido: `src/game/content.ts`.
 - Helpers/servicios de dominio:
+  - efectos equipados de afijos: `affixes.ts`,
   - fórmulas: `balance.ts`,
   - save/import: `save.ts`,
   - offline: `offline.ts`,
@@ -75,7 +87,7 @@ src/
 ## Patrón actual de flujo de datos
 
 1. UI llama acción del store (`useGameStore`).
-2. Store delega a función pura de `src/game`.
+2. Store delega a módulo de dominio en `src/game` (funciones determinísticas que operan sobre estado clonado).
 3. Store persiste estado con `serializeSave` + `localStorage`.
 4. UI renderiza desde `state` del store.
 
@@ -99,6 +111,7 @@ src/
    - `RENOWN_UPGRADE_MAX` y `REINCARNATION_UPGRADE_MAX` en `constants.ts` (solo una se usa en flujo principal).
 4. Store repite patrón de `structuredClone` + persist en muchas acciones (acoplamiento repetitivo).
 5. `lastOfflineSummary` se guarda pero no se aprovecha en UI.
+6. La capa de dark mode usa overrides globales sobre utilidades Tailwind existentes; las rarezas ya usan clases semánticas, pero una futura extracción de componentes debería migrar el resto de colores a tokens/clases semánticas.
 
 ## Duplicaciones o inconsistencias detectadas
 

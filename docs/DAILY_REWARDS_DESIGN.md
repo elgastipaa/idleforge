@@ -3,7 +3,7 @@
 ## Daily Structure
 
 - Exactly 3 tasks active each day.
-- Daily reset at `23:00 UTC` (`20:00 GMT-3`).
+- Daily reset at `23:00` local device time.
 - No streak punishment in v1.0.
 
 ## Task Pool

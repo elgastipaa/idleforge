@@ -1,4 +1,4 @@
-import { DEBUG_REINCARNATION_MULTIPLIER, REINCARNATION_GATE_BOSS_ID, REINCARNATION_UPGRADE_MAX } from "./constants";
+import { DEBUG_REINCARNATION_MULTIPLIER, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUIREMENT, REINCARNATION_UPGRADE_MAX } from "./constants";
 import { refreshAchievements } from "./achievements";
 import { DUNGEONS } from "./content";
 import { cloneState, createEmptyDailies, createEmptyEquipment, createEmptyTown } from "./state";
@@ -7,15 +7,35 @@ import type { ActionResult, GameState, PrestigeResult, RenownUpgrades } from "./
 
 export type RenownUpgradeId = keyof RenownUpgrades;
 
-export const RENOWN_UPGRADES: { id: RenownUpgradeId; name: string; description: string }[] = [
-  { id: "swiftCharters", name: "Echo Tempo", description: "Faster expedition timers for every new run." },
-  { id: "guildLegacy", name: "Soul Prosperity", description: "Higher XP and resource gains each cycle." },
-  { id: "treasureOath", name: "Relic Wisdom", description: "Better loot quality and drop consistency." },
-  { id: "bossAttunement", name: "Boss Attunement", description: "Steadier success odds against boss milestones." }
+export const RENOWN_UPGRADES: { id: RenownUpgradeId; name: string; description: string; effectText: (level: number) => string }[] = [
+  {
+    id: "swiftCharters",
+    name: "Echo Tempo",
+    description: "Faster expedition timers make repeat runs move sooner.",
+    effectText: (level) => (level <= 0 ? "No timer bonus" : `-${Math.min(40, level * 5)}% expedition duration cap contribution`)
+  },
+  {
+    id: "guildLegacy",
+    name: "Soul Prosperity",
+    description: "More XP, gold, and materials make the next cycle snowball earlier.",
+    effectText: (level) => (level <= 0 ? "No reward bonus" : `+${level * 5}% XP/gold/material reward multiplier`)
+  },
+  {
+    id: "treasureOath",
+    name: "Relic Wisdom",
+    description: "Better loot quality and drop consistency create earlier gear spikes.",
+    effectText: (level) => (level <= 0 ? "No loot bonus" : `+${(level * 0.4).toFixed(1)}% loot chance plus rarity weighting`)
+  },
+  {
+    id: "bossAttunement",
+    name: "Boss Attunement",
+    description: "Steadier boss odds reduce stalls at region gates.",
+    effectText: (level) => (level <= 0 ? "No boss bonus" : `+${level * 2}% boss success chance`)
+  }
 ];
 
 export function canPrestige(state: GameState): boolean {
-  return state.hero.level >= 18 && (state.dungeonClears[REINCARNATION_GATE_BOSS_ID] ?? 0) > 0;
+  return state.hero.level >= REINCARNATION_LEVEL_REQUIREMENT && (state.dungeonClears[REINCARNATION_GATE_BOSS_ID] ?? 0) > 0;
 }
 
 export function calculatePrestigeRenown(state: GameState): number {
@@ -37,7 +57,7 @@ export function calculatePrestigeRenown(state: GameState): number {
 
 export function performPrestige(state: GameState, now: number): PrestigeResult {
   if (!canPrestige(state)) {
-    return { ok: false, state, error: "Reincarnation requires level 18 and a Region 3 boss clear." };
+    return { ok: false, state, error: `Reincarnation requires level ${REINCARNATION_LEVEL_REQUIREMENT} and a Region 3 boss clear.` };
   }
 
   const renownGained = calculatePrestigeRenown(state);

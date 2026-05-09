@@ -1,13 +1,23 @@
 import { INVENTORY_LIMIT } from "./constants";
-import { VIGOR_EXPEDITION_BOOST_COST, VIGOR_EXPEDITION_BOOST_MULTIPLIER } from "./constants";
-import { DUNGEONS } from "./content";
+import { VIGOR_EXPEDITION_BOOST_MULTIPLIER } from "./constants";
+import {
+  getBossRewardAffixMultiplier,
+  getFailureRewardAffixBonus,
+  getItemAffixEffectScore,
+  getRuneAffixMultiplier,
+  getSalvageAffixMultiplier,
+  getVigorBoostCost
+} from "./affixes";
+import { DUNGEONS, ZONES } from "./content";
 import { refreshAchievements } from "./achievements";
 import {
   clamp,
   getDerivedStats,
   getDungeon,
   getDurationMs,
+  getEquippedMaterialResourceMultipliers,
   getGoldMultiplier,
+  getItemScore,
   getMaterialMultiplier,
   getSuccessChance,
   getXpMultiplier,
@@ -20,7 +30,7 @@ import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getRuneGainPass
 import { inventoryHasSpace, maybeGenerateLoot } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
-import type { ActionResult, GameState, ResolveResult, RewardSummary, StartExpeditionOptions } from "./types";
+import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveResult, RewardSummary, StartExpeditionOptions } from "./types";
 import { regenerateVigor } from "./vigor";
 
 export function startExpedition(state: GameState, dungeonId: string, now: number, options: StartExpeditionOptions = {}): ActionResult {
@@ -45,13 +55,14 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
   regenerateVigor(next, now);
   next = ensureDailies(next, now).state;
 
-  if (options.useVigorBoost && next.vigor.current < VIGOR_EXPEDITION_BOOST_COST) {
+  const vigorBoostCost = getVigorBoostCost(next);
+  if (options.useVigorBoost && next.vigor.current < vigorBoostCost) {
     return { ok: false, state: next, error: "Not enough Vigor for a boost." };
   }
 
   if (options.useVigorBoost) {
-    next.vigor.current -= VIGOR_EXPEDITION_BOOST_COST;
-    next = applyDailyProgress(next, now, { spend_vigor: VIGOR_EXPEDITION_BOOST_COST }).state;
+    next.vigor.current -= vigorBoostCost;
+    next = applyDailyProgress(next, now, { spend_vigor: vigorBoostCost }).state;
   }
 
   const runId = next.nextRunId;
@@ -77,31 +88,84 @@ function calculateRewards(state: GameState, success: boolean, dungeonId: string)
   const dungeon = getDungeon(dungeonId);
   const vigorMultiplier = state.activeExpedition?.vigorBoost ? VIGOR_EXPEDITION_BOOST_MULTIPLIER : 1;
   const baseFailureScale = 0.35;
-  const failureScale = clamp(baseFailureScale + getFailureRewardScaleBonus(state), baseFailureScale, 0.75);
+  const failureScale = clamp(baseFailureScale + getFailureRewardScaleBonus(state) + getFailureRewardAffixBonus(state), baseFailureScale, 0.75);
   const successScale = success ? 1 : failureScale;
   const xpMultiplier = getXpMultiplier(state) * vigorMultiplier;
   const bossXpMultiplier = success && dungeon.boss ? getBossXpPassiveMultiplier(state) : 1;
-  const goldMultiplier = getGoldMultiplier(state) * vigorMultiplier;
+  const goldMultiplier = getGoldMultiplier(state, dungeon) * vigorMultiplier;
   const materialsMultiplier = getMaterialMultiplier(state) * vigorMultiplier;
+  const bossRewardMultiplier = success && dungeon.boss ? getBossRewardAffixMultiplier(state) : 1;
   const scaledMaterials = success
-    ? scaleMaterials(dungeon.materials, materialsMultiplier)
+    ? scaleMaterials(dungeon.materials, materialsMultiplier * bossRewardMultiplier, getEquippedMaterialResourceMultipliers(state))
     : {
         ore: Math.max(1, Math.floor((dungeon.materials.ore ?? 0) * 0.25))
       };
 
   return {
-    xp: Math.floor(dungeon.baseXp * successScale * xpMultiplier * bossXpMultiplier),
-    gold: Math.floor(dungeon.baseGold * successScale * goldMultiplier),
+    xp: Math.floor(dungeon.baseXp * successScale * xpMultiplier * bossXpMultiplier * bossRewardMultiplier),
+    gold: Math.floor(dungeon.baseGold * successScale * goldMultiplier * bossRewardMultiplier),
     materials: scaledMaterials
   };
 }
 
 function addMaterials(state: GameState, materials: RewardSummary["materials"]) {
-  const runeMultiplier = getRuneGainPassiveMultiplier(state);
+  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
   state.resources.ore += materials.ore ?? 0;
   state.resources.crystal += materials.crystal ?? 0;
   state.resources.rune += Math.floor((materials.rune ?? 0) * runeMultiplier);
   state.resources.relicFragment += materials.relicFragment ?? 0;
+}
+
+function addSalvagedItemResources(state: GameState, item: Item) {
+  const salvageMultiplier = getSalvageAffixMultiplier(state);
+  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
+  state.resources.ore += Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier);
+  state.resources.crystal += Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier);
+  state.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier);
+  state.resources.relicFragment += Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier);
+}
+
+function getUnlockedDungeonIds(state: GameState): Set<string> {
+  return new Set(DUNGEONS.filter((dungeon) => isDungeonUnlocked(state, dungeon)).map((dungeon) => dungeon.id));
+}
+
+function getNewlyUnlockedDungeons(before: GameState, after: GameState): DungeonDefinition[] {
+  const beforeIds = getUnlockedDungeonIds(before);
+  return DUNGEONS.filter((dungeon) => !beforeIds.has(dungeon.id) && isDungeonUnlocked(after, dungeon));
+}
+
+function getNewlyUnlockedZones(before: GameState, unlockedDungeons: DungeonDefinition[]) {
+  const beforeZoneIds = new Set(DUNGEONS.filter((dungeon) => isDungeonUnlocked(before, dungeon)).map((dungeon) => dungeon.zoneId));
+  const newlyUnlockedZoneIds = new Set(unlockedDungeons.map((dungeon) => dungeon.zoneId).filter((zoneId) => !beforeZoneIds.has(zoneId)));
+  return ZONES.filter((zone) => newlyUnlockedZoneIds.has(zone.id));
+}
+
+function summarizeItemComparison(state: GameState, item: Item | null): ItemComparisonSummary | null {
+  if (!item) {
+    return null;
+  }
+
+  const equipped = state.equipment[item.slot];
+  const equippedScore = getItemScore(equipped);
+  const itemScore = getItemScore(item);
+  const delta = itemScore - equippedScore;
+  const statDeltas: Partial<Record<keyof Item["stats"], number>> = {};
+  (["power", "defense", "speed", "luck", "stamina"] as const).forEach((stat) => {
+    const value = (item.stats[stat] ?? 0) - (equipped?.stats[stat] ?? 0);
+    if (value !== 0) {
+      statDeltas[stat] = value;
+    }
+  });
+  return {
+    equippedItemId: equipped?.id ?? null,
+    equippedItemName: equipped?.name ?? null,
+    equippedScore,
+    itemScore,
+    delta,
+    statDeltas,
+    effectScoreDelta: getItemAffixEffectScore(item) - getItemAffixEffectScore(equipped),
+    isBetter: delta > 0
+  };
 }
 
 export function resolveExpedition(state: GameState, now: number): ResolveResult {
@@ -123,6 +187,7 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
   const successChance = getSuccessChance(prepared, dungeon);
   const success = rng.next() <= successChance;
   const rewards = calculateRewards(prepared, success, active.dungeonId);
+  const bossFirstClear = success && dungeon.boss && (prepared.dungeonClears[dungeon.id] ?? 0) === 0;
   let next = cloneState(prepared);
   let item = null;
   let autoSalvagedItem = null;
@@ -153,11 +218,7 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
         next.inventory.push(item);
       } else {
         autoSalvagedItem = item;
-        const runeMultiplier = getRuneGainPassiveMultiplier(next);
-        next.resources.ore += item.salvageValue.ore ?? 0;
-        next.resources.crystal += item.salvageValue.crystal ?? 0;
-        next.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * runeMultiplier);
-        next.resources.relicFragment += item.salvageValue.relicFragment ?? 0;
+        addSalvagedItemResources(next, item);
         next.lifetime.totalItemsSalvaged += 1;
       }
     }
@@ -179,6 +240,8 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
   next = dailyProgress.state;
   const achievementResult = refreshAchievements(next, now);
   next = achievementResult.state;
+  const unlockedDungeons = getNewlyUnlockedDungeons(prepared, next);
+  const unlockedZones = getNewlyUnlockedZones(prepared, unlockedDungeons);
 
   const combatReport = success
     ? `${next.hero.name} cleared ${dungeon.name} with ${Math.floor(successChance * 100)}% success odds.`
@@ -193,8 +256,14 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
       rewards,
       item,
       autoSalvagedItem,
+      itemComparison: summarizeItemComparison(prepared, item),
       vigorBoostUsed: active.vigorBoost,
       levelUps,
+      bossClear: success && dungeon.boss,
+      bossFirstClear,
+      firstGuaranteedWeapon: success && prepared.lifetime.totalItemsFound === 0 && dungeon.id === "tollroad-of-trinkets" && item?.slot === "weapon",
+      unlockedDungeons,
+      unlockedZones,
       achievementsUnlocked: achievementResult.unlocked,
       combatReport
     }

@@ -1,4 +1,4 @@
-import { DAILY_RESET_HOUR_UTC, DAILY_TASK_COUNT, DAY_MS, VIGOR_MAX } from "./constants";
+import { DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT } from "./constants";
 import { DAILY_TASK_POOL, DUNGEONS } from "./content";
 import { isDungeonUnlocked } from "./expeditions";
 import { createRng } from "./rng";
@@ -7,20 +7,24 @@ import type { ActionResult, DailyTaskKind, DailyTaskState, GameState, MaterialBu
 
 export function getDailyWindowStartAt(now: number): number {
   const date = new Date(now);
-  const resetCandidate = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
-    DAILY_RESET_HOUR_UTC,
-    0,
-    0,
-    0
-  );
-  return now >= resetCandidate ? resetCandidate : resetCandidate - DAY_MS;
+  const resetCandidate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
+  if (now >= resetCandidate) {
+    return resetCandidate;
+  }
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1, DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
 }
 
 export function getNextDailyResetAt(now: number): number {
-  return getDailyWindowStartAt(now) + DAY_MS;
+  const windowStart = new Date(getDailyWindowStartAt(now));
+  return new Date(
+    windowStart.getFullYear(),
+    windowStart.getMonth(),
+    windowStart.getDate() + 1,
+    DAILY_RESET_HOUR_LOCAL,
+    0,
+    0,
+    0
+  ).getTime();
 }
 
 function clampProgress(progress: number, target: number): number {
@@ -101,7 +105,8 @@ function createDailyTasks(state: GameState, now: number, previousKey: string | n
 }
 
 export function ensureDailies(state: GameState, now: number): { state: GameState; reset: boolean } {
-  const needsReset = now >= state.dailies.nextResetAt || state.dailies.tasks.length !== DAILY_TASK_COUNT;
+  const windowStartAt = getDailyWindowStartAt(now);
+  const needsReset = now >= state.dailies.nextResetAt || state.dailies.windowStartAt !== windowStartAt || state.dailies.tasks.length !== DAILY_TASK_COUNT;
   if (!needsReset) {
     return { state, reset: false };
   }
@@ -109,7 +114,7 @@ export function ensureDailies(state: GameState, now: number): { state: GameState
   const next = cloneState(state);
   const previousKey = state.dailies.tasks.length === DAILY_TASK_COUNT ? getTaskSetKey(state.dailies.tasks) : state.dailies.lastTaskSetKey;
   const tasks = createDailyTasks(next, now, previousKey);
-  next.dailies.windowStartAt = getDailyWindowStartAt(now);
+  next.dailies.windowStartAt = windowStartAt;
   next.dailies.nextResetAt = getNextDailyResetAt(now);
   next.dailies.lastTaskSetKey = getTaskSetKey(tasks);
   next.dailies.tasks = tasks;
@@ -177,7 +182,7 @@ export function claimDailyTask(state: GameState, taskId: string, now: number): A
   next.dailies.tasks[taskIndex].claimed = true;
   next.resources.gold += task.reward.gold;
   addMaterials(next, task.reward.materials);
-  next.vigor.current = Math.min(VIGOR_MAX, next.vigor.current + task.reward.vigor);
+  next.vigor.current = Math.min(next.vigor.max, next.vigor.current + task.reward.vigor);
   next.lifetime.totalDailyClaims += 1;
   next.updatedAt = now;
   return { ok: true, state: next, message: `Daily claimed: ${task.label}.` };

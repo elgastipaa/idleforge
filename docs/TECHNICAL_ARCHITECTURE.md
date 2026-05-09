@@ -111,7 +111,7 @@ Cap:
 
 ## Daily Reset System
 
-- Reset schedule: 23:00 UTC.
+- Reset schedule: 23:00 local device time.
 - Also display local mapping: 20:00 GMT-3.
 - Fixed 3 tasks/day.
 - No streak tracking in MVP.

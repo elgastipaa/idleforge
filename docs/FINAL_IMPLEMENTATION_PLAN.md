@@ -30,14 +30,14 @@
   - Forge, Mine, Tavern, Market, Library, Shrine
 - Dailies:
   - exactly 3 active tasks/day
-  - reset at 23:00 UTC (20:00 GMT-3)
+  - reset at 23:00 local device time
   - no streak punishment
 - Vigor:
   - cap 100
   - regen +1 every 5m
   - spend 20 for 2.0x expedition reward boost
 - Reincarnation:
-  - first-run gate: level 18 + region 3 boss clear
+  - first-run gate: level 10 + region 3 boss clear
   - permanent Soul Marks and upgrades
 - Save system:
   - autosave localStorage
@@ -125,7 +125,7 @@ Unit tests (`src/game`):
 - inventory cap and overflow behavior
 - forge craft/upgrade transitions
 - town upgrade cost/effect checks
-- daily generation (3 unique tasks/day) and reset at 23:00 UTC
+- daily generation (3 unique tasks/day) and reset at 23:00 local device time
 - no streak penalty logic
 - vigor spend/regeneration/cap checks
 - offline combined cap checks (expedition + mine + vigor, 8h)

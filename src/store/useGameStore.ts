@@ -15,6 +15,7 @@ import {
   importSave,
   loadSave,
   performPrestige,
+  rerollItemAffix,
   resolveExpedition,
   salvageItem,
   sellItem,
@@ -34,7 +35,7 @@ export type GameStore = {
   hydrated: boolean;
   error: string | null;
   lastMessage: string | null;
-  lastSummary: ResolveSummary | null;
+  lastExpeditionResult: ResolveSummary | null;
   lastOfflineSummary: OfflineDeltaSummary | null;
   hydrate: () => void;
   startExpedition: (dungeonId: string, useVigorBoost?: boolean) => void;
@@ -45,6 +46,7 @@ export type GameStore = {
   salvageItem: (itemId: string) => void;
   craftItem: (slot?: "weapon" | "helm" | "armor" | "boots" | "relic", classBias?: boolean) => void;
   upgradeItem: (itemId: string) => void;
+  rerollItemAffix: (itemId: string, affixIndex: number) => void;
   buyBuilding: (buildingId: BuildingId) => void;
   claimDaily: (taskId: string) => void;
   prestige: () => void;
@@ -80,7 +82,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hydrated: false,
   error: null,
   lastMessage: null,
-  lastSummary: null,
+  lastExpeditionResult: null,
   lastOfflineSummary: null,
 
   hydrate: () => {
@@ -94,7 +96,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!raw) {
       const state = createFreshState(now);
       persist(state);
-      set({ state, hydrated: true, error: null, lastMessage: "Create your hero and start the first expedition.", lastSummary: null, lastOfflineSummary: null });
+      set({ state, hydrated: true, error: null, lastMessage: "Create your hero and start the first expedition.", lastExpeditionResult: null, lastOfflineSummary: null });
       return;
     }
 
@@ -107,7 +109,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         hydrated: true,
         error: loaded.error,
         lastMessage: "A new save was created because the old local save could not load.",
-        lastSummary: null,
+        lastExpeditionResult: null,
         lastOfflineSummary: null
       });
       return;
@@ -130,7 +132,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       hydrated: true,
       error: null,
       lastMessage: `${summaryText}${offline.capped ? " Offline gains were capped at 8 hours." : ""}`,
-      lastSummary: offline.summary?.expedition ?? null,
+      lastExpeditionResult: offline.summary?.expedition ?? null,
       lastOfflineSummary: offline.summary
     });
   },
@@ -144,7 +146,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     state.updatedAt = now;
     state = ensureDailies(state, now).state;
     persist(state);
-    set({ state, error: null, lastMessage: "Hero created. Your first expedition is ready.", lastSummary: null, lastOfflineSummary: null });
+    set({ state, error: null, lastMessage: "Hero created. Your first expedition is ready.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
   startExpedition: (dungeonId, useVigorBoost = false) => {
@@ -154,7 +156,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
     persist(result.state);
-    set({ state: result.state, error: null, lastMessage: result.message ?? "Expedition started.", lastSummary: null, lastOfflineSummary: null });
+    set({ state: result.state, error: null, lastMessage: result.message ?? "Expedition started.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
   claimExpedition: () => {
@@ -164,12 +166,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
     persist(result.state);
-    const lootText = result.summary.item ? ` Found ${result.summary.item.name}.` : " No item found this time.";
     set({
       state: result.state,
       error: null,
-      lastMessage: `${result.summary.success ? "Success" : "Retreat"} at ${result.summary.dungeon.name}.${lootText}`,
-      lastSummary: result.summary,
+      lastMessage: null,
+      lastExpeditionResult: result.summary,
       lastOfflineSummary: null
     });
   },
@@ -224,6 +225,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state: result.state, error: null, lastMessage: result.message ?? "Item upgraded." });
   },
 
+  rerollItemAffix: (itemId, affixIndex) => {
+    const result = rerollItemAffix(get().state, itemId, affixIndex, Date.now());
+    if (!result.ok) {
+      set({ error: result.error });
+      return;
+    }
+    persist(result.state);
+    set({ state: result.state, error: null, lastMessage: result.message ?? "Affix rerolled." });
+  },
+
   buyBuilding: (buildingId) => {
     const result = buyBuildingUpgrade(get().state, buildingId, Date.now());
     if (!result.ok) {
@@ -251,7 +262,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
     persist(result.state);
-    set({ state: result.state, error: null, lastMessage: `Reincarnation complete. +${result.renownGained} Soul Marks.`, lastSummary: null, lastOfflineSummary: null });
+    set({ state: result.state, error: null, lastMessage: `Reincarnation complete. +${result.renownGained} Soul Marks.`, lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
   buyRenownUpgrade: (upgradeId) => {
@@ -305,7 +316,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     const normalized = ensureDailies(result.state, Date.now()).state;
     persist(normalized);
-    set({ state: normalized, error: null, lastMessage: result.message, lastSummary: null, lastOfflineSummary: null });
+    set({ state: normalized, error: null, lastMessage: result.message, lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
   resetSave: () => {
@@ -314,8 +325,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     const state = createFreshState(Date.now());
     persist(state);
-    set({ state, error: null, lastMessage: "Local save reset.", lastSummary: null, lastOfflineSummary: null });
+    set({ state, error: null, lastMessage: "Local save reset.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
-  clearMessage: () => set({ error: null, lastMessage: null })
+  clearMessage: () => set({ error: null, lastMessage: null, lastExpeditionResult: null })
 }));

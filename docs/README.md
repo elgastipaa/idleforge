@@ -27,6 +27,14 @@ Canonical planning for the hero-first v2 direction lives in this directory only.
 - `DAILY_REWARDS_DESIGN.md`
 - `FINAL_IMPLEMENTATION_PLAN.md`
 
+## UI Design System Docs
+
+- `UI_DESIGN_AGENT.md`
+- `DESIGN_SYSTEM_AUDIT.md`
+- `UI_DESIGN_SYSTEM.md`
+- `UI_POLISH_RULES.md`
+- `VISUAL_QA_CHECKLIST.md`
+
 ## Source-of-Truth Rule
 
 - If root docs conflict with these files, these files are authoritative.

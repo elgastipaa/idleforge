@@ -10,8 +10,13 @@ La persistencia actual es local:
 
 - mecanismo: `window.localStorage`
 - key: `relic-forge-idle:v1` (`SAVE_KEY`)
+- key de preferencia visual: `relic-forge-idle:theme`
 - archivo principal: `src/store/useGameStore.ts`
 - serialización/validación: `src/game/save.ts`
+
+Nota:
+
+- `relic-forge-idle:theme` guarda sólo `"light"` o `"dark"` para la UI. No forma parte del save envelope ni del modelo `GameState`.
 
 ## Envelope real guardado
 
@@ -50,6 +55,44 @@ Campos raíz relevantes:
 
 Definición completa: `src/game/types.ts`.
 
+## Modelo persistido relevante para loot
+
+Los ítems de `inventory` y `equipment` se guardan completos dentro de `GameState`.
+
+```ts
+type Item = {
+  id: string;
+  name: string;
+  slot: "weapon" | "helm" | "armor" | "boots" | "relic";
+  rarity: "common" | "rare" | "epic" | "legendary";
+  itemLevel: number;
+  upgradeLevel: number;
+  stats: Partial<Stats>;
+  affixes: Affix[];
+  sellValue: number;
+  salvageValue: Partial<MaterialBundle>;
+  sourceDungeonId: string;
+  createdAtRunId: number;
+};
+```
+
+Los afijos también son parte del save porque quedan embebidos en cada `Item`:
+
+```ts
+type Affix = {
+  id: string;
+  name: string;
+  stats: Partial<Stats>;
+  effects?: AffixEffects;
+  description: string;
+  prefix?: string;
+  suffix?: string;
+  slots?: EquipmentSlot[];
+};
+```
+
+`AffixEffects` puede incluir modificadores de XP, oro, oro por zona, materiales, materiales por recurso, rare drop chance, loot chance, boss rewards, success chance, boss success, short mission success, long mission loot, forge discount, costo de Vigor, sell value, salvage, rune gains, duración y failure reward scale.
+
 ## Lecturas/escrituras reales
 
 - Hidratación inicial: `useGameStore.hydrate()`.
@@ -64,7 +107,7 @@ Definición completa: `src/game/types.ts`.
 
 - `game` y `saveVersion`.
 - shape base de `GameState`.
-- clases, dungeons, slots y límites de inventario.
+- clases, dungeon activo, slots de equipment y límite de inventario.
 - vigor (`0..max`, `max<=100`).
 - dailies (`3 tareas` + tipos válidos).
 - upgrades de progreso permanente.
@@ -74,6 +117,7 @@ Definición completa: `src/game/types.ts`.
 1. No hay estrategia de migración multi-versión más allá de `saveVersion` fijo.
 2. Si cambian tipos de estado, hay riesgo de romper imports viejos sin migrador.
 3. Validación de reward de dailies es superficial (shape básica; no valida todos los rangos numéricos finos).
+4. No se valida en profundidad la forma interna completa de cada `item` de inventario/equipment durante import, incluyendo `affixes.effects`.
 
 ## Futura DB sugerida (NO implementada)
 

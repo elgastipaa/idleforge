@@ -1,6 +1,7 @@
 import { INVENTORY_LIMIT } from "./constants";
+import { getRuneAffixMultiplier, getSalvageAffixMultiplier } from "./affixes";
 import { refreshAchievements } from "./achievements";
-import { getSellMultiplier } from "./balance";
+import { getDerivedStats, getSellMultiplier } from "./balance";
 import { applyDailyProgress, ensureDailies } from "./dailies";
 import { getRuneGainPassiveMultiplier } from "./heroes";
 import { cloneState } from "./state";
@@ -38,6 +39,7 @@ export function equipItem(state: GameState, itemId: string, now: number): Action
   regenerateVigor(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
+  const beforePower = getDerivedStats(working).powerScore;
   const [item] = working.inventory.splice(found.index, 1);
   const oldItem = working.equipment[slot];
   working.equipment[slot] = item;
@@ -45,8 +47,11 @@ export function equipItem(state: GameState, itemId: string, now: number): Action
     working.inventory.push(oldItem);
   }
   working.updatedAt = now;
+  const afterPower = getDerivedStats(working).powerScore;
+  const powerDelta = afterPower - beforePower;
+  const powerText = powerDelta === 0 ? " Power unchanged." : ` Power ${powerDelta > 0 ? "+" : ""}${powerDelta}.`;
   const achievements = refreshAchievements(working, now);
-  return { ok: true, state: achievements.state, message: `${item.name} equipped.` };
+  return { ok: true, state: achievements.state, message: `${item.name} equipped.${powerText}` };
 }
 
 export function sellItem(state: GameState, itemId: string, now: number): ActionResult {
@@ -82,8 +87,14 @@ export function salvageItem(state: GameState, itemId: string, now: number): Acti
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const [item] = working.inventory.splice(found.index, 1);
-  const runeMultiplier = getRuneGainPassiveMultiplier(working);
-  const salvage = { ...item.salvageValue, rune: Math.floor((item.salvageValue.rune ?? 0) * runeMultiplier) };
+  const salvageMultiplier = getSalvageAffixMultiplier(working);
+  const runeMultiplier = getRuneGainPassiveMultiplier(working) * getRuneAffixMultiplier(working);
+  const salvage = {
+    ore: Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier),
+    crystal: Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier),
+    rune: Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier),
+    relicFragment: Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier)
+  };
   addSalvage(working.resources, salvage);
   working.lifetime.totalItemsSalvaged += 1;
   const progressed = applyDailyProgress(working, now, { salvage_items: 1 });

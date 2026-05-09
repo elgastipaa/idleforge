@@ -476,17 +476,17 @@ Acceptance criteria:
 - Daily set always has exactly 3 valid tasks.
 Required tests:
 - Uniqueness/count tests.
-Dependencies: M02-T01, M02-T02  
-Complexity: M  
-Required for v1.0: yes  
+Dependencies: M02-T01, M02-T02
+Complexity: M
+Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M11-T02
-Title: Daily reset scheduler (23:00 UTC)  
-Goal: Reset dailies on fixed schedule with clock-safe logic.  
-Files likely to be created or edited: `src/game/dailies.ts`, `src/game/offline.ts`  
+Title: Daily reset scheduler (23:00 local time)
+Goal: Reset dailies on fixed schedule with clock-safe logic.
+Files likely to be created or edited: `src/game/dailies.ts`, `src/game/offline.ts`
 Exact implementation steps:
-1. Implement deterministic reset boundary at 23:00 UTC.
+1. Implement deterministic reset boundary at 23:00 local device time.
 2. Regenerate tasks on boundary crossing.
 3. Ensure no streak logic exists.
 Acceptance criteria:
@@ -495,7 +495,7 @@ Required tests:
 - Boundary-crossing reset tests.
 Dependencies: M11-T01  
 Complexity: S  
-Required for v1.0: yes  
+Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M11-T03
@@ -575,9 +575,9 @@ Can be cut if needed: no
 ## Milestone 13 - Reincarnation/prestige
 
 ### Task ID: M13-T01
-Title: Reincarnation gate enforcement  
-Goal: Lock fixed v1 gate (level 18 + region 3 boss clear).  
-Files likely to be created or edited: `src/game/prestige.ts`, `src/game/expeditions.ts`  
+Title: Reincarnation gate enforcement
+Goal: Lock fixed MVP gate (level 10 + region 3 boss clear).
+Files likely to be created or edited: `src/game/prestige.ts`, `src/game/expeditions.ts`
 Exact implementation steps:
 1. Implement `canReincarnate` gate check with exact requirements.
 2. Expose gate progress details for UI.

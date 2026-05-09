@@ -28,12 +28,12 @@ Risk 6: Formula ambiguity causes implementation drift.
 
 Risk 7: Cross-doc mismatch on reincarnation gate.
 
-- Mitigation: treat `level 18 + region 3 boss` as canonical and verify during release checklist.
+- Mitigation: treat `level 10 + region 3 boss` as canonical and verify during release checklist.
 
 ## Mandatory Locks
 
 - Inventory is 30 for MVP.
-- Dailies reset at 23:00 UTC.
+- Dailies reset at 23:00 local device time.
 - Vigor is free-only in MVP.
 
 ## Cut Ladder (If Schedule Slips)
