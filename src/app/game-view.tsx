@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   Backpack,
   CheckCircle2,
@@ -32,6 +33,7 @@ import {
   CLASS_PASSIVE_TEXT,
   DAILY_RESET_HOUR_LOCAL,
   DUNGEONS,
+  ZONES,
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
   INVENTORY_LIMIT,
@@ -66,6 +68,7 @@ import {
   getSalvageAffixMultiplier,
   getRenownUpgradeCost,
   getSellMultiplier,
+  isDungeonUnlocked,
   getUnlockText,
   getVigorBoostCost,
   getZoneForDungeon,
@@ -79,7 +82,8 @@ import {
   type RenownUpgradeId,
   type ResolveSummary,
   type ResourceState,
-  type Stats
+  type Stats,
+  type ZoneDefinition
 } from "@/game";
 
 type TabId = "expeditions" | "hero" | "inventory" | "forge" | "town" | "dailies" | "achievements" | "reincarnation" | "settings";
@@ -98,6 +102,28 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
 
 const mobilePrimaryTabs: TabId[] = ["expeditions", "hero", "inventory", "forge"];
 const mobileSecondaryTabs: TabId[] = tabs.map((tab) => tab.id).filter((id) => !mobilePrimaryTabs.includes(id)) as TabId[];
+
+const HERO_SUBVIEWS = [
+  { id: "overview", label: "Overview" },
+  { id: "class", label: "Class" },
+  { id: "stats", label: "Stats" }
+] as const;
+
+const FORGE_SUBVIEWS = [
+  { id: "craft", label: "Craft" },
+  { id: "upgrade", label: "Upgrade" },
+  { id: "advanced", label: "Advanced" }
+] as const;
+
+const REINCARNATION_SUBVIEWS = [
+  { id: "overview", label: "Overview" },
+  { id: "ledger", label: "Ledger" },
+  { id: "upgrades", label: "Upgrades" }
+] as const;
+
+type HeroSubviewId = (typeof HERO_SUBVIEWS)[number]["id"];
+type ForgeSubviewId = (typeof FORGE_SUBVIEWS)[number]["id"];
+type ReincarnationSubviewId = (typeof REINCARNATION_SUBVIEWS)[number]["id"];
 
 function getTabMeta(tabId: TabId) {
   return tabs.find((tab) => tab.id === tabId) ?? tabs[0];
@@ -333,7 +359,9 @@ function ResourceChip({
   value,
   Icon,
   className = "",
-  onClick
+  onClick,
+  showLabel = true,
+  buttonRef
 }: {
   title: string;
   label: string;
@@ -341,13 +369,15 @@ function ResourceChip({
   Icon: typeof Swords;
   className?: string;
   onClick?: () => void;
+  showLabel?: boolean;
+  buttonRef?: (node: HTMLButtonElement | null) => void;
 }) {
   const chipClassName = `inline-flex min-h-7 max-w-[5.4rem] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[0.63rem] font-black leading-none ${className}`;
   if (onClick) {
     return (
-      <button type="button" className={`${chipClassName} cursor-pointer`} title={title} onClick={onClick}>
+      <button ref={buttonRef} type="button" className={`${chipClassName} cursor-pointer`} title={title} onClick={onClick}>
         <Icon size={12} className="shrink-0" />
-        <span className="truncate">{label}</span>
+        {showLabel && <span className="truncate">{label}</span>}
         <span className="shrink-0 tabular-nums">{value}</span>
       </button>
     );
@@ -355,7 +385,7 @@ function ResourceChip({
   return (
     <span className={chipClassName} title={title}>
       <Icon size={12} className="shrink-0" />
-      <span className="truncate">{label}</span>
+      {showLabel && <span className="truncate">{label}</span>}
       <span className="shrink-0 tabular-nums">{value}</span>
     </span>
   );
@@ -380,6 +410,134 @@ function SectionHeader({
         {description && <p className="text-sm font-semibold text-stone-700">{description}</p>}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+  className = ""
+}: {
+  options: Array<{ id: string; label: string }>;
+  value: string;
+  onChange: (id: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`grid auto-cols-fr grid-flow-col gap-1 rounded-lg border border-ink/10 bg-white/70 p-1 ${className}`}>
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          className={`min-h-9 rounded-md px-2 text-xs font-black ${value === option.id ? "bg-royal text-white shadow-card" : "text-stone-700 hover:bg-parchment"}`}
+          onClick={() => onChange(option.id)}
+          aria-current={value === option.id ? "page" : undefined}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SwipeSubviewDeck({
+  panels,
+  value,
+  onChange,
+  reducedMotion
+}: {
+  panels: Array<{ id: string; content: React.ReactNode }>;
+  value: string;
+  onChange: (id: string) => void;
+  reducedMotion: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const panelRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollEndTimerRef = useRef<number | null>(null);
+  const programmaticScrollRef = useRef(false);
+  const releaseProgrammaticScrollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const activePanel = panelRefs.current[value];
+    if (!container || !activePanel) return;
+    const targetLeft = Math.max(0, activePanel.offsetLeft);
+    if (Math.abs(container.scrollLeft - targetLeft) < 1) {
+      return;
+    }
+    programmaticScrollRef.current = true;
+    container.scrollTo({
+      left: targetLeft,
+      behavior: reducedMotion ? "auto" : "smooth"
+    });
+    if (releaseProgrammaticScrollRef.current !== null) {
+      window.clearTimeout(releaseProgrammaticScrollRef.current);
+    }
+    releaseProgrammaticScrollRef.current = window.setTimeout(() => {
+      programmaticScrollRef.current = false;
+    }, reducedMotion ? 0 : 280);
+  }, [reducedMotion, value]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollEndTimerRef.current !== null) {
+        window.clearTimeout(scrollEndTimerRef.current);
+      }
+      if (releaseProgrammaticScrollRef.current !== null) {
+        window.clearTimeout(releaseProgrammaticScrollRef.current);
+      }
+    };
+  }, []);
+
+  const handleScroll = () => {
+    if (programmaticScrollRef.current) {
+      return;
+    }
+    if (scrollEndTimerRef.current !== null) {
+      window.clearTimeout(scrollEndTimerRef.current);
+    }
+    scrollEndTimerRef.current = window.setTimeout(() => {
+      const container = containerRef.current;
+      if (!container || panels.length === 0) return;
+
+      const scrollCenter = container.scrollLeft + container.clientWidth / 2;
+      let closestId = panels[0].id;
+      let closestDistance = Number.POSITIVE_INFINITY;
+
+      for (const panel of panels) {
+        const panelNode = panelRefs.current[panel.id];
+        if (!panelNode) continue;
+        const panelCenter = panelNode.offsetLeft + panelNode.clientWidth / 2;
+        const distance = Math.abs(panelCenter - scrollCenter);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestId = panel.id;
+        }
+      }
+
+      if (closestId !== value) {
+        onChange(closestId);
+      }
+    }, 120);
+  };
+
+  return (
+    <div ref={containerRef} className="overflow-x-auto snap-x snap-mandatory scroll-smooth pb-1" onScroll={handleScroll}>
+      <div className="flex min-w-full gap-4">
+        {panels.map((panel) => (
+          <div
+            key={panel.id}
+            ref={(node) => {
+              panelRefs.current[panel.id] = node;
+            }}
+            className="min-w-0 w-full shrink-0 snap-start snap-always pr-3 last:pr-0"
+          >
+            {panel.content}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -533,22 +691,65 @@ function CharacterStart({ store }: { store: GameStore }) {
   );
 }
 
-function Header({ state, onboardingFocused }: { state: GameState; onboardingFocused: boolean }) {
+function Header({ state }: { state: GameState }) {
+  type HeaderChipId = "gold" | "mats" | "renown" | "vigor";
+
   const stats = getDerivedStats(state);
-  const [matsOpen, setMatsOpen] = useState(false);
-  const matsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const [openChip, setOpenChip] = useState<HeaderChipId | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(null);
+  const chipPopoverRef = useRef<HTMLDivElement | null>(null);
+  const popoverCardRef = useRef<HTMLDivElement | null>(null);
+  const chipButtonRefs = useRef<Record<HeaderChipId, HTMLButtonElement | null>>({
+    gold: null,
+    mats: null,
+    renown: null,
+    vigor: null
+  });
   const matsInlineValue = materialResources.map((resource) => formatCompactStackNumber(state.resources[resource])).join("/");
+  const POPOVER_WIDTH = 176;
+  const updatePopoverPosition = (chip: HeaderChipId) => {
+    const button = chipButtonRefs.current[chip];
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8));
+    const top = rect.bottom + 6;
+    setPopoverPosition({ left, top });
+  };
+  const toggleChip = (chip: HeaderChipId) => {
+    setOpenChip((active) => (active === chip ? null : chip));
+  };
 
   useEffect(() => {
-    if (!matsOpen) return;
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!matsPopoverRef.current?.contains(event.target as Node)) {
-        setMatsOpen(false);
+    if (!openChip) {
+      setPopoverPosition(null);
+      return;
+    }
+    updatePopoverPosition(openChip);
+    const handleViewportChange = () => {
+      if (openChip) {
+        updatePopoverPosition(openChip);
       }
+    };
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [openChip]);
+
+  useEffect(() => {
+    if (!openChip) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (chipPopoverRef.current?.contains(target) || popoverCardRef.current?.contains(target)) {
+        return;
+      }
+      setOpenChip(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMatsOpen(false);
+        setOpenChip(null);
       }
     };
     window.addEventListener("pointerdown", closeOnOutside);
@@ -557,71 +758,109 @@ function Header({ state, onboardingFocused }: { state: GameState; onboardingFocu
       window.removeEventListener("pointerdown", closeOnOutside);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [matsOpen]);
+  }, [openChip]);
+
+  const popoverTitleByChip: Record<HeaderChipId, string> = {
+    gold: resourceLabels.gold,
+    mats: "Materials",
+    renown: resourceLabels.renown,
+    vigor: "Vigor"
+  };
+  const popoverRowsByChip: Record<HeaderChipId, Array<{ label: string; value: string }>> = {
+    gold: [{ label: resourceLabels.gold, value: formatNumber(state.resources.gold) }],
+    mats: materialResources.map((resource) => ({
+      label: resourceLabels[resource],
+      value: formatNumber(state.resources[resource])
+    })),
+    renown: [{ label: resourceLabels.renown, value: formatNumber(state.resources.renown) }],
+    vigor: [
+      { label: "Current", value: formatNumber(state.vigor.current) },
+      { label: "Max", value: formatNumber(state.vigor.max) }
+    ]
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-amber-950/10 bg-parchment/95 px-4 py-3 backdrop-blur">
-      <div className="mx-auto flex min-w-0 max-w-7xl flex-col gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-xl font-black">Relic Forge Idle</h1>
+      <div className="mx-auto flex min-w-0 max-w-7xl items-center gap-1 overflow-x-auto pb-1">
+        <Pill className="shrink-0 border-emerald/20 bg-emerald-50 text-emerald">
+          P {formatNumber(stats.powerScore)}
+        </Pill>
+        <div ref={chipPopoverRef} className="flex items-center gap-1">
+          <div className="relative">
+            <ResourceChip
+              title={`${resourceLabels.gold} ${formatNumber(state.resources.gold)}`}
+              label={compactResourceLabels.gold}
+              value={formatNumber(state.resources.gold)}
+              Icon={getResourceIcon("gold")}
+              showLabel={false}
+              className={`max-w-[5rem] border-stone-200 bg-white text-stone-700 ${openChip === "gold" ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => toggleChip("gold")}
+              buttonRef={(node) => {
+                chipButtonRefs.current.gold = node;
+              }}
+            />
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Pill className="border-emerald/20 bg-emerald-50 text-emerald">
-              Power {formatNumber(stats.powerScore)}
-            </Pill>
-          </div>
-        </div>
-        <div className="flex w-full min-w-0 max-w-full items-center gap-1 pb-1">
-          <ResourceChip
-            title={`${resourceLabels.gold} ${formatNumber(state.resources.gold)}`}
-            label={compactResourceLabels.gold}
-            value={formatNumber(state.resources.gold)}
-            Icon={getResourceIcon("gold")}
-            className="border-stone-200 bg-white text-stone-700"
-          />
-          <div ref={matsPopoverRef} className="relative">
+          <div className="relative">
             <ResourceChip
               title={`Materials Ore/Crystal/Rune/Fragments: ${matsInlineValue} (tap for detail)`}
               label="Mats"
               value={matsInlineValue}
               Icon={Gem}
-              className={`max-w-[12rem] border-stone-200 bg-white text-stone-700 ${matsOpen ? "ring-2 ring-royal/20" : ""}`}
-              onClick={() => setMatsOpen((open) => !open)}
+              showLabel={false}
+              className={`max-w-[9.4rem] border-stone-200 bg-white text-stone-700 ${openChip === "mats" ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => toggleChip("mats")}
+              buttonRef={(node) => {
+                chipButtonRefs.current.mats = node;
+              }}
             />
-            {matsOpen && (
-              <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-44 rounded-lg border border-ink/15 bg-white p-2 shadow-card">
-                <p className="px-1 pb-1 text-[0.65rem] font-black uppercase tracking-wide text-stone-500">Materials</p>
-                <div className="space-y-1">
-                  {materialResources.map((resource) => (
-                    <div key={resource} className="flex items-center justify-between rounded-md bg-parchment/60 px-2 py-1 text-xs font-bold text-stone-700">
-                      <span>{resourceLabels[resource]}</span>
-                      <span className="tabular-nums text-ink">{formatNumber(state.resources[resource])}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-          <ResourceChip
-            title={`${resourceLabels.renown} ${formatNumber(state.resources.renown)}`}
-            label={compactResourceLabels.renown}
-            value={formatNumber(state.resources.renown)}
-            Icon={getResourceIcon("renown")}
-            className="border-stone-200 bg-white text-stone-700"
-          />
-          <ResourceChip
-            title={`Vigor ${state.vigor.current}/${state.vigor.max}`}
-            label="Vig"
-            value={`${state.vigor.current}/${state.vigor.max}`}
-            Icon={Flame}
-            className="max-w-[6.4rem] border-royal/20 bg-blue-50 text-royal"
-          />
-          {onboardingFocused && (
-            <p className="ml-1 truncate text-[0.65rem] font-semibold text-stone-600">Focus: run one contract, then claim.</p>
-          )}
+          <div className="relative">
+            <ResourceChip
+              title={`${resourceLabels.renown} ${formatNumber(state.resources.renown)}`}
+              label={compactResourceLabels.renown}
+              value={formatNumber(state.resources.renown)}
+              Icon={getResourceIcon("renown")}
+              showLabel={false}
+              className={`max-w-[5rem] border-stone-200 bg-white text-stone-700 ${openChip === "renown" ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => toggleChip("renown")}
+              buttonRef={(node) => {
+                chipButtonRefs.current.renown = node;
+              }}
+            />
+          </div>
+          <div className="relative">
+            <ResourceChip
+              title={`Vigor ${state.vigor.current}/${state.vigor.max}`}
+              label="Vig"
+              value={`${state.vigor.current}/${state.vigor.max}`}
+              Icon={Flame}
+              showLabel={false}
+              className={`max-w-[6rem] border-royal/20 bg-blue-50 text-royal ${openChip === "vigor" ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => toggleChip("vigor")}
+              buttonRef={(node) => {
+                chipButtonRefs.current.vigor = node;
+              }}
+            />
+          </div>
         </div>
       </div>
+      {openChip && popoverPosition && (
+        <div
+          ref={popoverCardRef}
+          className="fixed z-50 w-44 rounded-lg border border-ink/15 bg-white p-2 shadow-card"
+          style={{ left: `${popoverPosition.left}px`, top: `${popoverPosition.top}px` }}
+        >
+          <p className="px-1 pb-1 text-[0.65rem] font-black uppercase tracking-wide text-stone-500">{popoverTitleByChip[openChip]}</p>
+          <div className="space-y-1">
+            {popoverRowsByChip[openChip].map((row) => (
+              <div key={`${openChip}-${row.label}`} className="flex items-center justify-between rounded-md bg-parchment/60 px-2 py-1 text-xs font-bold text-stone-700">
+                <span>{row.label}</span>
+                <span className="tabular-nums text-ink">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
@@ -750,42 +989,21 @@ function MessagePanel({ store, suppressNonError = false }: { store: GameStore; s
 }
 
 function OfflineSummaryPanel({
-  state,
   store,
-  onSelectTab,
-  hasStackedResult
+  onSelectTab
 }: {
-  state: GameState;
   store: GameStore;
   onSelectTab: (tab: TabId) => void;
-  hasStackedResult: boolean;
 }) {
   const summary = store.lastOfflineSummary;
-  const summaryKey = summary ? JSON.stringify(summary) : null;
-  const [dismissedSummaryKey, setDismissedSummaryKey] = useState<string | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
 
-  useEffect(() => {
-    if (!summaryKey && dismissedSummaryKey !== null) {
-      setDismissedSummaryKey(null);
-    }
-  }, [summaryKey, dismissedSummaryKey]);
-
-  useEffect(() => {
-    setShowDetails(false);
-  }, [summaryKey]);
-
-  if (!summary || !summaryKey || dismissedSummaryKey === summaryKey) return null;
+  if (!summary) return null;
 
   const hasMineGains = (["ore", "crystal", "rune", "relicFragment"] as const).some((resource) => (summary.mineGains[resource] ?? 0) > 0);
   const capped = (store.lastMessage ?? "").includes("Offline gains were capped at 8 hours.");
-  const compactMode = hasStackedResult && !showDetails;
-  const compactSummaryLine = `Expedition: ${
-    summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "none"
-  } · Mine: ${hasMineGains ? formatResources(summary.mineGains) : "none"} · Vigor +${summary.vigorGained} · Dailies: ${
-    summary.dailyReset ? "reset" : "unchanged"
-  }`;
-  const dismissSummary = () => setDismissedSummaryKey(summaryKey);
+  const dismissSummary = () => {
+    store.dismissOfflineSummary();
+  };
   const runSummaryAction = (action: () => void) => {
     action();
     dismissSummary();
@@ -803,27 +1021,26 @@ function OfflineSummaryPanel({
             <Clock size={13} /> {capped ? "Capped at 8h" : "Applied"}
           </Pill>
         </div>
-        {compactMode ? (
-          <p className="line-clamp-2 rounded-md border border-ink/10 bg-white/70 px-3 py-2 text-xs font-semibold text-stone-700">{compactSummaryLine}</p>
-        ) : (
-          <div className="grid gap-2 text-sm font-semibold text-stone-700 sm:grid-cols-2">
-            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-              <span className="font-black text-ink">Expedition:</span>{" "}
-              {summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "No expedition resolved"}
-            </p>
-            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-              <span className="font-black text-ink">Mine Gains:</span> {hasMineGains ? formatResources(summary.mineGains) : "None"}
-            </p>
-            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-              <span className="font-black text-ink">Vigor Regenerated:</span> +{summary.vigorGained}
-            </p>
-            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-              <span className="font-black text-ink">Dailies:</span> {summary.dailyReset ? "Reset while offline" : "No reset during offline time"}
-            </p>
+        <div className="overflow-hidden rounded-md border border-ink/10 bg-white/70 text-xs font-semibold text-stone-700">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 px-2.5 py-1.5">
+            <span className="font-black text-ink">Expedition</span>
+            <span className="truncate">{summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "No expedition resolved"}</span>
           </div>
-        )}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+            <span className="font-black text-ink">Mine gains</span>
+            <span className="truncate">{hasMineGains ? formatResources(summary.mineGains) : "None"}</span>
+          </div>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+            <span className="font-black text-ink">Vigor</span>
+            <span>+{summary.vigorGained}</span>
+          </div>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+            <span className="font-black text-ink">Dailies</span>
+            <span>{summary.dailyReset ? "Reset while offline" : "No reset during offline time"}</span>
+          </div>
+        </div>
         <p className="text-xs font-semibold text-stone-600">
-          Last update: {formatLocalDateTime(state.updatedAt)}. Offline progress is always capped at {formatMs(OFFLINE_CAP_MS)}.
+          Away for {formatMs(summary.elapsedMs)}. Offline progress is always capped at {formatMs(OFFLINE_CAP_MS)}.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {summary.expedition && (
@@ -834,16 +1051,6 @@ function OfflineSummaryPanel({
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("dailies"))}>
             <Star size={15} /> Open Dailies
           </SecondaryButton>
-          {hasStackedResult && compactMode && (
-            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setShowDetails(true)}>
-              Details
-            </SecondaryButton>
-          )}
-          {hasStackedResult && showDetails && (
-            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setShowDetails(false)}>
-              Collapse
-            </SecondaryButton>
-          )}
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={dismissSummary}>
             Dismiss
           </SecondaryButton>
@@ -1286,6 +1493,155 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
   );
 }
 
+type RegionSummary = {
+  zone: ZoneDefinition;
+  dungeons: DungeonDefinition[];
+  availableDungeons: DungeonDefinition[];
+  completedCount: number;
+  unlocked: boolean;
+  unlockHint: string | null;
+};
+
+function getRegionSummaries(state: GameState, availableDungeons: DungeonDefinition[]): RegionSummary[] {
+  return ZONES
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((zone) => {
+      const dungeons = DUNGEONS.filter((dungeon) => dungeon.zoneId === zone.id);
+      const entryDungeon = dungeons.reduce<DungeonDefinition | null>((first, dungeon) => {
+        if (!first) return dungeon;
+        return dungeon.indexInZone < first.indexInZone ? dungeon : first;
+      }, null);
+      const unlocked = entryDungeon ? isDungeonUnlocked(state, entryDungeon) : false;
+      return {
+        zone,
+        dungeons,
+        availableDungeons: availableDungeons.filter((dungeon) => dungeon.zoneId === zone.id),
+        completedCount: dungeons.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0).length,
+        unlocked,
+        unlockHint: !unlocked && entryDungeon ? getUnlockText(state, entryDungeon) : null
+      };
+    });
+}
+
+function RegionCard({
+  region,
+  onSelect
+}: {
+  region: RegionSummary;
+  onSelect: (regionId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(region.zone.id)}
+      disabled={!region.unlocked}
+      className={`w-72 shrink-0 snap-center snap-always rounded-lg border p-3 text-left transition ${
+        region.unlocked
+          ? "border-royal/25 bg-white/90 shadow-sm hover:border-royal/60 hover:bg-white/90 hover:ring-1 hover:ring-royal/30 hover:shadow-card"
+          : "cursor-not-allowed border-stone-200 bg-stone-100/80 opacity-85"
+      }`}
+      aria-label={`Region ${region.zone.name}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-black uppercase text-mystic">Region {region.zone.index}</p>
+        <Pill className={region.unlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-300 bg-stone-200 text-stone-700"}>
+          {region.unlocked ? "Unlocked" : "Locked"}
+        </Pill>
+      </div>
+      <h3 className="mt-1 text-base font-black">{region.zone.name}</h3>
+      <p className="mt-1 line-clamp-2 text-xs font-semibold text-stone-700">{region.zone.subtitle}</p>
+      <p className="mt-2 text-xs font-semibold text-stone-700">
+        Progress: {region.completedCount}/{region.dungeons.length} cleared
+      </p>
+      {!region.unlocked && region.unlockHint && <p className="mt-1 text-xs font-semibold text-amber-900">{region.unlockHint}</p>}
+    </button>
+  );
+}
+
+function RegionCarousel({
+  regions,
+  onSelectRegion
+}: {
+  regions: RegionSummary[];
+  onSelectRegion: (regionId: string) => void;
+}) {
+  if (regions.length === 0) {
+    return (
+      <Card className="border-stone-200 bg-white/80">
+        <p className="text-sm font-semibold text-stone-700">No regions are configured for expeditions yet.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-lg font-black">Choose Region</h3>
+          <p className="text-xs font-semibold text-stone-700">Swipe horizontally and pick an unlocked region.</p>
+        </div>
+      </div>
+      <div className="-mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
+        <div className="flex min-w-max gap-3 px-[max(0.75rem,calc(50%-9rem))] pb-1">
+          {regions.map((region) => (
+            <RegionCard key={region.zone.id} region={region} onSelect={onSelectRegion} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RegionExpeditionsView({
+  state,
+  store,
+  region,
+  onBack
+}: {
+  state: GameState;
+  store: GameStore;
+  region: RegionSummary;
+  onBack: () => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <Card className="border-royal/20 bg-blue-50/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase text-mystic">Selected Region</p>
+            <h3 className="text-lg font-black">{region.zone.name}</h3>
+            <p className="text-sm font-semibold text-stone-700">{region.zone.subtitle}</p>
+            <p className="mt-1 text-xs font-semibold text-stone-600">
+              {region.completedCount}/{region.dungeons.length} cleared · {region.availableDungeons.length} currently available
+            </p>
+          </div>
+          <SecondaryButton className="!min-h-9 shrink-0 px-3 py-1 text-xs" onClick={onBack}>
+            <ArrowLeft size={15} /> Back to Regions
+          </SecondaryButton>
+        </div>
+      </Card>
+
+      {region.availableDungeons.length > 0 ? (
+        <div className="-mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
+          <div className="flex min-w-max gap-3 px-[max(0.75rem,calc(50%-9rem))] pb-1">
+            {region.availableDungeons.map((dungeon) => (
+              <div key={dungeon.id} className="w-72 shrink-0 snap-center snap-always">
+                <DungeonCard state={state} dungeon={dungeon} store={store} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <Card className="border-stone-200 bg-white/80">
+          <p className="text-sm font-semibold text-stone-700">No expeditions are currently available in this region.</p>
+          {region.unlockHint && <p className="mt-1 text-xs font-semibold text-stone-600">{region.unlockHint}</p>}
+        </Card>
+      )}
+    </section>
+  );
+}
+
 function DungeonCard({
   state,
   dungeon,
@@ -1490,15 +1846,28 @@ function ExpeditionsScreen({
 }) {
   const available = getAvailableDungeons(state);
   const onboardingFocused = isOnboardingFocused(state);
-  const onboardingStep = getOnboardingStep(state);
   const recommendedDungeon = getRecommendedDungeon(state);
-  const showDungeonList =
-    !onboardingFocused || onboardingStep === "inspect_or_upgrade_hero" || onboardingStep === "start_next_expedition" || onboardingStep === "complete";
-  const visibleDungeons = showDungeonList ? (onboardingFocused && recommendedDungeon ? [recommendedDungeon] : available) : [];
-  const zoneIds = Array.from(new Set(visibleDungeons.map((dungeon) => dungeon.zoneId)));
-  const hiddenRouteCount = onboardingFocused && showDungeonList ? Math.max(0, available.length - visibleDungeons.length) : 0;
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const visibleDungeons = onboardingFocused && recommendedDungeon ? [recommendedDungeon] : available;
+  const regions = getRegionSummaries(state, visibleDungeons);
+  const selectedRegion = selectedRegionId ? regions.find((region) => region.zone.id === selectedRegionId) ?? null : null;
+  const hiddenRouteCount = onboardingFocused ? Math.max(0, available.length - visibleDungeons.length) : 0;
   const nextLockedDungeon = getNextLockedDungeon(state);
   const vigorBoostCost = getVigorBoostCost(state);
+  const handleSelectRegion = (regionId: string) => {
+    const region = regions.find((entry) => entry.zone.id === regionId);
+    if (!region || !region.unlocked) {
+      return;
+    }
+    setSelectedRegionId(regionId);
+  };
+  const handleBackToRegions = () => setSelectedRegionId(null);
+
+  useEffect(() => {
+    if (selectedRegionId && (!selectedRegion || !selectedRegion.unlocked)) {
+      setSelectedRegionId(null);
+    }
+  }, [selectedRegionId, selectedRegion]);
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -1526,23 +1895,11 @@ function ExpeditionsScreen({
       </Card>
 
       <div className="space-y-4">
-        {zoneIds.map((zoneId) => {
-          const zoneDungeons = visibleDungeons.filter((dungeon) => dungeon.zoneId === zoneId);
-          const zoneName = zoneDungeons[0] ? getZoneForDungeon(zoneDungeons[0]).name : "Unknown Region";
-          return (
-            <section key={zoneId} className="space-y-3">
-              <div>
-                <h3 className="text-lg font-black">{zoneName}</h3>
-                <p className="text-sm font-semibold text-stone-700">{onboardingFocused ? "Focus this route first." : "Available progression region."}</p>
-              </div>
-              <div className={`grid gap-3 ${onboardingFocused ? "md:grid-cols-1 xl:grid-cols-1" : "md:grid-cols-2 xl:grid-cols-4"}`}>
-                {zoneDungeons.map((dungeon) => (
-                  <DungeonCard key={dungeon.id} state={state} dungeon={dungeon} store={store} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {selectedRegion ? (
+          <RegionExpeditionsView state={state} store={store} region={selectedRegion} onBack={handleBackToRegions} />
+        ) : (
+          <RegionCarousel regions={regions} onSelectRegion={handleSelectRegion} />
+        )}
 
         {onboardingFocused && hiddenRouteCount > 0 && (
           <Card className="border-stone-200 bg-white/80">
@@ -1557,11 +1914,108 @@ function ExpeditionsScreen({
   );
 }
 
-function HeroScreen({ state, store }: { state: GameState; store: GameStore }) {
+function HeroScreen({
+  state,
+  store,
+  view,
+  onViewChange,
+  reducedMotion
+}: {
+  state: GameState;
+  store: GameStore;
+  view: HeroSubviewId;
+  onViewChange: (view: HeroSubviewId) => void;
+  reducedMotion: boolean;
+}) {
   const stats = getDerivedStats(state);
   const xpToNext = xpToNextLevel(state.hero.level);
   const xpProgress = Math.min(100, (state.hero.xp / Math.max(1, xpToNext)) * 100);
   const canSwitchClass = state.lifetime.expeditionsStarted === 0 && state.hero.level === 1;
+  const activeClass = HERO_CLASSES.find((entry) => entry.id === state.hero.classId) ?? HERO_CLASSES[0];
+  const classPassives = CLASS_PASSIVE_TEXT[state.hero.classId];
+  const heroPanels: Array<{ id: HeroSubviewId; content: React.ReactNode }> = [
+    {
+      id: "overview",
+      content: (
+        <Card>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="font-black">Current Class</h3>
+                <p className="text-xs font-bold text-royal sm:text-sm">{activeClass.tagline}</p>
+              </div>
+              <Pill className="border-stone-200 bg-stone-50 text-stone-700">{activeClass.name}</Pill>
+            </div>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">{activeClass.description}</p>
+            <div className="grid gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-2">
+              {classPassives.slice(0, 2).map((passive) => (
+                <p key={passive.name} className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+                  <span className="font-black text-ink">Lv{passive.level} {passive.name}:</span> {passive.effect}
+                </p>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-5">
+              {(Object.keys(statLabels) as (keyof Stats)[]).map((stat) => (
+                <p key={`overview-${stat}`} className="rounded-md border border-ink/10 bg-white/70 px-2.5 py-2">
+                  <span className="block text-[0.65rem] font-black uppercase text-stone-500">{statLabels[stat]}</span>
+                  <span className="block text-sm font-black text-ink">{formatNumber(stats[stat])}</span>
+                </p>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )
+    },
+    {
+      id: "class",
+      content: (
+        <div className="grid gap-3 md:grid-cols-3">
+          {HERO_CLASSES.map((heroClass) => (
+            <Card key={heroClass.id} className={state.hero.classId === heroClass.id ? "border-royal/50 bg-blue-50" : ""}>
+              <h3 className="font-black">{heroClass.name}</h3>
+              <p className="text-xs font-bold text-royal sm:text-sm">{heroClass.tagline}</p>
+              <p className="mt-2 text-xs font-semibold text-stone-700 sm:text-sm">{heroClass.description}</p>
+              <ul className="mt-3 space-y-1 text-xs font-semibold text-stone-700">
+                {CLASS_PASSIVE_TEXT[heroClass.id].map((passive) => (
+                  <li key={passive.name}>
+                    Lv{passive.level} {passive.name}: {passive.effect}
+                  </li>
+                ))}
+              </ul>
+              <SecondaryButton className="mt-3 w-full" onClick={() => store.changeClass(heroClass.id)} disabled={!canSwitchClass || state.hero.classId === heroClass.id}>
+                {state.hero.classId === heroClass.id ? "Selected" : canSwitchClass ? "Choose Class" : "Locked"}
+              </SecondaryButton>
+            </Card>
+          ))}
+        </div>
+      )
+    },
+    {
+      id: "stats",
+      content: (
+        <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {(Object.keys(statLabels) as (keyof Stats)[]).map((stat) => (
+              <Card key={stat}>
+                <p className="text-xs font-bold uppercase text-stone-500">{statLabels[stat]}</p>
+                <p className="text-2xl font-black">{formatNumber(stats[stat])}</p>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <h3 className="font-black">Passive Track</h3>
+            <ul className="mt-2 grid gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-2">
+              {classPassives.map((passive) => (
+                <li key={`passive-${passive.name}`} className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+                  <span className="font-black text-ink">Lv{passive.level} {passive.name}:</span> {passive.effect}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )
+    }
+  ];
   return (
     <div className="space-y-4">
       <Card>
@@ -1569,7 +2023,7 @@ function HeroScreen({ state, store }: { state: GameState; store: GameStore }) {
           <div>
             <h2 className="text-xl font-black">{state.hero.name}</h2>
             <p className="text-sm font-semibold text-stone-700">
-              Level {state.hero.level} {HERO_CLASSES.find((entry) => entry.id === state.hero.classId)?.name}
+              Level {state.hero.level} {activeClass.name}
             </p>
           </div>
           <Pill className="border-emerald/20 bg-emerald-50 text-emerald">Power {formatNumber(stats.powerScore)}</Pill>
@@ -1577,39 +2031,11 @@ function HeroScreen({ state, store }: { state: GameState; store: GameStore }) {
         <div className="mt-3 h-3 rounded-full bg-stone-200">
           <div className="h-full rounded-full bg-royal" style={{ width: `${xpProgress}%` }} />
         </div>
-        <p className="mt-2 text-sm font-semibold text-stone-700">
+        <p className="mt-2 text-xs font-semibold text-stone-700 sm:text-sm">
           {formatNumber(state.hero.xp)} / {formatNumber(xpToNext)} XP to next level
         </p>
       </Card>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        {HERO_CLASSES.map((heroClass) => (
-          <Card key={heroClass.id} className={state.hero.classId === heroClass.id ? "border-royal/50 bg-blue-50" : ""}>
-            <h3 className="font-black">{heroClass.name}</h3>
-            <p className="text-sm font-bold text-royal">{heroClass.tagline}</p>
-            <p className="mt-2 text-sm text-stone-700">{heroClass.description}</p>
-            <ul className="mt-3 space-y-1 text-xs font-semibold text-stone-700">
-              {CLASS_PASSIVE_TEXT[heroClass.id].map((passive) => (
-                <li key={passive.name}>
-                  Lv{passive.level} {passive.name}: {passive.effect}
-                </li>
-              ))}
-            </ul>
-            <SecondaryButton className="mt-3 w-full" onClick={() => store.changeClass(heroClass.id)} disabled={!canSwitchClass || state.hero.classId === heroClass.id}>
-              {state.hero.classId === heroClass.id ? "Selected" : canSwitchClass ? "Choose Class" : "Locked"}
-            </SecondaryButton>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {(Object.keys(statLabels) as (keyof Stats)[]).map((stat) => (
-          <Card key={stat}>
-            <p className="text-xs font-bold uppercase text-stone-500">{statLabels[stat]}</p>
-            <p className="text-2xl font-black">{formatNumber(stats[stat])}</p>
-          </Card>
-        ))}
-      </div>
+      <SwipeSubviewDeck panels={heroPanels} value={view} onChange={(next) => onViewChange(next as HeroSubviewId)} reducedMotion={reducedMotion} />
     </div>
   );
 }
@@ -1730,10 +2156,21 @@ function InventoryScreen({ state, store }: { state: GameState; store: GameStore 
   );
 }
 
-function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
+function ForgeScreen({
+  state,
+  store,
+  view,
+  onViewChange,
+  reducedMotion
+}: {
+  state: GameState;
+  store: GameStore;
+  view: ForgeSubviewId;
+  onViewChange: (view: ForgeSubviewId) => void;
+  reducedMotion: boolean;
+}) {
   const [slot, setSlot] = useState<"any" | EquipmentSlot>("any");
   const [classBias, setClassBias] = useState(true);
-  const [mode, setMode] = useState<"craft" | "upgrade" | "advanced">("craft");
   const craftCost = getCraftCost(state);
   const craftAffordable = canAfford(state.resources, craftCost);
   const upgradeCandidates = [
@@ -1745,41 +2182,10 @@ function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
   const forgeBuilding = BUILDINGS.find((building) => building.id === "forge");
   const rerollUnlocked = forgeLevel >= FORGE_AFFIX_REROLL_REQUIRED_LEVEL;
   const forgeEffect = forgeBuilding?.effectText(forgeLevel) ?? `+${forgeLevel * 2} item stat budget`;
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <div className="space-y-3">
-          <SectionHeader
-            title="Relic Forge"
-            description={`Level ${forgeLevel}/12 · ${forgeEffect}`}
-            action={
-              <Pill className={rerollUnlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
-                <RotateCcw size={13} /> Affix reroll {rerollUnlocked ? "Ready" : `at Lv${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}`}
-              </Pill>
-            }
-          />
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-ink/10 bg-white/70 p-1">
-            {[
-              { id: "craft", label: "Craft" },
-              { id: "upgrade", label: "Upgrade" },
-              { id: "advanced", label: "Advanced" }
-            ].map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={`min-h-9 rounded-md px-2 text-xs font-black ${mode === entry.id ? "bg-royal text-white shadow-card" : "text-stone-700 hover:bg-parchment"}`}
-                onClick={() => setMode(entry.id as "craft" | "upgrade" | "advanced")}
-                aria-current={mode === entry.id ? "page" : undefined}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs font-semibold text-stone-600">One forge surface is shown at a time to reduce scan load.</p>
-        </div>
-      </Card>
-      {mode === "craft" && (
+  const forgePanels: Array<{ id: ForgeSubviewId; content: React.ReactNode }> = [
+    {
+      id: "craft",
+      content: (
         <Card>
           <div className="space-y-3">
             <h3 className="font-black">Craft Item</h3>
@@ -1807,8 +2213,11 @@ function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
             </div>
           </div>
         </Card>
-      )}
-      {mode === "upgrade" && (
+      )
+    },
+    {
+      id: "upgrade",
+      content: (
         <Card>
           <h3 className="font-black">Upgrade Item</h3>
           {upgradeCandidates.length === 0 ? (
@@ -1837,9 +2246,12 @@ function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
             </div>
           )}
         </Card>
-      )}
-      {mode === "advanced" && (
-        <>
+      )
+    },
+    {
+      id: "advanced",
+      content: (
+        <div className="space-y-4">
           <Card>
             <h3 className="font-black">Reroll Affix</h3>
             <p className="mt-1 text-sm font-semibold text-stone-700">Rerolls and bulk salvage are optional until your first boss progression settles.</p>
@@ -1904,8 +2316,22 @@ function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
               </div>
             )}
           </Card>
-        </>
-      )}
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-semibold text-stone-700 sm:text-sm">Level {forgeLevel}/12 · {forgeEffect}</p>
+          <Pill className={rerollUnlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
+            <RotateCcw size={13} /> Affix reroll {rerollUnlocked ? "Ready" : `at Lv${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}`}
+          </Pill>
+        </div>
+      </Card>
+      <SwipeSubviewDeck panels={forgePanels} value={view} onChange={(next) => onViewChange(next as ForgeSubviewId)} reducedMotion={reducedMotion} />
     </div>
   );
 }
@@ -2131,7 +2557,19 @@ function AchievementsScreen({ state }: { state: GameState }) {
   );
 }
 
-function ReincarnationScreen({ state, store }: { state: GameState; store: GameStore }) {
+function ReincarnationScreen({
+  state,
+  store,
+  view,
+  onViewChange,
+  reducedMotion
+}: {
+  state: GameState;
+  store: GameStore;
+  view: ReincarnationSubviewId;
+  onViewChange: (view: ReincarnationSubviewId) => void;
+  reducedMotion: boolean;
+}) {
   const ready = canPrestige(state);
   const gain = calculatePrestigeRenown(state);
   const levelReady = state.hero.level >= REINCARNATION_LEVEL_REQUIREMENT;
@@ -2143,23 +2581,11 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
   const bossProgress = bossClear ? 100 : Math.min(99, Math.floor((clearedGateRoute / Math.max(1, gateRoute.length)) * 100));
   const resetItems = ["Hero level, XP, and base stats", "Gold, materials, inventory, and equipment", "Town buildings, dungeon clears, active expedition, and dailies", "Vigor returns to 40 current"];
   const persistItems = ["Soul Marks and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
-  return (
-    <div className="space-y-4">
-      <Card className={ready ? "border-amber-400 bg-amber-50/80" : ""}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-black">Reincarnation</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Reset this run for Soul Marks, then buy permanent upgrades that make the next cycle faster.</p>
-          </div>
-          <Pill className={ready ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-amber-300 bg-amber-100 text-amber-900"}>
-            <Sparkles size={13} /> {ready ? "Ready" : "Preparing"}
-          </Pill>
-        </div>
-        <div className="mt-3 grid gap-2 text-xs font-semibold text-stone-700 sm:text-sm md:grid-cols-2">
-          <p className="flex items-center gap-2">{levelReady ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Level {REINCARNATION_LEVEL_REQUIREMENT}: {state.hero.level}/{REINCARNATION_LEVEL_REQUIREMENT}</p>
-          <p className="flex items-center gap-2">{bossClear ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Region 3 boss: Curator of Blue Fire</p>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+  const reincarnationPanels: Array<{ id: ReincarnationSubviewId; content: React.ReactNode }> = [
+    {
+      id: "overview",
+      content: (
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-lg border border-ink/10 bg-white/70 p-3">
             <div className="mb-2 flex items-center justify-between gap-2 text-xs font-black uppercase text-stone-600">
               <span>Level Gate</span>
@@ -2180,6 +2606,78 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
               {bossClear ? "Curator defeated. Reincarnation can open once the level gate is met." : `Clear ${gateBoss.name} in ${getZoneForDungeon(gateBoss).name}.`}
             </p>
           </div>
+          <Card className="md:col-span-2">
+            <h3 className="font-black">Why It Gets Faster</h3>
+            <p className="mt-2 text-xs font-semibold text-stone-700">Echo Tempo shortens timers, Soul Prosperity increases rewards, Relic Wisdom improves loot consistency, and Boss Attunement smooths boss gates.</p>
+          </Card>
+        </div>
+      )
+    },
+    {
+      id: "ledger",
+      content: (
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card>
+            <h3 className="font-black">Resets</h3>
+            <ul className="mt-2 space-y-2 text-xs font-semibold text-stone-700">
+              {resetItems.map((item) => (
+                <li key={item} className="flex gap-2"><XCircle size={14} className="mt-0.5 text-red-700" /> {item}</li>
+              ))}
+            </ul>
+          </Card>
+          <Card>
+            <h3 className="font-black">Persists</h3>
+            <ul className="mt-2 space-y-2 text-xs font-semibold text-stone-700">
+              {persistItems.map((item) => (
+                <li key={item} className="flex gap-2"><CheckCircle2 size={14} className="mt-0.5 text-emerald" /> {item}</li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      )
+    },
+    {
+      id: "upgrades",
+      content: (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {RENOWN_UPGRADES.map((upgrade) => {
+            const level = state.prestige.upgrades[upgrade.id];
+            const cost = getRenownUpgradeCost(state, upgrade.id as RenownUpgradeId);
+            const maxed = level >= REINCARNATION_UPGRADE_MAX;
+            return (
+              <Card key={upgrade.id}>
+                <h3 className="font-black">{upgrade.name}</h3>
+                <p className="text-sm text-stone-700">{upgrade.description}</p>
+                <div className="mt-3 grid gap-1 text-xs font-semibold text-stone-700">
+                  <p><span className="font-black text-ink">Current:</span> {upgrade.effectText(level)}</p>
+                  <p><span className="font-black text-ink">Next:</span> {maxed ? "Maxed" : upgrade.effectText(level + 1)}</p>
+                  <p><span className="font-black text-ink">Cost:</span> {maxed ? "Maxed" : `${cost} Soul Marks`}</p>
+                </div>
+                <SecondaryButton className="mt-3 w-full" disabled={maxed || state.resources.renown < cost} onClick={() => store.buyRenownUpgrade(upgrade.id as RenownUpgradeId)}>
+                  {maxed ? "Maxed" : "Upgrade"}
+                </SecondaryButton>
+              </Card>
+            );
+          })}
+        </div>
+      )
+    }
+  ];
+  return (
+    <div className="space-y-4">
+      <Card className={ready ? "border-amber-400 bg-amber-50/80" : ""}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black">Reincarnation</h2>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Reset this run for Soul Marks, then buy permanent upgrades that make the next cycle faster.</p>
+          </div>
+          <Pill className={ready ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-amber-300 bg-amber-100 text-amber-900"}>
+            <Sparkles size={13} /> {ready ? "Ready" : "Preparing"}
+          </Pill>
+        </div>
+        <div className="mt-3 grid gap-2 text-xs font-semibold text-stone-700 sm:text-sm md:grid-cols-2">
+          <p className="flex items-center gap-2">{levelReady ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Level {REINCARNATION_LEVEL_REQUIREMENT}: {state.hero.level}/{REINCARNATION_LEVEL_REQUIREMENT}</p>
+          <p className="flex items-center gap-2">{bossClear ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Region 3 boss: Curator of Blue Fire</p>
         </div>
         <div className="mt-3 grid gap-2 text-xs font-semibold text-stone-700 sm:text-sm md:grid-cols-3">
           <p><span className="font-black text-ink">Currency earned:</span> +{gain} Soul Marks</p>
@@ -2198,49 +2696,7 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
           <Sparkles size={16} /> Reincarnate
         </PrimaryButton>
       </Card>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card>
-          <h3 className="font-black">Resets</h3>
-          <ul className="mt-2 space-y-2 text-xs font-semibold text-stone-700">
-            {resetItems.map((item) => (
-              <li key={item} className="flex gap-2"><XCircle size={14} className="mt-0.5 text-red-700" /> {item}</li>
-            ))}
-          </ul>
-        </Card>
-        <Card>
-          <h3 className="font-black">Persists</h3>
-          <ul className="mt-2 space-y-2 text-xs font-semibold text-stone-700">
-            {persistItems.map((item) => (
-              <li key={item} className="flex gap-2"><CheckCircle2 size={14} className="mt-0.5 text-emerald" /> {item}</li>
-            ))}
-          </ul>
-        </Card>
-        <Card>
-          <h3 className="font-black">Why It Gets Faster</h3>
-          <p className="mt-2 text-xs font-semibold text-stone-700">Echo Tempo shortens timers, Soul Prosperity increases rewards, Relic Wisdom improves loot consistency, and Boss Attunement smooths boss gates.</p>
-        </Card>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {RENOWN_UPGRADES.map((upgrade) => {
-          const level = state.prestige.upgrades[upgrade.id];
-          const cost = getRenownUpgradeCost(state, upgrade.id as RenownUpgradeId);
-          const maxed = level >= REINCARNATION_UPGRADE_MAX;
-          return (
-            <Card key={upgrade.id}>
-              <h3 className="font-black">{upgrade.name}</h3>
-              <p className="text-sm text-stone-700">{upgrade.description}</p>
-              <div className="mt-3 grid gap-1 text-xs font-semibold text-stone-700">
-                <p><span className="font-black text-ink">Current:</span> {upgrade.effectText(level)}</p>
-                <p><span className="font-black text-ink">Next:</span> {maxed ? "Maxed" : upgrade.effectText(level + 1)}</p>
-                <p><span className="font-black text-ink">Cost:</span> {maxed ? "Maxed" : `${cost} Soul Marks`}</p>
-              </div>
-              <SecondaryButton className="mt-3 w-full" disabled={maxed || state.resources.renown < cost} onClick={() => store.buyRenownUpgrade(upgrade.id as RenownUpgradeId)}>
-                {maxed ? "Maxed" : "Upgrade"}
-              </SecondaryButton>
-            </Card>
-          );
-        })}
-      </div>
+      <SwipeSubviewDeck panels={reincarnationPanels} value={view} onChange={(next) => onViewChange(next as ReincarnationSubviewId)} reducedMotion={reducedMotion} />
     </div>
   );
 }
@@ -2359,6 +2815,9 @@ export default function Home() {
   const now = useNow();
   const [tab, setTab] = useState<TabId>("expeditions");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [heroSubview, setHeroSubview] = useState<HeroSubviewId>("overview");
+  const [forgeSubview, setForgeSubview] = useState<ForgeSubviewId>("craft");
+  const [reincarnationSubview, setReincarnationSubview] = useState<ReincarnationSubviewId>("overview");
 
   useEffect(() => {
     store.hydrate();
@@ -2366,6 +2825,14 @@ export default function Home() {
 
   const state = store.state;
   const onboardingFocused = isOnboardingFocused(state);
+  const hasOverlayMessage = Boolean(store.error || (!onboardingFocused && store.lastMessage));
+  const overlayFocus: "result" | "offline" | "message" | "none" = store.lastExpeditionResult
+    ? "result"
+    : !onboardingFocused && store.lastOfflineSummary
+      ? "offline"
+      : hasOverlayMessage
+        ? "message"
+        : "none";
 
   useEffect(() => {
     if (!mobileSecondaryTabs.includes(tab)) {
@@ -2389,15 +2856,24 @@ export default function Home() {
   }
 
   let screen: React.ReactNode;
+  let topSubtabOptions: Array<{ id: string; label: string }> | null = null;
+  let topSubtabValue: string | null = null;
+  let topSubtabChange: ((id: string) => void) | null = null;
   switch (tab) {
     case "hero":
-      screen = <HeroScreen state={state} store={store} />;
+      topSubtabOptions = [...HERO_SUBVIEWS];
+      topSubtabValue = heroSubview;
+      topSubtabChange = (id) => setHeroSubview(id as HeroSubviewId);
+      screen = <HeroScreen state={state} store={store} view={heroSubview} onViewChange={setHeroSubview} reducedMotion={state.settings.reducedMotion} />;
       break;
     case "inventory":
       screen = <InventoryScreen state={state} store={store} />;
       break;
     case "forge":
-      screen = <ForgeScreen state={state} store={store} />;
+      topSubtabOptions = [...FORGE_SUBVIEWS];
+      topSubtabValue = forgeSubview;
+      topSubtabChange = (id) => setForgeSubview(id as ForgeSubviewId);
+      screen = <ForgeScreen state={state} store={store} view={forgeSubview} onViewChange={setForgeSubview} reducedMotion={state.settings.reducedMotion} />;
       break;
     case "town":
       screen = <TownScreen state={state} store={store} />;
@@ -2409,7 +2885,18 @@ export default function Home() {
       screen = <AchievementsScreen state={state} />;
       break;
     case "reincarnation":
-      screen = <ReincarnationScreen state={state} store={store} />;
+      topSubtabOptions = [...REINCARNATION_SUBVIEWS];
+      topSubtabValue = reincarnationSubview;
+      topSubtabChange = (id) => setReincarnationSubview(id as ReincarnationSubviewId);
+      screen = (
+        <ReincarnationScreen
+          state={state}
+          store={store}
+          view={reincarnationSubview}
+          onViewChange={setReincarnationSubview}
+          reducedMotion={state.settings.reducedMotion}
+        />
+      );
       break;
     case "settings":
       screen = <SettingsScreen state={state} store={store} />;
@@ -2421,12 +2908,17 @@ export default function Home() {
 
   return (
     <main className="min-h-screen pb-36 lg:pb-0">
-      <Header state={state} onboardingFocused={onboardingFocused} />
+      <Header state={state} />
+      {topSubtabOptions && topSubtabValue && topSubtabChange && (
+        <div className="mx-auto max-w-7xl px-4 pt-3">
+          <SegmentedControl options={topSubtabOptions} value={topSubtabValue} onChange={topSubtabChange} />
+        </div>
+      )}
       <div className="mx-auto grid min-w-0 max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-4">
-          {!onboardingFocused && <OfflineSummaryPanel state={state} store={store} onSelectTab={setTab} hasStackedResult={Boolean(store.lastExpeditionResult)} />}
-          <MessagePanel store={store} suppressNonError={onboardingFocused} />
-          <ExpeditionResultPanel state={state} store={store} onSelectTab={setTab} />
+          {overlayFocus === "offline" && <OfflineSummaryPanel store={store} onSelectTab={setTab} />}
+          {overlayFocus === "message" && <MessagePanel store={store} suppressNonError={onboardingFocused} />}
+          {overlayFocus === "result" && <ExpeditionResultPanel state={state} store={store} onSelectTab={setTab} />}
           {screen}
         </div>
         <DesktopSide state={state} now={now} />

@@ -300,6 +300,7 @@ export type OfflineDeltaSummary = {
   mineGains: Partial<MaterialBundle>;
   vigorGained: number;
   dailyReset: boolean;
+  elapsedMs: number;
 };
 
 export type OfflineSummary = {

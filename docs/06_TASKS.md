@@ -2,7 +2,7 @@
 
 ## Fase actual inferida
 
-**Fase: UX Cohesion Audit - Phase 2 implementada, Phase 3 pendiente.**
+**Fase: UX Cohesion Audit - Phase 3 implementada.**
 
 ## Strategic Planning Update (2026-05-09)
 
@@ -35,6 +35,14 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 - Core deterministic engine en `src/game`.
 - Hero creation + clases + progresión por niveles.
 - Loop de expedición completo (start/resolve/recompensas/loot).
+- Navegación de expediciones por regiones en dos niveles:
+  vista inicial con carrusel horizontal de regiones (scroll snap) y vista secundaria con expediciones filtradas por región + acción de volver.
+- Ajuste visual de `RegionCard` en hover:
+  énfasis en borde/ring/sombra sin lavado de fondo para mantener legibilidad.
+- Scroll snap horizontal de regiones/expediciones corregido en desktop:
+  `snap-x snap-mandatory` aplicado al contenedor con `overflow-x-auto`.
+- Navegación de subviews tipo "subtabs + swipe" en pantallas con secciones:
+  `Hero`, `Forge` y `Reincarnation` usan barra de subtabs global bajo header + navegación horizontal con snap en el contenido central.
 - Resultado dedicado de expedición después de claim:
   éxito/fracaso, XP, oro, materiales, vigor boost, level-up, loot, comparación contra equipo actual, boss clear y unlocks.
 - Resultado/reward reveal dedicado y compacto:
@@ -56,6 +64,9 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 - Town MVP 2.0:
   cada edificio muestra propósito, costo, beneficio actual, próximo beneficio, milestones y feedback contextual sin decoración/base placement.
 - Town en modo compacto por defecto (propósito/nivel/costo/CTA) con detalles expandibles on-demand.
+- Overlays en modo de prioridad única (resultado > offline > mensaje) para evitar stacks simultáneos.
+- Offline Summary compactado en una única tarjeta con 4 filas densas (Expedition/Mine/Vigor/Dailies) y copy de tiempo transcurrido (`Away for ...`).
+- Hero y Reincarnation con subviews segmentadas compactas por defecto.
 - Town (6 edificios, costos y efectos).
 - Dailies (3/día, reset local, progreso claro, claim único, sin streak punishment).
 - Vigor (regen/cap/reward diario) y boost integrado en claim de expedición (`Claim x2 · Vig -cost`).
@@ -88,9 +99,9 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
    - `prestige/renown` (interno) vs `reincarnation/Soul Marks` (UI).
 3. Constantes duplicadas de upgrade max (`RENOWN_UPGRADE_MAX` vs `REINCARNATION_UPGRADE_MAX`).
 4. Falta suite de tests separada por módulos (actualmente un único test file grande).
-5. Falta orquestación global de overlays/paneles para evitar competencia visual en momentos de alta densidad.
-6. Hero/Reincarnation todavía no usan subviews compactas por secciones.
-7. Persisten oportunidades de reducir densidad en validaciones finales 360/390/430.
+5. Falta separar `game-view.tsx` por módulos de pantalla para reducir riesgo de mantenimiento.
+6. Persisten oportunidades de revisión visual automatizada para 360/390/430 con checks reproducibles.
+7. Persisten decisiones de naming interno (`prestige/renown`) vs copy externa (`Reincarnation/Soul Marks`) pendientes de convergencia.
 
 ## Bugs/riesgos detectados
 
@@ -102,19 +113,15 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 
 ## Próximas tareas recomendadas (ordenadas)
 
-1. **UX Cohesion Audit Phase 3 - overlay priority orchestration**:
-   mostrar una sola superficie prioritaria cuando compiten resultado/summary/toast en loop activo.
-2. **UX Cohesion Audit Phase 3 - Hero/Reincarnation subviews**:
-   dividir vistas largas en secciones compactas con foco en acción principal.
-3. **Refactor de UI por slices sin tocar gameplay**:
+1. **Refactor de UI por slices sin tocar gameplay**:
    extraer pantallas de `game-view.tsx` a componentes por dominio.
-4. **Unificar naming interno de progreso permanente**:
+2. **Unificar naming interno de progreso permanente**:
    elegir convención única (`reincarnation/soulMarks` o `prestige/renown`) y documentar migración.
-5. **Consolidar constantes de balance en tablas dedicadas**:
+3. **Consolidar constantes de balance en tablas dedicadas**:
    minimizar hardcodes repetidos.
-6. **Expandir tests**:
+4. **Expandir tests**:
    separar por módulo (`engine`, `dailies`, `save`, `forge`, `prestige`).
-7. **Centralizar textos/fórmulas de edificios**:
+5. **Centralizar textos/fórmulas de edificios**:
    reducir la necesidad de sincronizar manualmente `BUILDINGS.effectText` con balance.
 
 ## Do Not Build Yet (evitar feature creep)
@@ -158,7 +165,7 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
    - reset diario a las 23:00 UTC,
    - UI con progreso, claim, reward y timer UTC,
    - reward de vigor clampado al cap,
-   - boost de Vigor sólo seleccionable con vigor suficiente,
+   - boost de Vigor aplicado en claim y sólo habilitado con vigor suficiente,
    - política explícita sin payments, premium currency, ads, battle pass, streak punishment ni FOMO pesado.
 6. **MVP 2.0 UI polish/feedback**:
    - reward reveal en tiles,
@@ -190,10 +197,10 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 
 ## Active Task (única recomendada)
 
-**Active Task:** UX Cohesion Audit Phase 3 (orquestación de overlays + subviews compactas en Hero/Reincarnation).
+**Active Task:** Post-audit stabilization: modularizar `game-view.tsx` y preparar QA visual reproducible para breakpoints compactos.
 
 Resultado esperado:
 
-- menos competencia visual entre paneles de feedback,
-- menor profundidad de scroll en pantallas largas,
-- coherencia app-wide después de completar Phase 2.
+- menor riesgo de regresión al tocar UI core,
+- validación más consistente de densidad/touch en 360/390/430,
+- base más mantenible para próximas features MVP 2.x.

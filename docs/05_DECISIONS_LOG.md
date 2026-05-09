@@ -2,6 +2,42 @@
 
 ## 2026-05-09
 
+### Decision: Subtabs globales por pantalla + navegación por swipe horizontal en contenido central
+Descripción:
+Para tabs con subviews (`Hero`, `Forge`, `Reincarnation`), el selector de subtabs se eleva a una barra compartida debajo del header principal y el contenido de subviews se navega también por swipe/scroll horizontal con snap.
+Motivo:
+Reducir fricción entre selector y contenido, y habilitar un patrón de navegación más fluido tipo carrusel de secciones sin cambiar de pantalla.
+Impacto:
+Se centraliza el estado de subviews en `Home`, se sincroniza tap + swipe (el subtab activo se actualiza al terminar el scroll), y se elimina duplicación de controles segmentados dentro de cada pantalla.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/06_TASKS.md`
+- `docs/07_CHANGELOG.md`
+
+### Decision: Region cards con hover de borde (sin cambio de fondo) y snap ownership en contenedor scrolleable
+Descripción:
+Se ajusta el hover de `RegionCard` para enfatizar borde/ring/sombra sin cambiar el fondo principal de la card, y se mueve `snap-x snap-mandatory` al contenedor que realmente scrollea (`overflow-x-auto`) en carrusel de regiones y expediciones por región.
+Motivo:
+Mejorar legibilidad/armonía visual en desktop y corregir comportamiento inconsistente de scroll snap (especialmente perceptible con input de escritorio).
+Impacto:
+Las cards mantienen contraste estable en hover y el snap horizontal funciona de forma predecible al soltar el scroll tanto en carrusel de regiones como en la lista horizontal de expediciones.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/06_TASKS.md`
+- `docs/07_CHANGELOG.md`
+
+### Decision: Expeditions con navegación de regiones en dos niveles + scroll snap
+Descripción:
+La pantalla de expediciones pasa a un flujo en dos niveles: primero muestra un carrusel horizontal de regiones; luego, al seleccionar una región desbloqueada, muestra sólo las expediciones de esa región con acción de volver en la misma vista.
+Motivo:
+Reducir densidad inicial de la pantalla de expediciones y mejorar foco táctil por región sin crear rutas/pantallas adicionales.
+Impacto:
+Se introduce estado local `selectedRegionId`, se agregan componentes reutilizables (`RegionCard`, `RegionCarousel`, `RegionExpeditionsView`), se bloquea navegación en regiones locked y se aplica scroll snap nativo para centrar cards en horizontal.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/06_TASKS.md`
+- `docs/07_CHANGELOG.md`
+
 ### Decision: Canonical source reaffirmed as `docs/` with `00..07` workflow primary
 Descripción:
 Se reafirma que la fuente canónica es `docs/` y el flujo primario operativo es la serie `docs/00..07`.
@@ -72,6 +108,40 @@ Motivo:
 Reducir fatiga de lectura en pantallas densas y mantener la información profunda disponible sin navegación adicional.
 Impacto:
 Menor altura inicial de cards en Town y mejor foco en la acción de upgrade.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/mobile_ux_audit.md`
+
+### Decision: Overlay feedback en modo de prioridad única
+Descripción:
+Se adopta una orquestación de overlays en `Home` donde sólo se muestra una superficie de alta prioridad por vez (`Expedition Result` > `Offline Summary` > `Message Toast`).
+Motivo:
+Reducir sobrecarga visual cuando múltiples paneles de feedback compiten durante el loop central.
+Impacto:
+Se evita la pila simultánea de paneles en la vista principal y se simplifica la lectura de estado inmediato.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `src/store/useGameStore.ts`
+- `docs/mobile_ux_audit.md`
+
+### Decision: Offline Summary compactado en una sola tarjeta de 4 filas
+Descripción:
+El panel `Offline Summary` se compacta para mostrar `Expedition`, `Mine gains`, `Vigor` y `Dailies` en una sola tarjeta interna con cuatro filas densas, y se conserva copy de tiempo transcurrido (`Away for ...`) en lugar de timestamp de "Last update".
+Motivo:
+Reducir altura total del panel y mejorar escaneo rápido en retorno de sesión sin perder información clave.
+Impacto:
+Se elimina la presentación en mini-cards separadas y se simplifica la lógica de detalles apilados que ya no aplica con overlays de prioridad única.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/07_CHANGELOG.md`
+
+### Decision: Hero y Reincarnation con subviews compactas por defecto
+Descripción:
+Las pantallas `Hero` y `Reincarnation` pasan a navegación segmentada con una vista compacta por defecto y secciones profundas opcionales.
+Motivo:
+Disminuir profundidad de scroll y mejorar legibilidad en viewports compactos sin perder información avanzada.
+Impacto:
+`Hero` usa `Overview/Class/Stats`; `Reincarnation` usa `Overview/Ledger/Upgrades`, manteniendo la CTA principal visible.
 Archivos relacionados:
 - `src/app/game-view.tsx`
 - `docs/mobile_ux_audit.md`

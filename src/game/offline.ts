@@ -61,7 +61,8 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
           expedition: expeditionSummary,
           mineGains,
           vigorGained,
-          dailyReset: dailyPrepared.reset
+          dailyReset: dailyPrepared.reset,
+          elapsedMs
         }
       : null;
   return { state: next, summary, capped };

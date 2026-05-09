@@ -1,5 +1,76 @@
 # Changelog
 
+## 2026-05-09 (Global Subtabs + Swipe Navigation for Sectioned Tabs)
+
+### Changed
+- Added a shared subtab rail directly below the main game header for sectioned tabs:
+  - `Hero` (`Overview` / `Class` / `Stats`)
+  - `Forge` (`Craft` / `Upgrade` / `Advanced`)
+  - `Reincarnation` (`Overview` / `Ledger` / `Upgrades`)
+- Moved subview state ownership to `Home` so each screen’s active section is controlled from the same top rail.
+- Implemented horizontal snap-swiping for the middle content area of those sectioned tabs.
+- Synced swipe-to-section with active subtab highlighting by resolving the nearest panel on scroll-end.
+- Removed duplicate in-card segmented controls from the individual screens and kept the top shared selector as the source of truth.
+
+## 2026-05-09 (Region UI Follow-up Tuning)
+
+### Changed
+- Adjusted unlocked `RegionCard` hover styling to edge-focused emphasis (border/ring/shadow) while keeping card background stable for better readability and visual harmony.
+- Corrected snap ownership so `snap-x snap-mandatory` is applied on the actual `overflow-x-auto` scroll containers (regions + region expeditions), improving snap reliability on desktop input.
+- Kept region-specific expedition listing as a horizontal snap lane to reduce vertical stacking and match carousel interaction.
+
+## 2026-05-09 (Region Navigation Flow for Expeditions)
+
+### Changed
+- Reworked `Expeditions` into a two-level navigation flow:
+  - initial view shows a horizontal region carousel,
+  - selecting a region switches to a filtered expeditions view for that region,
+  - back action returns to the region carousel in the same screen/state.
+- Added reusable region UI pieces in `game-view.tsx`:
+  - `RegionCard`,
+  - `RegionCarousel`,
+  - `RegionExpeditionsView`.
+- Added locked-region gating in cards (locked regions are visible but not enterable) with unlock hint text when available.
+- Added region progress/status metadata in cards (`cleared/total`, unlocked/locked).
+- Added horizontal CSS scroll snap behavior for region cards (`snap-mandatory` + centered cards + horizontal padding so first/last cards can center).
+- Added guard logic to auto-return to region list if a selected region becomes invalid/unavailable.
+
+### Documentation
+- Updated `docs/05_DECISIONS_LOG.md` with the region navigation and scroll-snap decision.
+- Updated `docs/06_TASKS.md` implemented-state list with region carousel + filtered expedition flow.
+
+## 2026-05-09 (Offline Summary Density Pass)
+
+### Changed
+- Compacted `Offline Summary` into one inner card with four tight rows (`Expedition`, `Mine gains`, `Vigor`, `Dailies`) instead of four separate mini-cards.
+- Removed obsolete stacked-details toggle path in `OfflineSummaryPanel` after adopting single-priority overlay flow.
+- Kept elapsed-time copy (`Away for ...`) as the status line instead of a "Last update" timestamp.
+
+### Documentation
+- Updated `docs/05_DECISIONS_LOG.md` with the density/copy decision for Offline Summary.
+- Updated `docs/06_TASKS.md` implemented-state list to reflect the condensed single-card row layout.
+
+## 2026-05-09 (UX Cohesion Audit - Phase 3 Implementation)
+
+### Changed
+- Added single-priority overlay orchestration in `Home` so only one high-priority feedback surface is visible at a time:
+  - `Expedition Result` > `Offline Summary` > `Message Toast`.
+- Added `dismissOfflineSummary` store action and wired offline summary dismiss to clear persisted panel state.
+- Refactored `Hero` into segmented compact subviews:
+  - `Overview` (default),
+  - `Class`,
+  - `Stats`.
+- Refactored `Reincarnation` into segmented compact subviews while keeping reincarnate CTA top-visible:
+  - `Overview` (default),
+  - `Ledger`,
+  - `Upgrades`.
+- Added shared `SegmentedControl` component in `game-view.tsx` and applied it to new subview flows.
+
+### Documentation
+- Updated `docs/mobile_ux_audit.md` to mark Phase 3 items as implemented.
+- Updated `docs/05_DECISIONS_LOG.md` with overlay-priority and subview-structure decisions.
+- Updated `docs/06_TASKS.md` to move focus from Phase 3 implementation to post-audit stabilization tasks.
+
 ## 2026-05-09 (UX Cohesion Audit - Phase 2 Implementation)
 
 ### Changed

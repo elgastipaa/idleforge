@@ -60,6 +60,7 @@ export type GameStore = {
   importSaveRaw: (raw: string) => void;
   resetSave: () => void;
   clearNotice: () => void;
+  dismissOfflineSummary: () => void;
   dismissExpeditionResult: () => void;
 };
 
@@ -344,6 +345,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   clearNotice: () => set({ error: null, lastMessage: null }),
+
+  dismissOfflineSummary: () => set({ lastOfflineSummary: null }),
 
   dismissExpeditionResult: () => set({ lastExpeditionResult: null })
 }));
