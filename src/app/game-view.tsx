@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
   Backpack,
   CheckCircle2,
   Clock,
   Coins,
   Crown,
+  MoreHorizontal,
   Download,
   Flame,
   Gem,
@@ -90,9 +92,16 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
   { id: "town", label: "Town", Icon: Hammer },
   { id: "dailies", label: "Dailies", Icon: Star },
   { id: "achievements", label: "Awards", Icon: Trophy },
-  { id: "reincarnation", label: "Rebirth", Icon: Sparkles },
+  { id: "reincarnation", label: "Reincarnation", Icon: Sparkles },
   { id: "settings", label: "Save", Icon: Settings }
 ];
+
+const mobilePrimaryTabs: TabId[] = ["expeditions", "hero", "inventory", "forge"];
+const mobileSecondaryTabs: TabId[] = tabs.map((tab) => tab.id).filter((id) => !mobilePrimaryTabs.includes(id)) as TabId[];
+
+function getTabMeta(tabId: TabId) {
+  return tabs.find((tab) => tab.id === tabId) ?? tabs[0];
+}
 
 const resourceLabels: Record<keyof ResourceState, string> = {
   gold: "Gold",
@@ -106,11 +115,32 @@ const resourceLabels: Record<keyof ResourceState, string> = {
 const compactResourceLabels: Record<keyof ResourceState, string> = {
   gold: "Gold",
   ore: "Ore",
-  crystal: "Crystal",
-  rune: "Rune",
+  crystal: "Cry",
+  rune: "Run",
   relicFragment: "Frag",
   renown: "Soul"
 };
+
+const materialResources = ["ore", "crystal", "rune", "relicFragment"] as const;
+
+function getResourceIcon(resource: keyof ResourceState): typeof Swords {
+  switch (resource) {
+    case "gold":
+      return Coins;
+    case "ore":
+      return Pickaxe;
+    case "crystal":
+      return Gem;
+    case "rune":
+      return Star;
+    case "relicFragment":
+      return Sparkles;
+    case "renown":
+      return Crown;
+    default:
+      return Gem;
+  }
+}
 
 const statLabels: Record<keyof Stats, string> = {
   power: "Power",
@@ -132,6 +162,12 @@ function formatNumber(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
   if (value >= 10_000) return `${Math.floor(value / 1_000)}k`;
   return Math.floor(value).toLocaleString();
+}
+
+function formatCompactStackNumber(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return `${Math.floor(value)}`;
 }
 
 function formatMs(ms: number): string {
@@ -296,20 +332,29 @@ function ResourceChip({
   label,
   value,
   Icon,
-  className = ""
+  className = "",
+  onClick
 }: {
   title: string;
   label: string;
   value: string;
   Icon: typeof Swords;
   className?: string;
+  onClick?: () => void;
 }) {
+  const chipClassName = `inline-flex min-h-7 max-w-[5.4rem] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[0.63rem] font-black leading-none ${className}`;
+  if (onClick) {
+    return (
+      <button type="button" className={`${chipClassName} cursor-pointer`} title={title} onClick={onClick}>
+        <Icon size={12} className="shrink-0" />
+        <span className="truncate">{label}</span>
+        <span className="shrink-0 tabular-nums">{value}</span>
+      </button>
+    );
+  }
   return (
-    <span
-      className={`inline-flex min-h-8 max-w-[8.5rem] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[0.7rem] font-black leading-none ${className}`}
-      title={title}
-    >
-      <Icon size={13} className="shrink-0" />
+    <span className={chipClassName} title={title}>
+      <Icon size={12} className="shrink-0" />
       <span className="truncate">{label}</span>
       <span className="shrink-0 tabular-nums">{value}</span>
     </span>
@@ -455,8 +500,11 @@ function CharacterStart({ store }: { store: GameStore }) {
             <p className="mt-2 text-sm font-semibold text-stone-700">Create your hero and launch the first expedition.</p>
           </div>
           <div className="mt-4 space-y-2">
-            <label className="text-xs font-bold uppercase text-stone-500">Hero Name</label>
+            <label htmlFor="hero-name-input" className="text-xs font-bold uppercase text-stone-500">
+              Hero Name
+            </label>
             <input
+              id="hero-name-input"
               value={name}
               onChange={(event) => setName(event.target.value)}
               maxLength={24}
@@ -485,8 +533,32 @@ function CharacterStart({ store }: { store: GameStore }) {
   );
 }
 
-function Header({ state }: { state: GameState }) {
+function Header({ state, onboardingFocused }: { state: GameState; onboardingFocused: boolean }) {
   const stats = getDerivedStats(state);
+  const [matsOpen, setMatsOpen] = useState(false);
+  const matsPopoverRef = useRef<HTMLDivElement | null>(null);
+  const matsInlineValue = materialResources.map((resource) => formatCompactStackNumber(state.resources[resource])).join("/");
+
+  useEffect(() => {
+    if (!matsOpen) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!matsPopoverRef.current?.contains(event.target as Node)) {
+        setMatsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMatsOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", closeOnOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [matsOpen]);
+
   return (
     <header className="sticky top-0 z-30 border-b border-amber-950/10 bg-parchment/95 px-4 py-3 backdrop-blur">
       <div className="mx-auto flex min-w-0 max-w-7xl flex-col gap-3">
@@ -500,24 +572,54 @@ function Header({ state }: { state: GameState }) {
             </Pill>
           </div>
         </div>
-        <div className="flex w-full min-w-0 max-w-full flex-wrap gap-1.5 pb-1">
-          {(["gold", "ore", "crystal", "rune", "relicFragment", "renown"] as const).map((resource) => (
+        <div className="flex w-full min-w-0 max-w-full items-center gap-1 pb-1">
+          <ResourceChip
+            title={`${resourceLabels.gold} ${formatNumber(state.resources.gold)}`}
+            label={compactResourceLabels.gold}
+            value={formatNumber(state.resources.gold)}
+            Icon={getResourceIcon("gold")}
+            className="border-stone-200 bg-white text-stone-700"
+          />
+          <div ref={matsPopoverRef} className="relative">
             <ResourceChip
-              key={resource}
-              title={`${resourceLabels[resource]} ${formatNumber(state.resources[resource])}`}
-              label={compactResourceLabels[resource]}
-              value={formatNumber(state.resources[resource])}
-              Icon={resource === "gold" ? Coins : resource === "ore" ? Pickaxe : resource === "renown" ? Sparkles : Gem}
-              className="border-stone-200 bg-white text-stone-700"
+              title={`Materials Ore/Crystal/Rune/Fragments: ${matsInlineValue} (tap for detail)`}
+              label="Mats"
+              value={matsInlineValue}
+              Icon={Gem}
+              className={`max-w-[12rem] border-stone-200 bg-white text-stone-700 ${matsOpen ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => setMatsOpen((open) => !open)}
             />
-          ))}
+            {matsOpen && (
+              <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-44 rounded-lg border border-ink/15 bg-white p-2 shadow-card">
+                <p className="px-1 pb-1 text-[0.65rem] font-black uppercase tracking-wide text-stone-500">Materials</p>
+                <div className="space-y-1">
+                  {materialResources.map((resource) => (
+                    <div key={resource} className="flex items-center justify-between rounded-md bg-parchment/60 px-2 py-1 text-xs font-bold text-stone-700">
+                      <span>{resourceLabels[resource]}</span>
+                      <span className="tabular-nums text-ink">{formatNumber(state.resources[resource])}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <ResourceChip
+            title={`${resourceLabels.renown} ${formatNumber(state.resources.renown)}`}
+            label={compactResourceLabels.renown}
+            value={formatNumber(state.resources.renown)}
+            Icon={getResourceIcon("renown")}
+            className="border-stone-200 bg-white text-stone-700"
+          />
           <ResourceChip
             title={`Vigor ${state.vigor.current}/${state.vigor.max}`}
-            label="Vigor"
+            label="Vig"
             value={`${state.vigor.current}/${state.vigor.max}`}
             Icon={Flame}
-            className="max-w-[9rem] border-royal/20 bg-blue-50 text-royal"
+            className="max-w-[6.4rem] border-royal/20 bg-blue-50 text-royal"
           />
+          {onboardingFocused && (
+            <p className="ml-1 truncate text-[0.65rem] font-semibold text-stone-600">Focus: run one contract, then claim.</p>
+          )}
         </div>
       </div>
     </header>
@@ -530,8 +632,8 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: XCircle,
       title: "Guild Notice",
       flavor: "The scribe needs this fixed before the next order can resolve.",
-      className: "border-red-300 bg-red-50 text-red-800",
-      iconClassName: "text-red-700"
+      className: "border-red-400/70 text-red-200",
+      iconClassName: "text-red-300"
     };
   }
 
@@ -540,8 +642,8 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Hammer,
       title: "Town Upgrade",
       flavor: "Fresh beams, sharper tools, and better numbers for the next run.",
-      className: "border-amber-400 bg-amber-50 text-amber-900",
-      iconClassName: "text-amber-900"
+      className: "border-amber-400/70 text-amber-100",
+      iconClassName: "text-amber-300"
     };
   }
 
@@ -550,7 +652,7 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Flame,
       title: "Forge Work",
       flavor: "The anvil cools while the new stats settle into the ledger.",
-      className: "border-royal/20 bg-blue-50 text-royal",
+      className: "border-blue-400/60 text-blue-100",
       iconClassName: "text-royal"
     };
   }
@@ -560,7 +662,7 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Backpack,
       title: "Gear Ready",
       flavor: "The kit is strapped in and the next contract gets a cleaner start.",
-      className: "border-emerald/20 bg-emerald-50 text-emerald",
+      className: "border-emerald-400/60 text-emerald-100",
       iconClassName: "text-emerald"
     };
   }
@@ -570,8 +672,8 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Coins,
       title: "Market Ledger",
       flavor: "Coin hits the chest and the pack gets a little lighter.",
-      className: "border-amber-400 bg-amber-50 text-amber-900",
-      iconClassName: "text-amber-900"
+      className: "border-amber-400/70 text-amber-100",
+      iconClassName: "text-amber-300"
     };
   }
 
@@ -580,7 +682,7 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Pickaxe,
       title: "Salvage Sorted",
       flavor: "Useful pieces go back to the Forge pile.",
-      className: "border-emerald/20 bg-emerald-50 text-emerald",
+      className: "border-emerald-400/60 text-emerald-100",
       iconClassName: "text-emerald"
     };
   }
@@ -590,18 +692,18 @@ function getMessageFeedback(message: string, isError: boolean) {
       Icon: Star,
       title: "Daily Reward",
       flavor: "The notice board pays out before the reset bell.",
-      className: "border-violet-400 bg-violet-50 text-violet-950",
-      iconClassName: "text-violet-950"
+      className: "border-violet-400/70 text-violet-100",
+      iconClassName: "text-violet-300"
     };
   }
 
-  if (/Reincarnation complete|Renown upgraded/i.test(message)) {
+  if (/Reincarnation complete|Soul Mark upgrade/i.test(message)) {
     return {
       Icon: Sparkles,
       title: "Soul Ledger",
       flavor: "Old progress folds into a faster future run.",
-      className: "border-amber-400 bg-amber-50 text-amber-900",
-      iconClassName: "text-amber-900"
+      className: "border-amber-400/70 text-amber-100",
+      iconClassName: "text-amber-300"
     };
   }
 
@@ -609,46 +711,59 @@ function getMessageFeedback(message: string, isError: boolean) {
     Icon: CheckCircle2,
     title: "Guild Update",
     flavor: "The next order is ready when you are.",
-    className: "border-royal/20 bg-blue-50 text-royal",
+    className: "border-blue-400/60 text-blue-100",
     iconClassName: "text-royal"
   };
 }
 
-function MessagePanel({ store }: { store: GameStore }) {
+function MessagePanel({ store, suppressNonError = false }: { store: GameStore; suppressNonError?: boolean }) {
+  if (suppressNonError && !store.error) return null;
   if (!store.error && !store.lastMessage) return null;
   const message = store.error ?? store.lastMessage ?? "";
   const feedback = getMessageFeedback(message, Boolean(store.error));
   const Icon = feedback.Icon;
+
+  useEffect(() => {
+    const timeoutMs = store.error ? 6500 : 3200;
+    const timeoutId = window.setTimeout(() => {
+      store.clearNotice();
+    }, timeoutMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [store.error, store.lastMessage, store.clearNotice]);
+
   return (
-    <Card className={`feedback-pop ${feedback.className}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="flex items-center gap-2 text-xs font-black uppercase">
-            <Icon size={15} className={feedback.iconClassName} /> {feedback.title}
-          </p>
-          <p className="text-sm font-black">{message}</p>
-          <p className="text-xs font-semibold text-stone-700">{feedback.flavor}</p>
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-50 flex justify-center px-3 lg:bottom-4 lg:justify-end lg:px-4">
+      <button
+        className={`feedback-pop pointer-events-auto w-full max-w-md rounded-lg border bg-slate-950 px-3 py-2 text-left shadow-card transition ${feedback.className}`}
+        onClick={store.clearNotice}
+      >
+        <div className="flex items-start gap-2">
+          <Icon size={15} className={`mt-0.5 shrink-0 ${feedback.iconClassName}`} />
+          <div className="min-w-0">
+            <p className="text-[0.68rem] font-black uppercase">{feedback.title}</p>
+            <p className="line-clamp-2 text-xs font-bold">{message}</p>
+          </div>
         </div>
-        <button className="text-sm font-bold text-stone-500 hover:text-stone-800" onClick={store.clearMessage}>
-          Dismiss
-        </button>
-      </div>
-    </Card>
+      </button>
+    </div>
   );
 }
 
 function OfflineSummaryPanel({
   state,
   store,
-  onSelectTab
+  onSelectTab,
+  hasStackedResult
 }: {
   state: GameState;
   store: GameStore;
   onSelectTab: (tab: TabId) => void;
+  hasStackedResult: boolean;
 }) {
   const summary = store.lastOfflineSummary;
   const summaryKey = summary ? JSON.stringify(summary) : null;
   const [dismissedSummaryKey, setDismissedSummaryKey] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     if (!summaryKey && dismissedSummaryKey !== null) {
@@ -656,10 +771,25 @@ function OfflineSummaryPanel({
     }
   }, [summaryKey, dismissedSummaryKey]);
 
+  useEffect(() => {
+    setShowDetails(false);
+  }, [summaryKey]);
+
   if (!summary || !summaryKey || dismissedSummaryKey === summaryKey) return null;
 
   const hasMineGains = (["ore", "crystal", "rune", "relicFragment"] as const).some((resource) => (summary.mineGains[resource] ?? 0) > 0);
   const capped = (store.lastMessage ?? "").includes("Offline gains were capped at 8 hours.");
+  const compactMode = hasStackedResult && !showDetails;
+  const compactSummaryLine = `Expedition: ${
+    summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "none"
+  } · Mine: ${hasMineGains ? formatResources(summary.mineGains) : "none"} · Vigor +${summary.vigorGained} · Dailies: ${
+    summary.dailyReset ? "reset" : "unchanged"
+  }`;
+  const dismissSummary = () => setDismissedSummaryKey(summaryKey);
+  const runSummaryAction = (action: () => void) => {
+    action();
+    dismissSummary();
+  };
 
   return (
     <RewardSummary className={`feedback-pop ${capped ? "border-amber-400 bg-amber-50/80" : "border-royal/20 bg-blue-50/70"}`}>
@@ -673,34 +803,48 @@ function OfflineSummaryPanel({
             <Clock size={13} /> {capped ? "Capped at 8h" : "Applied"}
           </Pill>
         </div>
-        <div className="grid gap-2 text-sm font-semibold text-stone-700 sm:grid-cols-2">
-          <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-            <span className="font-black text-ink">Expedition:</span>{" "}
-            {summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "No expedition resolved"}
-          </p>
-          <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-            <span className="font-black text-ink">Mine Gains:</span> {hasMineGains ? formatResources(summary.mineGains) : "None"}
-          </p>
-          <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-            <span className="font-black text-ink">Vigor Regenerated:</span> +{summary.vigorGained}
-          </p>
-          <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-            <span className="font-black text-ink">Dailies:</span> {summary.dailyReset ? "Reset while offline" : "No reset during offline time"}
-          </p>
-        </div>
+        {compactMode ? (
+          <p className="line-clamp-2 rounded-md border border-ink/10 bg-white/70 px-3 py-2 text-xs font-semibold text-stone-700">{compactSummaryLine}</p>
+        ) : (
+          <div className="grid gap-2 text-sm font-semibold text-stone-700 sm:grid-cols-2">
+            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+              <span className="font-black text-ink">Expedition:</span>{" "}
+              {summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "No expedition resolved"}
+            </p>
+            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+              <span className="font-black text-ink">Mine Gains:</span> {hasMineGains ? formatResources(summary.mineGains) : "None"}
+            </p>
+            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+              <span className="font-black text-ink">Vigor Regenerated:</span> +{summary.vigorGained}
+            </p>
+            <p className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+              <span className="font-black text-ink">Dailies:</span> {summary.dailyReset ? "Reset while offline" : "No reset during offline time"}
+            </p>
+          </div>
+        )}
         <p className="text-xs font-semibold text-stone-600">
           Last update: {formatLocalDateTime(state.updatedAt)}. Offline progress is always capped at {formatMs(OFFLINE_CAP_MS)}.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {summary.expedition && (
-            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => onSelectTab("expeditions")}>
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("expeditions"))}>
               <Swords size={15} /> Open Expedition
             </SecondaryButton>
           )}
-          <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => onSelectTab("dailies")}>
+          <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("dailies"))}>
             <Star size={15} /> Open Dailies
           </SecondaryButton>
-          <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setDismissedSummaryKey(summaryKey)}>
+          {hasStackedResult && compactMode && (
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setShowDetails(true)}>
+              Details
+            </SecondaryButton>
+          )}
+          {hasStackedResult && showDetails && (
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setShowDetails(false)}>
+              Collapse
+            </SecondaryButton>
+          )}
+          <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={dismissSummary}>
             Dismiss
           </SecondaryButton>
         </div>
@@ -728,6 +872,52 @@ function hasCleared(state: GameState, dungeonId: string): boolean {
 
 function getFirstBossMilestone(state: GameState) {
   return DUNGEONS.find((dungeon) => dungeon.boss && !hasCleared(state, dungeon.id)) ?? DUNGEONS.find((dungeon) => dungeon.boss) ?? null;
+}
+
+type OnboardingStepId =
+  | "start_first_expedition"
+  | "claim_first_reward"
+  | "inspect_or_upgrade_hero"
+  | "start_next_expedition"
+  | "complete";
+
+function getRecommendedDungeon(state: GameState): DungeonDefinition | null {
+  const available = getAvailableDungeons(state);
+  return available.find((dungeon) => !hasCleared(state, dungeon.id)) ?? available[available.length - 1] ?? null;
+}
+
+function getOnboardingStep(state: GameState): OnboardingStepId {
+  const firstExpeditionResolved = state.lifetime.expeditionsSucceeded + state.lifetime.expeditionsFailed > 0;
+  const hasHeroInteraction =
+    Object.values(state.equipment).some(Boolean) || hasAnyItemUpgrade(state) || state.lifetime.totalItemsSold > 0 || state.lifetime.totalItemsSalvaged > 0;
+
+  if (state.lifetime.expeditionsStarted === 0) {
+    return "start_first_expedition";
+  }
+
+  if (!firstExpeditionResolved || state.activeExpedition) {
+    return "claim_first_reward";
+  }
+
+  if (!hasHeroInteraction) {
+    return "inspect_or_upgrade_hero";
+  }
+
+  if (state.lifetime.expeditionsStarted < 2) {
+    return "start_next_expedition";
+  }
+
+  return "complete";
+}
+
+function isOnboardingFocused(state: GameState): boolean {
+  if (!state.settings.heroCreated || state.settings.onboardingDismissed) {
+    return false;
+  }
+  if (state.hero.level >= 5 || state.lifetime.expeditionsStarted >= 4 || state.lifetime.expeditionsSucceeded >= 2) {
+    return false;
+  }
+  return getOnboardingStep(state) !== "complete";
 }
 
 function getResultCardClass(summary: ResolveSummary): string {
@@ -832,7 +1022,6 @@ function ExpeditionResultPanel({
   const nextAction = getNextActionCopy({ state, summary, itemInInventory, nextDungeon, dailyReady, canUseForge, canUseTown });
   const hasSpecialMoment =
     summary.firstGuaranteedWeapon ||
-    isRareOrBetter(item) ||
     summary.bossClear ||
     summary.bossFirstClear ||
     summary.levelUps.length > 0 ||
@@ -841,6 +1030,99 @@ function ExpeditionResultPanel({
     summary.achievementsUnlocked.length > 0;
   const itemSellValue = item ? getVisibleSellValue(state, item) : 0;
   const actionButtonClass = "!min-h-9 px-3 py-1 text-xs";
+  const [showAllMoments, setShowAllMoments] = useState(false);
+  const runResultAction = (action: () => void) => {
+    action();
+    store.dismissExpeditionResult();
+  };
+
+  useEffect(() => {
+    setShowAllMoments(false);
+  }, [summary]);
+
+  const specialMoments: Array<{ key: string; node: React.ReactNode }> = [];
+  if (summary.firstGuaranteedWeapon) {
+    specialMoments.push({
+      key: "first-weapon",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Sparkles size={13} /> First weapon
+        </Pill>
+      )
+    });
+  }
+  if (summary.bossClear) {
+    specialMoments.push({
+      key: "boss-clear",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Crown size={13} /> Boss clear
+        </Pill>
+      )
+    });
+  }
+  if (summary.bossFirstClear) {
+    specialMoments.push({
+      key: "boss-first-clear",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Sparkles size={13} /> First boss clear
+        </Pill>
+      )
+    });
+  }
+  if (summary.dungeon.boss && item) {
+    specialMoments.push({
+      key: "boss-loot",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Gem size={13} /> Boss loot
+        </Pill>
+      )
+    });
+  }
+  if (summary.levelUps.length > 0) {
+    specialMoments.push({
+      key: "level-up",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-emerald/30 bg-emerald-100 text-emerald">
+          <Sparkles size={13} /> Level up: Lv {summary.levelUps.join(", ")}
+        </Pill>
+      )
+    });
+  }
+  if (summary.unlockedDungeons.length > 0) {
+    specialMoments.push({
+      key: "routes",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
+          <Swords size={13} /> Routes +{summary.unlockedDungeons.length}
+        </Pill>
+      )
+    });
+  }
+  summary.unlockedZones.forEach((zone) => {
+    specialMoments.push({
+      key: `zone-${zone.id}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Crown size={13} /> Region unlocked: {zone.name}
+        </Pill>
+      )
+    });
+  });
+  if (summary.achievementsUnlocked.length > 0) {
+    specialMoments.push({
+      key: "achievements",
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-violet-400 bg-violet-50 text-violet-950">
+          <Star size={13} /> Achievements +{summary.achievementsUnlocked.length}
+        </Pill>
+      )
+    });
+  }
+  const visibleMomentCount = showAllMoments ? specialMoments.length : Math.min(3, specialMoments.length);
+  const hiddenMomentCount = Math.max(0, specialMoments.length - visibleMomentCount);
 
   return (
     <RewardSummary className={`feedback-pop ${getResultCardClass(summary)}`}>
@@ -874,50 +1156,18 @@ function ExpeditionResultPanel({
 
         {hasSpecialMoment && (
           <div className="flex flex-wrap gap-1.5">
-            {summary.firstGuaranteedWeapon && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
-                <Sparkles size={13} /> First weapon
-              </Pill>
-            )}
-            {isRareOrBetter(item) && (
-              <RarityBadge rarity={item?.rarity ?? "common"}>
-                <Star size={13} /> {RARITY_LABEL[item?.rarity ?? "common"]} drop
-              </RarityBadge>
-            )}
-            {summary.bossClear && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
-                <Crown size={13} /> Boss clear
-              </Pill>
-            )}
-            {summary.bossFirstClear && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
-                <Sparkles size={13} /> First boss clear
-              </Pill>
-            )}
-            {summary.dungeon.boss && item && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
-                <Gem size={13} /> Boss loot
-              </Pill>
-            )}
-            {summary.levelUps.length > 0 && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-emerald/30 bg-emerald-100 text-emerald">
-                <Sparkles size={13} /> Level up: Lv {summary.levelUps.join(", ")}
-              </Pill>
-            )}
-            {summary.unlockedDungeons.length > 0 && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
-                <Swords size={13} /> Routes +{summary.unlockedDungeons.length}
-              </Pill>
-            )}
-            {summary.unlockedZones.map((zone) => (
-              <Pill key={zone.id} className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
-                <Crown size={13} /> Region unlocked: {zone.name}
-              </Pill>
+            {specialMoments.slice(0, visibleMomentCount).map((moment) => (
+              <span key={moment.key}>{moment.node}</span>
             ))}
-            {summary.achievementsUnlocked.length > 0 && (
-              <Pill className="!px-2 !py-0.5 text-[0.68rem] border-violet-400 bg-violet-50 text-violet-950">
-                <Star size={13} /> Achievements +{summary.achievementsUnlocked.length}
-              </Pill>
+            {hiddenMomentCount > 0 && (
+              <SecondaryButton className="!min-h-7 px-2 py-0.5 text-[0.68rem]" onClick={() => setShowAllMoments(true)}>
+                More +{hiddenMomentCount}
+              </SecondaryButton>
+            )}
+            {showAllMoments && specialMoments.length > 3 && (
+              <SecondaryButton className="!min-h-7 px-2 py-0.5 text-[0.68rem]" onClick={() => setShowAllMoments(false)}>
+                Less
+              </SecondaryButton>
             )}
           </div>
         )}
@@ -949,41 +1199,41 @@ function ExpeditionResultPanel({
           <p className="line-clamp-2 text-xs font-black text-ink">{nextAction}</p>
           <div className="flex flex-wrap gap-1.5">
             {comparison?.isBetter && itemInInventory && item && (
-              <PrimaryButton className={actionButtonClass} onClick={() => store.equipItem(item.id)}>
+              <PrimaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.equipItem(item.id))}>
                 <Backpack size={16} /> Equip Item
               </PrimaryButton>
             )}
             {itemInInventory && item && !comparison?.isBetter && (
-              <SecondaryButton className={actionButtonClass} onClick={() => store.equipItem(item.id)}>
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.equipItem(item.id))}>
                 <Backpack size={16} /> Equip
               </SecondaryButton>
             )}
             {itemInInventory && item && (
-              <SecondaryButton className={`${actionButtonClass} sm:hidden`} onClick={() => store.sellItem(item.id)}>
+              <SecondaryButton className={`${actionButtonClass} sm:hidden`} onClick={() => runResultAction(() => store.sellItem(item.id))}>
                 <Coins size={16} /> Sell {formatNumber(itemSellValue)}
               </SecondaryButton>
             )}
             {nextDungeon && !state.activeExpedition && (
-              <SecondaryButton className={actionButtonClass} onClick={() => store.startExpedition(nextDungeon.id)}>
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.startExpedition(nextDungeon.id))}>
                 <Swords size={16} /> {nextDungeon.boss ? "Attempt Boss" : "Start Next"}
               </SecondaryButton>
             )}
             {dailyReady && (
-              <SecondaryButton className={actionButtonClass} onClick={() => onSelectTab("dailies")}>
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => onSelectTab("dailies"))}>
                 <Star size={16} /> View Dailies
               </SecondaryButton>
             )}
             {canUseForge && !nextDungeon && (
-              <SecondaryButton className={actionButtonClass} onClick={() => onSelectTab("forge")}>
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => onSelectTab("forge"))}>
                 <Flame size={16} /> Open Forge
               </SecondaryButton>
             )}
             {canUseTown && !nextDungeon && !canUseForge && (
-              <SecondaryButton className={actionButtonClass} onClick={() => onSelectTab("town")}>
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => onSelectTab("town"))}>
                 <Hammer size={16} /> Open Town
               </SecondaryButton>
             )}
-            <SecondaryButton className={actionButtonClass} onClick={store.clearMessage}>Dismiss</SecondaryButton>
+            <SecondaryButton className={actionButtonClass} onClick={store.dismissExpeditionResult}>Dismiss</SecondaryButton>
           </div>
         </div>
       </div>
@@ -993,23 +1243,15 @@ function ExpeditionResultPanel({
 
 function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
   if (!state.activeExpedition) {
-    return (
-      <Card className="border-emerald/20 bg-emerald-50/70">
-        <div className="flex items-start gap-3">
-          <Swords className="mt-0.5 text-emerald" />
-          <div>
-            <p className="font-black text-emerald">No active expedition</p>
-            <p className="mt-1 text-sm font-semibold text-stone-700">Pick a dungeon contract below. The guild board is ready, and the next goal is {getNextGoal(state)}</p>
-          </div>
-        </div>
-      </Card>
-    );
+    return null;
   }
   const dungeon = getDungeon(state.activeExpedition.dungeonId);
   const remaining = state.activeExpedition.endsAt - now;
   const total = state.activeExpedition.endsAt - state.activeExpedition.startedAt;
   const progress = Math.min(100, Math.max(0, ((now - state.activeExpedition.startedAt) / total) * 100));
   const ready = remaining <= 0;
+  const vigorBoostCost = getVigorBoostCost(state);
+  const canUseVigorBoost = state.vigor.current >= vigorBoostCost;
   return (
     <Card>
       <div className="space-y-3">
@@ -1024,9 +1266,21 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
           </Pill>
         </div>
         <ProgressBar value={progress} />
-        <PrimaryButton onClick={store.claimExpedition} disabled={!ready}>
-          <Swords size={16} /> {ready ? "Claim Expedition" : `Returns in ${formatMs(remaining)}`}
-        </PrimaryButton>
+        <div className="flex flex-wrap gap-1.5">
+          <PrimaryButton onClick={() => store.claimExpedition()} disabled={!ready}>
+            <Swords size={16} /> {ready ? "Claim Expedition" : `Returns in ${formatMs(remaining)}`}
+          </PrimaryButton>
+          {ready && (
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.claimExpedition({ useVigorBoost: true })} disabled={!canUseVigorBoost}>
+              <Flame size={15} /> Claim x2 · Vig -{vigorBoostCost}
+            </SecondaryButton>
+          )}
+        </div>
+        {ready && (
+          <p className="text-xs font-semibold text-stone-600">
+            Vigor regenerates +1 every {formatMs(VIGOR_REGEN_INTERVAL_MS)} up to {state.vigor.max}. Boosting doubles expedition rewards.
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -1035,13 +1289,11 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
 function DungeonCard({
   state,
   dungeon,
-  store,
-  useVigorBoost
+  store
 }: {
   state: GameState;
   dungeon: DungeonDefinition;
   store: GameStore;
-  useVigorBoost: boolean;
 }) {
   const view = getDungeonView(state, dungeon);
   return (
@@ -1072,7 +1324,7 @@ function DungeonCard({
           {formatResources(dungeon.materials) ? `, ${formatResources(dungeon.materials)}` : ""}
         </p>
         {view.unlocked ? (
-          <PrimaryButton onClick={() => store.startExpedition(dungeon.id, useVigorBoost)} disabled={Boolean(state.activeExpedition)}>
+          <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition)}>
             <Swords size={16} /> Start
           </PrimaryButton>
         ) : (
@@ -1120,49 +1372,186 @@ function FirstSessionMilestones({ state }: { state: GameState }) {
   );
 }
 
-function ExpeditionsScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
-  const [useVigorBoost, setUseVigorBoost] = useState(false);
-  const available = getAvailableDungeons(state);
-  const vigorBoostCost = getVigorBoostCost(state);
-  const canUseVigorBoost = state.vigor.current >= vigorBoostCost;
-  const effectiveVigorBoost = useVigorBoost && canUseVigorBoost;
+function OnboardingGuide({
+  state,
+  now,
+  store,
+  onSelectTab
+}: {
+  state: GameState;
+  now: number;
+  store: GameStore;
+  onSelectTab: (tab: TabId) => void;
+}) {
+  const step = getOnboardingStep(state);
+  const recommendedDungeon = getRecommendedDungeon(state);
+  const firstExpeditionResolved = state.lifetime.expeditionsSucceeded + state.lifetime.expeditionsFailed > 0;
+  const hasHeroInteraction =
+    Object.values(state.equipment).some(Boolean) || hasAnyItemUpgrade(state) || state.lifetime.totalItemsSold > 0 || state.lifetime.totalItemsSalvaged > 0;
+  const startedSecondExpedition = state.lifetime.expeditionsStarted > 1;
+  const upgradeCandidates = [...state.inventory, ...(Object.values(state.equipment).filter(Boolean) as Item[])];
+  const canAffordEarlyUpgrade = upgradeCandidates.some((item) => item.upgradeLevel < 10 && canAfford(state.resources, getItemUpgradeCost(state, item)));
+
+  let headline = "Start your first expedition.";
+  let detail = "Click once, then wait for the contract to return.";
+  let action: React.ReactNode = null;
+
+  if (step === "start_first_expedition") {
+    headline = "Start your first expedition.";
+    detail = `Run one quick contract${recommendedDungeon ? ` (${recommendedDungeon.name})` : ""} to unlock your first reward moment.`;
+    action = (
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon}>
+        <Swords size={16} /> Start First Expedition
+      </PrimaryButton>
+    );
+  } else if (step === "claim_first_reward") {
+    const remaining = state.activeExpedition ? state.activeExpedition.endsAt - now : 0;
+    const ready = remaining <= 0;
+    headline = "Claim your first reward.";
+    detail = ready ? "Rewards are ready now. Claim to reveal loot and unlock the next step." : "Wait for the timer, then claim immediately.";
+    action = state.activeExpedition ? (
+      <PrimaryButton onClick={() => store.claimExpedition()} disabled={!ready}>
+        <Sparkles size={16} /> {ready ? "Claim First Reward" : `Returns in ${formatMs(remaining)}`}
+      </PrimaryButton>
+    ) : (
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon}>
+        <Swords size={16} /> Start Expedition
+      </PrimaryButton>
+    );
+  } else if (step === "inspect_or_upgrade_hero") {
+    headline = "Inspect or upgrade your hero.";
+    detail = canAffordEarlyUpgrade
+      ? "You can afford a quick power bump. Upgrade one item before the next run."
+      : "Open Hero to confirm class and stats, then continue.";
+    action = (
+      <PrimaryButton onClick={() => onSelectTab(canAffordEarlyUpgrade ? "forge" : "hero")}>
+        {canAffordEarlyUpgrade ? <Flame size={16} /> : <Crown size={16} />}
+        {canAffordEarlyUpgrade ? "Open Forge" : "Open Hero"}
+      </PrimaryButton>
+    );
+  } else if (step === "start_next_expedition") {
+    headline = "Start the next expedition.";
+    detail = `Repeat the loop${recommendedDungeon ? ` with ${recommendedDungeon.name}` : ""} while your first gains are still fresh.`;
+    action = (
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon || Boolean(state.activeExpedition)}>
+        <ArrowRight size={16} /> Start Next Expedition
+      </PrimaryButton>
+    );
+  } else {
+    headline = "Onboarding complete.";
+    detail = "You now have the core loop. Explore tabs at your own pace.";
+    action = (
+      <SecondaryButton onClick={() => onSelectTab("town")}>
+        <Hammer size={16} /> Open Town
+      </SecondaryButton>
+    );
+  }
+
+  const checklist = [
+    { label: "Start first expedition", done: state.lifetime.expeditionsStarted > 0 },
+    { label: "Claim first reward", done: firstExpeditionResolved },
+    { label: "Inspect or upgrade hero", done: hasHeroInteraction },
+    { label: "Start next expedition", done: startedSecondExpedition }
+  ];
+
   return (
-    <div className="space-y-4">
-      <Card>
+    <Card className="border-royal/30 bg-blue-50/80">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase text-mystic">Guided Next Step</p>
+            <h2 className="text-base font-black sm:text-lg">{headline}</h2>
+            <p className="mt-1 text-sm font-semibold text-stone-700">{detail}</p>
+          </div>
+          <div className="shrink-0">{action}</div>
+        </div>
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {checklist.map((item) => (
+            <div key={item.label} className={`rounded-md border px-2.5 py-1.5 text-xs font-bold ${item.done ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-white text-stone-700"}`}>
+              {item.done ? "Done" : "Next"} · {item.label}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ExpeditionsScreen({
+  state,
+  now,
+  store,
+  onSelectTab
+}: {
+  state: GameState;
+  now: number;
+  store: GameStore;
+  onSelectTab: (tab: TabId) => void;
+}) {
+  const available = getAvailableDungeons(state);
+  const onboardingFocused = isOnboardingFocused(state);
+  const onboardingStep = getOnboardingStep(state);
+  const recommendedDungeon = getRecommendedDungeon(state);
+  const showDungeonList =
+    !onboardingFocused || onboardingStep === "inspect_or_upgrade_hero" || onboardingStep === "start_next_expedition" || onboardingStep === "complete";
+  const visibleDungeons = showDungeonList ? (onboardingFocused && recommendedDungeon ? [recommendedDungeon] : available) : [];
+  const zoneIds = Array.from(new Set(visibleDungeons.map((dungeon) => dungeon.zoneId)));
+  const hiddenRouteCount = onboardingFocused && showDungeonList ? Math.max(0, available.length - visibleDungeons.length) : 0;
+  const nextLockedDungeon = getNextLockedDungeon(state);
+  const vigorBoostCost = getVigorBoostCost(state);
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      {onboardingFocused ? (
+        <OnboardingGuide state={state} now={now} store={store} onSelectTab={onSelectTab} />
+      ) : (
+        <FirstSessionMilestones state={state} />
+      )}
+
+      {!onboardingFocused && <ActiveExpeditionPanel state={state} now={now} store={store} />}
+
+      <Card className={onboardingFocused ? "border-emerald/20 bg-emerald-50/60" : ""}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Expedition Board</h2>
-            <p className="text-sm font-semibold text-stone-700">
-              Vigor regenerates +1 every {formatMs(VIGOR_REGEN_INTERVAL_MS)} up to {state.vigor.max}. Boosting a selected expedition doubles rewards.
-            </p>
+            <p className="text-sm font-semibold text-stone-700">{onboardingFocused ? "Start one contract, claim rewards, then repeat." : "Pick a contract and push the next route."}</p>
           </div>
-          <label className="inline-flex items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm font-bold">
-            <input type="checkbox" checked={effectiveVigorBoost} disabled={!canUseVigorBoost} onChange={(event) => setUseVigorBoost(event.target.checked)} />
-            Use Vigor Boost ({vigorBoostCost} cost, {state.vigor.current}/{state.vigor.max})
-          </label>
+          <Pill className="border-royal/20 bg-blue-50 text-royal">Vig {state.vigor.current}/{state.vigor.max}</Pill>
         </div>
+        {!onboardingFocused && (
+          <p className="mt-2 text-xs font-semibold text-stone-600">
+            Vigor boost now applies at claim time with a secondary action ({vigorBoostCost} Vig) so start/claim decisions stay in one place.
+          </p>
+        )}
       </Card>
-      <FirstSessionMilestones state={state} />
-      <ActiveExpeditionPanel state={state} now={now} store={store} />
-      <div className="space-y-6">
-        {Array.from(new Set(DUNGEONS.map((dungeon) => dungeon.zoneId))).map((zoneId) => {
-          const zoneDungeons = DUNGEONS.filter((dungeon) => dungeon.zoneId === zoneId);
-          const zoneName = zoneDungeons[0] ? getZoneForDungeon(zoneDungeons[0]).name : zoneId;
-          const zoneUnlocked = zoneDungeons.some((dungeon) => available.includes(dungeon) || (state.dungeonClears[dungeon.id] ?? 0) > 0);
+
+      <div className="space-y-4">
+        {zoneIds.map((zoneId) => {
+          const zoneDungeons = visibleDungeons.filter((dungeon) => dungeon.zoneId === zoneId);
+          const zoneName = zoneDungeons[0] ? getZoneForDungeon(zoneDungeons[0]).name : "Unknown Region";
           return (
             <section key={zoneId} className="space-y-3">
               <div>
                 <h3 className="text-lg font-black">{zoneName}</h3>
-                <p className="text-sm font-semibold text-stone-700">{zoneUnlocked ? "Available progression region." : "Locked by prior boss and level requirements."}</p>
+                <p className="text-sm font-semibold text-stone-700">{onboardingFocused ? "Focus this route first." : "Available progression region."}</p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className={`grid gap-3 ${onboardingFocused ? "md:grid-cols-1 xl:grid-cols-1" : "md:grid-cols-2 xl:grid-cols-4"}`}>
                 {zoneDungeons.map((dungeon) => (
-                  <DungeonCard key={dungeon.id} state={state} dungeon={dungeon} store={store} useVigorBoost={effectiveVigorBoost} />
+                  <DungeonCard key={dungeon.id} state={state} dungeon={dungeon} store={store} />
                 ))}
               </div>
             </section>
           );
         })}
+
+        {onboardingFocused && hiddenRouteCount > 0 && (
+          <Card className="border-stone-200 bg-white/80">
+            <p className="text-sm font-semibold text-stone-700">
+              {`${hiddenRouteCount} additional route${hiddenRouteCount > 1 ? "s are" : " is"} available and hidden for focus.`}
+            </p>
+            {nextLockedDungeon && <p className="mt-1 text-xs font-semibold text-stone-600">Next unlock hint: {getUnlockText(state, nextLockedDungeon)}</p>}
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -1344,6 +1733,7 @@ function InventoryScreen({ state, store }: { state: GameState; store: GameStore 
 function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
   const [slot, setSlot] = useState<"any" | EquipmentSlot>("any");
   const [classBias, setClassBias] = useState(true);
+  const [mode, setMode] = useState<"craft" | "upgrade" | "advanced">("craft");
   const craftCost = getCraftCost(state);
   const craftAffordable = canAfford(state.resources, craftCost);
   const upgradeCandidates = [
@@ -1359,134 +1749,163 @@ function ForgeScreen({ state, store }: { state: GameState; store: GameStore }) {
   return (
     <div className="space-y-4">
       <Card>
-        <SectionHeader
-          title="Relic Forge"
-          description={`Level ${forgeLevel}/12 · ${forgeEffect}`}
-          action={
-            <Pill className={rerollUnlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
-              <RotateCcw size={13} /> Affix reroll {rerollUnlocked ? "Ready" : `at Lv${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}`}
-            </Pill>
-          }
-        />
-      </Card>
-      <Card>
         <div className="space-y-3">
-          <h3 className="font-black">Craft Item</h3>
-          <div className="grid gap-2 text-xs font-bold text-stone-700 sm:grid-cols-3">
-            <p>Slot: {slot === "any" ? (classBias ? "Class-biased random" : "Weighted random") : slotLabels[slot]}</p>
-            <p>Forge budget: +{forgeLevel * 2} item stats</p>
-            <p>Cost: {formatResources(craftCost)}</p>
+          <SectionHeader
+            title="Relic Forge"
+            description={`Level ${forgeLevel}/12 · ${forgeEffect}`}
+            action={
+              <Pill className={rerollUnlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
+                <RotateCcw size={13} /> Affix reroll {rerollUnlocked ? "Ready" : `at Lv${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}`}
+              </Pill>
+            }
+          />
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-ink/10 bg-white/70 p-1">
+            {[
+              { id: "craft", label: "Craft" },
+              { id: "upgrade", label: "Upgrade" },
+              { id: "advanced", label: "Advanced" }
+            ].map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={`min-h-9 rounded-md px-2 text-xs font-black ${mode === entry.id ? "bg-royal text-white shadow-card" : "text-stone-700 hover:bg-parchment"}`}
+                onClick={() => setMode(entry.id as "craft" | "upgrade" | "advanced")}
+                aria-current={mode === entry.id ? "page" : undefined}
+              >
+                {entry.label}
+              </button>
+            ))}
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <select className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold" value={slot} onChange={(event) => setSlot(event.target.value as "any" | EquipmentSlot)}>
-              <option value="any">Any Slot</option>
-              {(Object.keys(slotLabels) as EquipmentSlot[]).map((entry) => (
-                <option key={entry} value={entry}>
-                  {slotLabels[entry]}
-                </option>
-              ))}
-            </select>
-            <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 text-sm font-bold">
-              <input type="checkbox" checked={classBias} onChange={(event) => setClassBias(event.target.checked)} />
-              Class Bias
-            </label>
-            <PrimaryButton onClick={() => store.craftItem(slot === "any" ? undefined : slot, classBias)} disabled={!craftAffordable}>
-              <Flame size={16} /> Craft
-            </PrimaryButton>
-          </div>
+          <p className="text-xs font-semibold text-stone-600">One forge surface is shown at a time to reduce scan load.</p>
         </div>
       </Card>
-      <Card>
-        <h3 className="font-black">Upgrade Item</h3>
-        {upgradeCandidates.length === 0 ? (
-          <p className="mt-2 text-sm font-semibold text-stone-700">No upgradeable items yet.</p>
-        ) : (
-          <div className="mt-3 grid gap-2">
-            {upgradeCandidates.map((item) => {
-              const cost = getItemUpgradeCost(state, item);
-              const affordable = canAfford(state.resources, cost);
-              return (
-                <ForgeItemRow
-                  key={item.id}
-                  item={item}
-                  meta={`${slotLabels[item.slot]} · ilvl ${item.itemLevel} · +${item.upgradeLevel}${equippedIds.has(item.id) ? " · equipped" : ""}`}
-                  action={
-                    <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.upgradeItem(item.id)} disabled={!affordable || item.upgradeLevel >= 10}>
-                      <Hammer size={16} /> Upgrade
-                    </PrimaryButton>
-                  }
-                >
-                  <p className="mt-1 text-xs font-bold text-stone-700">Item Power {formatNumber(getItemScore(item))}</p>
-                  <p className="mt-2 text-xs font-semibold text-stone-700">Cost: {formatResources(cost)}</p>
-                </ForgeItemRow>
-              );
-            })}
+      {mode === "craft" && (
+        <Card>
+          <div className="space-y-3">
+            <h3 className="font-black">Craft Item</h3>
+            <div className="grid gap-2 text-xs font-bold text-stone-700 sm:grid-cols-3">
+              <p>Slot: {slot === "any" ? (classBias ? "Class-biased random" : "Weighted random") : slotLabels[slot]}</p>
+              <p>Forge budget: +{forgeLevel * 2} item stats</p>
+              <p>Cost: {formatResources(craftCost)}</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <select className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold" value={slot} onChange={(event) => setSlot(event.target.value as "any" | EquipmentSlot)}>
+                <option value="any">Any Slot</option>
+                {(Object.keys(slotLabels) as EquipmentSlot[]).map((entry) => (
+                  <option key={entry} value={entry}>
+                    {slotLabels[entry]}
+                  </option>
+                ))}
+              </select>
+              <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 text-sm font-bold">
+                <input type="checkbox" checked={classBias} onChange={(event) => setClassBias(event.target.checked)} />
+                Class Bias
+              </label>
+              <PrimaryButton onClick={() => store.craftItem(slot === "any" ? undefined : slot, classBias)} disabled={!craftAffordable}>
+                <Flame size={16} /> Craft
+              </PrimaryButton>
+            </div>
           </div>
-        )}
-      </Card>
-      <Card>
-        <h3 className="font-black">Reroll Affix</h3>
-        {!rerollUnlocked && (
-          <p className="mt-2 text-sm font-bold text-stone-700">
-            Forge level {FORGE_AFFIX_REROLL_REQUIRED_LEVEL} required. Current level: {forgeLevel}.
-          </p>
-        )}
-        {upgradeCandidates.length === 0 ? (
-          <p className="mt-2 text-sm font-semibold text-stone-700">No items with affixes yet.</p>
-        ) : (
-          <div className="mt-3 grid gap-2">
-            {upgradeCandidates.map((item) => {
-              const cost = getAffixRerollCost(state, item);
-              const affordable = canAfford(state.resources, cost);
-              return (
-                <ForgeItemRow
-                  key={`reroll-${item.id}`}
-                  item={item}
-                  meta={`${slotLabels[item.slot]} · ${RARITY_LABEL[item.rarity]} · Cost: ${formatResources(cost)}`}
-                  action={<Pill className="w-fit shrink-0 border-stone-200 bg-stone-50 text-stone-700">Power {formatNumber(getItemScore(item))}</Pill>}
-                >
-                  <div className="mt-3 grid gap-2">
-                    {item.affixes.map((affix, index) => (
-                      <div key={`${item.id}-${affix.id}-${index}`} className="grid gap-2 rounded-md bg-parchment/70 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                        <p className="min-w-0 line-clamp-2 text-xs font-semibold text-stone-700">
-                          <span className="font-black text-ink">{affix.name}</span>: {affix.description}
-                        </p>
-                        <SecondaryButton className="!min-h-9 min-w-[7rem] justify-self-start px-3 py-1 text-xs sm:justify-self-end" onClick={() => store.rerollItemAffix(item.id, index)} disabled={!rerollUnlocked || !affordable}>
-                          <RotateCcw size={14} /> Reroll
-                        </SecondaryButton>
+        </Card>
+      )}
+      {mode === "upgrade" && (
+        <Card>
+          <h3 className="font-black">Upgrade Item</h3>
+          {upgradeCandidates.length === 0 ? (
+            <p className="mt-2 text-sm font-semibold text-stone-700">No upgradeable items yet.</p>
+          ) : (
+            <div className="mt-3 grid gap-2">
+              {upgradeCandidates.map((item) => {
+                const cost = getItemUpgradeCost(state, item);
+                const affordable = canAfford(state.resources, cost);
+                return (
+                  <ForgeItemRow
+                    key={item.id}
+                    item={item}
+                    meta={`${slotLabels[item.slot]} · ilvl ${item.itemLevel} · +${item.upgradeLevel}${equippedIds.has(item.id) ? " · equipped" : ""}`}
+                    action={
+                      <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.upgradeItem(item.id)} disabled={!affordable || item.upgradeLevel >= 10}>
+                        <Hammer size={16} /> Upgrade
+                      </PrimaryButton>
+                    }
+                  >
+                    <p className="mt-1 text-xs font-bold text-stone-700">Item Power {formatNumber(getItemScore(item))}</p>
+                    <p className="mt-2 text-xs font-semibold text-stone-700">Cost: {formatResources(cost)}</p>
+                  </ForgeItemRow>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+      {mode === "advanced" && (
+        <>
+          <Card>
+            <h3 className="font-black">Reroll Affix</h3>
+            <p className="mt-1 text-sm font-semibold text-stone-700">Rerolls and bulk salvage are optional until your first boss progression settles.</p>
+            {!rerollUnlocked && (
+              <p className="mt-2 text-sm font-bold text-stone-700">
+                Forge level {FORGE_AFFIX_REROLL_REQUIRED_LEVEL} required. Current level: {forgeLevel}.
+              </p>
+            )}
+            {upgradeCandidates.length === 0 ? (
+              <p className="mt-2 text-sm font-semibold text-stone-700">No items with affixes yet.</p>
+            ) : (
+              <div className="mt-3 grid gap-2">
+                {upgradeCandidates.map((item) => {
+                  const cost = getAffixRerollCost(state, item);
+                  const affordable = canAfford(state.resources, cost);
+                  return (
+                    <ForgeItemRow
+                      key={`reroll-${item.id}`}
+                      item={item}
+                      meta={`${slotLabels[item.slot]} · ${RARITY_LABEL[item.rarity]} · Cost: ${formatResources(cost)}`}
+                      action={<Pill className="w-fit shrink-0 border-stone-200 bg-stone-50 text-stone-700">Power {formatNumber(getItemScore(item))}</Pill>}
+                    >
+                      <div className="mt-3 grid gap-2">
+                        {item.affixes.map((affix, index) => (
+                          <div key={`${item.id}-${affix.id}-${index}`} className="grid gap-2 rounded-md bg-parchment/70 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                            <p className="min-w-0 line-clamp-2 text-xs font-semibold text-stone-700">
+                              <span className="font-black text-ink">{affix.name}</span>: {affix.description}
+                            </p>
+                            <SecondaryButton className="!min-h-9 min-w-[7rem] justify-self-start px-3 py-1 text-xs sm:justify-self-end" onClick={() => store.rerollItemAffix(item.id, index)} disabled={!rerollUnlocked || !affordable}>
+                              <RotateCcw size={14} /> Reroll
+                            </SecondaryButton>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </ForgeItemRow>
-              );
-            })}
-          </div>
-        )}
-      </Card>
-      <Card>
-        <h3 className="font-black">Salvage Materials</h3>
-        {state.inventory.length === 0 ? (
-          <p className="mt-2 text-sm font-semibold text-stone-700">No inventory items to salvage.</p>
-        ) : (
-          <div className="mt-3 grid gap-2">
-            {state.inventory.map((item) => {
-              const salvageValue = getVisibleSalvageValue(state, item);
-              return (
-                <ForgeItemRow
-                  key={`salvage-${item.id}`}
-                  item={item}
-                  meta={`${slotLabels[item.slot]} · ${RARITY_LABEL[item.rarity]} · Returns: ${formatResources(salvageValue) || "No materials"}`}
-                  action={
-                    <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.salvageItem(item.id)}>
-                      <Pickaxe size={14} /> Salvage
-                    </SecondaryButton>
-                  }
-                />
-              );
-            })}
-          </div>
-        )}
-      </Card>
+                    </ForgeItemRow>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+          <Card>
+            <h3 className="font-black">Salvage Materials</h3>
+            {state.inventory.length === 0 ? (
+              <p className="mt-2 text-sm font-semibold text-stone-700">No inventory items to salvage.</p>
+            ) : (
+              <div className="mt-3 grid gap-2">
+                {state.inventory.map((item) => {
+                  const salvageValue = getVisibleSalvageValue(state, item);
+                  return (
+                    <ForgeItemRow
+                      key={`salvage-${item.id}`}
+                      item={item}
+                      meta={`${slotLabels[item.slot]} · ${RARITY_LABEL[item.rarity]} · Returns: ${formatResources(salvageValue) || "No materials"}`}
+                      action={
+                        <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.salvageItem(item.id)}>
+                          <Pickaxe size={14} /> Salvage
+                        </SecondaryButton>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -1541,7 +1960,7 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Town Buildings</h2>
-            <p className="text-sm font-semibold text-stone-700">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, dailies, unlocks, or reincarnation.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, dailies, unlocks, or reincarnation.</p>
           </div>
           <Pill className={nextAffordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
             {nextAffordable ? `${nextAffordable.name} ready` : "No upgrade ready"}
@@ -1561,37 +1980,42 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="font-black">{building.name}</h3>
-                    <p className="text-sm font-semibold text-stone-700">{building.purpose}</p>
-                    <p className="mt-1 text-xs font-semibold text-stone-600">{building.description}</p>
+                    <p className="text-xs font-semibold text-stone-700 sm:text-sm">{building.purpose}</p>
                   </div>
                   <Pill className={maxed ? "border-amber-300 bg-amber-100 text-amber-900" : affordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-royal/20 bg-blue-50 text-royal"}>
                     {level}/{building.maxLevel}
                   </Pill>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-stone-200">
-                  <div className="h-full rounded-full bg-royal" style={{ width: `${progress}%` }} />
-                </div>
-                <p className="rounded-md bg-parchment/70 px-3 py-2 text-xs font-bold text-stone-700">{getTownBuildingFeedback(state, building.id)}</p>
-                <div className="grid gap-2 text-xs font-semibold text-stone-700">
-                  <p><span className="font-black text-ink">Current benefit:</span> {building.effectText(level)}</p>
-                  <p><span className="font-black text-ink">Next level:</span> {maxed ? "Maxed" : building.effectText(level + 1)}</p>
-                  <p><span className="font-black text-ink">Upgrade cost:</span> {maxed ? "Maxed" : formatResources(cost)}</p>
-                </div>
-                <div className="grid gap-2">
-                  {building.milestones.map((milestone) => {
-                    const reached = level >= milestone.level;
-                    return (
-                      <div key={`${building.id}-${milestone.level}`} className="flex items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700">
-                        {reached ? <CheckCircle2 size={14} className="text-emerald" /> : <Clock size={14} className="text-stone-500" />}
-                        <span className="shrink-0 text-stone-500">{milestone.level === 0 ? "Base" : `Lv${milestone.level}`}</span>
-                        <span>{milestone.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <p className="text-xs font-semibold text-stone-700">
+                  <span className="font-black text-ink">Upgrade cost:</span> {maxed ? "Maxed" : formatResources(cost)}
+                </p>
                 <PrimaryButton className="w-full" onClick={() => store.buyBuilding(building.id as BuildingId)} disabled={!affordable || maxed}>
                   <Hammer size={16} /> {maxed ? "Maxed" : affordable ? "Upgrade" : "Need Resources"}
                 </PrimaryButton>
+                <details className="rounded-md border border-stone-200 bg-white px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-black uppercase text-stone-600">Details & milestones</summary>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
+                    <div className="h-full rounded-full bg-royal" style={{ width: `${progress}%` }} />
+                  </div>
+                  <p className="mt-2 rounded-md bg-parchment/70 px-3 py-2 text-xs font-bold text-stone-700">{getTownBuildingFeedback(state, building.id)}</p>
+                  <p className="mt-2 text-xs font-semibold text-stone-600">{building.description}</p>
+                  <div className="mt-2 grid gap-2 text-xs font-semibold text-stone-700">
+                    <p><span className="font-black text-ink">Current benefit:</span> {building.effectText(level)}</p>
+                    <p><span className="font-black text-ink">Next level:</span> {maxed ? "Maxed" : building.effectText(level + 1)}</p>
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {building.milestones.map((milestone) => {
+                      const reached = level >= milestone.level;
+                      return (
+                        <div key={`${building.id}-${milestone.level}`} className="flex items-center gap-2 rounded-md border border-stone-200 bg-parchment/60 px-3 py-2 text-xs font-bold text-stone-700">
+                          {reached ? <CheckCircle2 size={14} className="text-emerald" /> : <Clock size={14} className="text-stone-500" />}
+                          <span className="shrink-0 text-stone-500">{milestone.level === 0 ? "Base" : `Lv${milestone.level}`}</span>
+                          <span>{milestone.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
               </div>
             </Card>
           );
@@ -1611,10 +2035,10 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Daily Tasks</h2>
-            <p className="text-sm font-semibold text-stone-700">
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">
               {DAILY_RESET_HOUR_LOCAL}:00 local reset. No streaks, penalties, premium currency, or ads.
             </p>
-            <p className="mt-2 text-sm font-bold text-royal">
+            <p className="mt-2 text-xs font-bold text-royal sm:text-sm">
               Reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
             </p>
           </div>
@@ -1632,7 +2056,7 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <h3 className="font-black">{task.label}</h3>
-                  <p className="text-sm font-semibold text-stone-700">
+                  <p className="text-xs font-semibold text-stone-700 sm:text-sm">
                     Progress: {task.progress}/{task.target}
                   </p>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
@@ -1666,7 +2090,7 @@ function AchievementsScreen({ state }: { state: GameState }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Achievements</h2>
-            <p className="text-sm font-semibold text-stone-700">Track progression milestones across expeditions, loot, town upgrades, and reincarnation cycles.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Track progression milestones across expeditions, loot, town upgrades, and reincarnation cycles.</p>
           </div>
           <Pill className="border-violet-400 bg-violet-50 text-violet-950">
             <Trophy size={13} /> {unlockedCount}/{ACHIEVEMENTS.length}
@@ -1680,28 +2104,26 @@ function AchievementsScreen({ state }: { state: GameState }) {
           <ProgressBar value={completionPercent} className="bg-violet-500" />
         </div>
       </Card>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="space-y-2">
         {ACHIEVEMENTS.map((achievement) => {
           const unlockedAt = state.achievements[achievement.id]?.unlockedAt ?? null;
           const unlocked = unlockedAt !== null;
           return (
-            <Card key={achievement.id} className={unlocked ? "border-emerald/30 bg-emerald-50/70" : ""}>
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-black">{achievement.title}</h3>
-                    <p className="text-sm font-semibold text-stone-700">{achievement.description}</p>
-                  </div>
-                  <Pill className={unlocked ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-50 text-stone-700"}>
-                    {unlocked ? <CheckCircle2 size={13} /> : <Clock size={13} />}
-                    {unlocked ? "Done" : getAchievementProgress(state, achievement.id)}
-                  </Pill>
+            <GameCard key={achievement.id} density="compact" className={unlocked ? "border-emerald/30 bg-emerald-50/70" : ""}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="line-clamp-1 text-sm font-black">{achievement.title}</h3>
+                  <p className="line-clamp-2 text-xs font-semibold text-stone-700 sm:text-sm">{achievement.description}</p>
+                  <p className="mt-1 text-[0.7rem] font-semibold text-stone-600 sm:text-xs">
+                    {unlockedAt ? `Unlocked: ${formatLocalDateTime(unlockedAt)}` : "Not unlocked yet"}
+                  </p>
                 </div>
-                <p className="text-xs font-semibold text-stone-600">
-                  {unlockedAt ? `Unlocked: ${formatLocalDateTime(unlockedAt)}` : "Not unlocked yet"}
-                </p>
+                <Pill className={unlocked ? "shrink-0 border-emerald/30 bg-emerald-100 text-emerald" : "shrink-0 border-stone-200 bg-stone-50 text-stone-700"}>
+                  {unlocked ? <CheckCircle2 size={13} /> : <Clock size={13} />}
+                  {unlocked ? "Done" : getAchievementProgress(state, achievement.id)}
+                </Pill>
               </div>
-            </Card>
+            </GameCard>
           );
         })}
       </div>
@@ -1727,13 +2149,13 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Reincarnation</h2>
-            <p className="text-sm font-semibold text-stone-700">Reset this run for Soul Marks, then buy permanent upgrades that make the next cycle faster.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Reset this run for Soul Marks, then buy permanent upgrades that make the next cycle faster.</p>
           </div>
           <Pill className={ready ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-amber-300 bg-amber-100 text-amber-900"}>
             <Sparkles size={13} /> {ready ? "Ready" : "Preparing"}
           </Pill>
         </div>
-        <div className="mt-3 grid gap-2 text-sm font-semibold text-stone-700 md:grid-cols-2">
+        <div className="mt-3 grid gap-2 text-xs font-semibold text-stone-700 sm:text-sm md:grid-cols-2">
           <p className="flex items-center gap-2">{levelReady ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Level {REINCARNATION_LEVEL_REQUIREMENT}: {state.hero.level}/{REINCARNATION_LEVEL_REQUIREMENT}</p>
           <p className="flex items-center gap-2">{bossClear ? <CheckCircle2 size={16} className="text-emerald" /> : <Clock size={16} className="text-stone-500" />} Region 3 boss: Curator of Blue Fire</p>
         </div>
@@ -1759,7 +2181,7 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
             </p>
           </div>
         </div>
-        <div className="mt-3 grid gap-2 text-sm font-semibold text-stone-700 md:grid-cols-3">
+        <div className="mt-3 grid gap-2 text-xs font-semibold text-stone-700 sm:text-sm md:grid-cols-3">
           <p><span className="font-black text-ink">Currency earned:</span> +{gain} Soul Marks</p>
           <p><span className="font-black text-ink">Current balance:</span> {formatNumber(state.resources.renown)} Soul Marks</p>
           <p><span className="font-black text-ink">Next run:</span> faster timers, rewards, loot, and boss gates</p>
@@ -1826,11 +2248,12 @@ function ReincarnationScreen({ state, store }: { state: GameState; store: GameSt
 function SettingsScreen({ state, store }: { state: GameState; store: GameStore }) {
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
+  const showDebugBalance = process.env.NODE_ENV !== "production";
   return (
     <div className="space-y-4">
       <Card>
         <h2 className="text-lg font-black">Save & Settings</h2>
-        <p className="text-sm font-semibold text-stone-700">Autosave is local. Export/import works with JSON envelopes.</p>
+        <p className="text-xs font-semibold text-stone-700 sm:text-sm">Autosave is local. Export/import works with JSON envelopes.</p>
       </Card>
       <div className="grid gap-3 lg:grid-cols-2">
         <Card>
@@ -1849,20 +2272,24 @@ function SettingsScreen({ state, store }: { state: GameState; store: GameStore }
         </Card>
       </div>
       <Card>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="flex items-center justify-between rounded-lg border border-ink/10 bg-white p-3 text-sm font-bold">
-            Debug balance
-            <input type="checkbox" checked={state.settings.debugBalance} onChange={(event) => store.setDebugBalance(event.target.checked)} />
-          </label>
+        <div className="grid gap-3">
           <label className="flex items-center justify-between rounded-lg border border-ink/10 bg-white p-3 text-sm font-bold">
             Reduced motion
             <input type="checkbox" checked={state.settings.reducedMotion} onChange={(event) => store.setReducedMotion(event.target.checked)} />
           </label>
+          {showDebugBalance ? (
+            <label className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+              Debug balance (dev only)
+              <input type="checkbox" checked={state.settings.debugBalance} onChange={(event) => store.setDebugBalance(event.target.checked)} />
+            </label>
+          ) : (
+            <p className="text-xs font-semibold text-stone-600">Debug balance is hidden in external playtest builds.</p>
+          )}
         </div>
       </Card>
       <Card className="border-red-300 bg-red-50">
         <h3 className="font-black text-red-900">Reset Local Save</h3>
-        <p className="text-sm font-semibold text-red-800">This clears local progress from this browser.</p>
+        <p className="text-xs font-semibold text-red-800 sm:text-sm">This clears local progress from this browser.</p>
         <DangerButton
           className="mt-3"
           onClick={() => {
@@ -1917,7 +2344,7 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         </p>
       </Card>
       <Card>
-        <h3 className="font-black">Rebirth Track</h3>
+        <h3 className="font-black">Reincarnation Track</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">Level {state.hero.level}/{REINCARNATION_LEVEL_REQUIREMENT}</p>
         <div className="mt-2">
           <ProgressBar value={reincarnationLevelProgress} />
@@ -1931,12 +2358,20 @@ export default function Home() {
   const store = useGameStore();
   const now = useNow();
   const [tab, setTab] = useState<TabId>("expeditions");
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => {
     store.hydrate();
   }, [store.hydrate]);
 
   const state = store.state;
+  const onboardingFocused = isOnboardingFocused(state);
+
+  useEffect(() => {
+    if (!mobileSecondaryTabs.includes(tab)) {
+      setMobileMoreOpen(false);
+    }
+  }, [tab]);
 
   if (!store.hydrated) {
     return (
@@ -1980,17 +2415,17 @@ export default function Home() {
       screen = <SettingsScreen state={state} store={store} />;
       break;
     default:
-      screen = <ExpeditionsScreen state={state} now={now} store={store} />;
+      screen = <ExpeditionsScreen state={state} now={now} store={store} onSelectTab={setTab} />;
       break;
   }
 
   return (
     <main className="min-h-screen pb-36 lg:pb-0">
-      <Header state={state} />
+      <Header state={state} onboardingFocused={onboardingFocused} />
       <div className="mx-auto grid min-w-0 max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-4">
-          <OfflineSummaryPanel state={state} store={store} onSelectTab={setTab} />
-          <MessagePanel store={store} />
+          {!onboardingFocused && <OfflineSummaryPanel state={state} store={store} onSelectTab={setTab} hasStackedResult={Boolean(store.lastExpeditionResult)} />}
+          <MessagePanel store={store} suppressNonError={onboardingFocused} />
           <ExpeditionResultPanel state={state} store={store} onSelectTab={setTab} />
           {screen}
         </div>
@@ -1998,18 +2433,54 @@ export default function Home() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-950/10 bg-parchment/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Primary navigation">
+        {mobileMoreOpen && (
+          <div className="mb-1 rounded-xl border border-amber-950/10 bg-white/90 p-1 shadow-card">
+            <div className="grid grid-cols-2 gap-1">
+              {mobileSecondaryTabs.map((id) => {
+                const { label, Icon } = getTabMeta(id);
+                return (
+                  <button
+                    key={id}
+                    className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 text-xs font-black ${tab === id ? "bg-royal text-white" : "text-ink hover:bg-parchment"}`}
+                    aria-current={tab === id ? "page" : undefined}
+                    onClick={() => {
+                      setTab(id);
+                      setMobileMoreOpen(false);
+                    }}
+                  >
+                    <Icon size={15} />
+                    <span className="truncate">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="grid w-full min-w-0 max-w-full grid-cols-5 gap-1 py-2">
-          {tabs.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${tab === id ? "bg-royal text-white shadow-card" : "text-ink hover:bg-white/70"}`}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={17} />
-              <span>{label}</span>
-            </button>
-          ))}
+          {mobilePrimaryTabs.map((id) => {
+            const { label, Icon } = getTabMeta(id);
+            return (
+              <button
+                key={id}
+                className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${tab === id ? "bg-royal text-white shadow-card" : "text-ink hover:bg-white/70"}`}
+                aria-current={tab === id ? "page" : undefined}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={17} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+          <button
+            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${
+              mobileMoreOpen || mobileSecondaryTabs.includes(tab) ? "bg-royal text-white shadow-card" : "text-ink hover:bg-white/70"
+            }`}
+            aria-expanded={mobileMoreOpen}
+            onClick={() => setMobileMoreOpen((open) => !open)}
+          >
+            <MoreHorizontal size={17} />
+            <span>More</span>
+          </button>
         </div>
       </nav>
 

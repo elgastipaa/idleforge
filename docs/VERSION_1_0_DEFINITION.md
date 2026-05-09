@@ -15,10 +15,7 @@ v1.0 is complete when a player can:
 9. Reincarnate and spend permanent progression.
 10. Save/load/export/import/reset locally.
 11. Receive offline summary with capped gains.
-
-Optional if ahead of schedule:
-
-12. View and claim achievements.
+12. View and progress Awards.
 
 Note:
 
@@ -52,6 +49,6 @@ Note:
 ## Implementation Notes (2026-05-07)
 
 - The permanent reincarnation currency is labeled **Soul Marks** in UI and stored internally as `resources.renown`.
-- Achievements are shipped in v1.0 even though they were optional.
+- Awards are shipped in v1.0.
 - Mine passive income is applied automatically during offline calculation (8h cap), without a separate manual "collect mine" button.
 - Overflow loot at inventory cap (`30`) is auto-salvaged (not auto-sold).

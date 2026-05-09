@@ -59,8 +59,8 @@ Behavior:
 
 Latest run: 2026-05-09
 
-- Dev server URL: `http://localhost:3004`
-- Visual QA command: `PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers APP_URL=http://127.0.0.1:3004 npm run ui:visual-qa`
+- Production-like URL: `http://localhost:3020`
+- Visual QA command: `PLAYWRIGHT_BROWSERS_PATH=/tmp/pw-browsers APP_URL=http://127.0.0.1:3020 npm run ui:visual-qa`
 - Report path: `/tmp/relic-forge-visual-qa/report.json`
 - Screenshot directory: `/tmp/relic-forge-visual-qa`
 - Captures: `27` (`9` screens x `3` viewports)

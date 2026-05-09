@@ -132,8 +132,8 @@ Daily selection:
 
 Default v1.0 stance:
 
-- achievements are optional and should be implemented only if core loop delivery is already stable.
-- if implemented, target 12 to 20 achievements with simple boolean unlock logic.
+- Awards are shipped in v1.0.
+- target 12 to 20 Awards with simple boolean unlock logic.
 
 Categories:
 

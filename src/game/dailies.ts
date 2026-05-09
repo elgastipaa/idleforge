@@ -35,8 +35,40 @@ function getTaskSetKey(tasks: DailyTaskState[]): string {
   return tasks.map((task) => task.kind).sort().join("|");
 }
 
-function pickUniqueKinds(seed: string, previousKey: string | null): DailyTaskKind[] {
-  const definitions = DAILY_TASK_POOL.map((task) => task.kind);
+function getEligibleTaskDefinitions(state: GameState): { kind: DailyTaskKind; label: string; target: number }[] {
+  const bossAvailable = DUNGEONS.some((dungeon) => dungeon.boss && isDungeonUnlocked(state, dungeon));
+  const hasAnyItem = state.lifetime.totalItemsFound > 0 || state.inventory.length > 0 || Object.values(state.equipment).some(Boolean);
+  const canCraftSoon = state.hero.level >= 2 || state.lifetime.expeditionsSucceeded > 0 || state.town.forge > 0;
+
+  const filtered = DAILY_TASK_POOL.filter((task) => {
+    switch (task.kind) {
+      case "defeat_boss":
+        return bossAvailable;
+      case "salvage_items":
+      case "sell_items":
+        return hasAnyItem;
+      case "craft_item":
+        return canCraftSoon;
+      default:
+        return true;
+    }
+  });
+
+  if (filtered.length >= DAILY_TASK_COUNT) {
+    return filtered;
+  }
+
+  const byKind = new Map(filtered.map((task) => [task.kind, task]));
+  DAILY_TASK_POOL.forEach((task) => {
+    if (task.kind === "defeat_boss" && !bossAvailable) return;
+    if (!byKind.has(task.kind)) {
+      byKind.set(task.kind, task);
+    }
+  });
+  return [...byKind.values()];
+}
+
+function pickUniqueKinds(seed: string, previousKey: string | null, definitions: DailyTaskKind[]): DailyTaskKind[] {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const rng = createRng(`${seed}:daily:${attempt}`);
     const pool = [...definitions];
@@ -78,7 +110,12 @@ function getBestUnlockedNonBossDungeon(state: GameState) {
 
 function createDailyTasks(state: GameState, now: number, previousKey: string | null): DailyTaskState[] {
   const windowStartAt = getDailyWindowStartAt(now);
-  const kinds = pickUniqueKinds(`${state.seed}:${windowStartAt}`, previousKey);
+  const definitions = getEligibleTaskDefinitions(state);
+  const kinds = pickUniqueKinds(
+    `${state.seed}:${windowStartAt}`,
+    previousKey,
+    definitions.map((definition) => definition.kind)
+  );
   const bestDungeon = getBestUnlockedNonBossDungeon(state);
   const rng = createRng(`${state.seed}:daily-reward:${windowStartAt}`);
 

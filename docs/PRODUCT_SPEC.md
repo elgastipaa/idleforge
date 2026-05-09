@@ -56,9 +56,7 @@ Deliver an infinite-MMORPG feeling without multiplayer by combining:
 - Reincarnation: included.
 - Save, export/import, reset, offline progress summary.
 
-Optional only if ahead of schedule:
-
-- achievements and achievements UI.
+- Awards: included.
 
 ## Locked Numeric Constraints
 
@@ -68,7 +66,7 @@ Optional only if ahead of schedule:
 - Vigor cap: `100`.
 - Vigor regen: `+1` every `5m`.
 - Daily task count: `3`.
-- Daily reset: `23:00` local device time.
+- Daily reset: `23:00 UTC`.
 - No streak punishment in v1.0.
 
 ## Pacing Targets

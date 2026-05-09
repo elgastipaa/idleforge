@@ -30,10 +30,10 @@ import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getRuneGainPass
 import { inventoryHasSpace, maybeGenerateLoot } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
-import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveResult, RewardSummary, StartExpeditionOptions } from "./types";
+import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveExpeditionOptions, ResolveResult, RewardSummary } from "./types";
 import { regenerateVigor } from "./vigor";
 
-export function startExpedition(state: GameState, dungeonId: string, now: number, options: StartExpeditionOptions = {}): ActionResult {
+export function startExpedition(state: GameState, dungeonId: string, now: number): ActionResult {
   const dungeon = DUNGEONS.find((entry) => entry.id === dungeonId);
   if (!dungeon) {
     return { ok: false, state, error: "Unknown dungeon." };
@@ -55,16 +55,6 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
   regenerateVigor(next, now);
   next = ensureDailies(next, now).state;
 
-  const vigorBoostCost = getVigorBoostCost(next);
-  if (options.useVigorBoost && next.vigor.current < vigorBoostCost) {
-    return { ok: false, state: next, error: "Not enough Vigor for a boost." };
-  }
-
-  if (options.useVigorBoost) {
-    next.vigor.current -= vigorBoostCost;
-    next = applyDailyProgress(next, now, { spend_vigor: vigorBoostCost }).state;
-  }
-
   const runId = next.nextRunId;
   next.nextRunId += 1;
   next.activeExpedition = {
@@ -72,7 +62,7 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
     runId,
     startedAt: now,
     endsAt: now + getDurationMs(next, dungeon),
-    vigorBoost: Boolean(options.useVigorBoost)
+    vigorBoost: false
   };
   next.lifetime.expeditionsStarted += 1;
   next.updatedAt = now;
@@ -84,9 +74,9 @@ export function canResolveExpedition(state: GameState, now: number): boolean {
   return Boolean(state.activeExpedition && now >= state.activeExpedition.endsAt);
 }
 
-function calculateRewards(state: GameState, success: boolean, dungeonId: string): RewardSummary {
+function calculateRewards(state: GameState, success: boolean, dungeonId: string, vigorBoostUsed: boolean): RewardSummary {
   const dungeon = getDungeon(dungeonId);
-  const vigorMultiplier = state.activeExpedition?.vigorBoost ? VIGOR_EXPEDITION_BOOST_MULTIPLIER : 1;
+  const vigorMultiplier = vigorBoostUsed ? VIGOR_EXPEDITION_BOOST_MULTIPLIER : 1;
   const baseFailureScale = 0.35;
   const failureScale = clamp(baseFailureScale + getFailureRewardScaleBonus(state) + getFailureRewardAffixBonus(state), baseFailureScale, 0.75);
   const successScale = success ? 1 : failureScale;
@@ -168,7 +158,7 @@ function summarizeItemComparison(state: GameState, item: Item | null): ItemCompa
   };
 }
 
-export function resolveExpedition(state: GameState, now: number): ResolveResult {
+export function resolveExpedition(state: GameState, now: number, options: ResolveExpeditionOptions = {}): ResolveResult {
   let prepared = cloneState(state);
   regenerateVigor(prepared, now);
   prepared = ensureDailies(prepared, now).state;
@@ -182,15 +172,24 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
   }
 
   const active = prepared.activeExpedition;
+  const useVigorBoost = Boolean(options.useVigorBoost);
+  const vigorBoostCost = getVigorBoostCost(prepared);
+  if (useVigorBoost && prepared.vigor.current < vigorBoostCost) {
+    return { ok: false, state: prepared, error: "Not enough Vigor for a boost." };
+  }
   const dungeon = getDungeon(active.dungeonId);
   const rng = createRng(`${prepared.seed}:${active.dungeonId}:${active.runId}`);
   const successChance = getSuccessChance(prepared, dungeon);
   const success = rng.next() <= successChance;
-  const rewards = calculateRewards(prepared, success, active.dungeonId);
+  const rewards = calculateRewards(prepared, success, active.dungeonId, useVigorBoost);
   const bossFirstClear = success && dungeon.boss && (prepared.dungeonClears[dungeon.id] ?? 0) === 0;
   let next = cloneState(prepared);
   let item = null;
   let autoSalvagedItem = null;
+
+  if (useVigorBoost) {
+    next.vigor.current -= vigorBoostCost;
+  }
 
   next.activeExpedition = null;
   next.resources.gold += rewards.gold;
@@ -235,7 +234,8 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
   const dailyProgress = applyDailyProgress(next, now, {
     complete_expeditions: 1,
     win_expeditions: success ? 1 : 0,
-    defeat_boss: success && dungeon.boss ? 1 : 0
+    defeat_boss: success && dungeon.boss ? 1 : 0,
+    spend_vigor: useVigorBoost ? vigorBoostCost : 0
   });
   next = dailyProgress.state;
   const achievementResult = refreshAchievements(next, now);
@@ -257,7 +257,7 @@ export function resolveExpedition(state: GameState, now: number): ResolveResult 
       item,
       autoSalvagedItem,
       itemComparison: summarizeItemComparison(prepared, item),
-      vigorBoostUsed: active.vigorBoost,
+      vigorBoostUsed: useVigorBoost,
       levelUps,
       bossClear: success && dungeon.boss,
       bossFirstClear,

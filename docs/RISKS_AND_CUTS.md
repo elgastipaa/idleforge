@@ -33,7 +33,7 @@ Risk 7: Cross-doc mismatch on reincarnation gate.
 ## Mandatory Locks
 
 - Inventory is 30 for MVP.
-- Dailies reset at 23:00 local device time.
+- Dailies reset at 23:00 UTC.
 - Vigor is free-only in MVP.
 
 ## Cut Ladder (If Schedule Slips)
@@ -41,8 +41,8 @@ Risk 7: Cross-doc mismatch on reincarnation gate.
 1. Remove login bonus layer, keep dailies only.
 2. Simplify reward summary flavor text.
 3. Simplify forge preview UI (not mechanics).
-4. Reduce achievement set size if needed.
-5. Remove achievements entirely from MVP if schedule is tight.
+4. Reduce Awards UI detail if needed.
+5. Keep Awards unlock tracking; cut only non-critical polish.
 
 Do not cut:
 

@@ -1,6 +1,6 @@
 /goal Refine and restructure Relic Forge Idle planning docs to the hero-first 2.0 direction.
 
-This file supersedes prior guild-manager planning direction.
+Historical planning snapshot. Canonical planning source is `docs/`.
 
 ## Phase Boundary
 
@@ -40,7 +40,7 @@ Player fantasy:
 - Class passives: included in MVP.
 - Pet: post-MVP.
 - Inventory limit: `30`.
-- Daily reset: `23:00 UTC` (same as `20:00 GMT-3`).
+- Daily reset: `23:00 UTC`.
 - Daily tasks: exactly `3` active tasks per day.
 - No daily streak punishment in v1.0.
 

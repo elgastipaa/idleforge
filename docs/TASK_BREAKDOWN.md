@@ -482,15 +482,15 @@ Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M11-T02
-Title: Daily reset scheduler (23:00 local time)
+Title: Daily reset scheduler (23:00 UTC)
 Goal: Reset dailies on fixed schedule with clock-safe logic.
 Files likely to be created or edited: `src/game/dailies.ts`, `src/game/offline.ts`
 Exact implementation steps:
-1. Implement deterministic reset boundary at 23:00 local device time.
+1. Implement deterministic reset boundary at 23:00 UTC.
 2. Regenerate tasks on boundary crossing.
 3. Ensure no streak logic exists.
 Acceptance criteria:
-- Reset behavior is stable across time zone/local time.
+- Reset behavior is stable with UTC-based boundary checks.
 Required tests:
 - Boundary-crossing reset tests.
 Dependencies: M11-T01  
@@ -627,11 +627,11 @@ Can be cut if needed: no
 
 ---
 
-## Milestone 14 - Achievements
+## Milestone 14 - Awards
 
 ### Task ID: M14-T01
-Title: Achievement event model (optional)  
-Goal: Implement minimal achievement unlock tracking if schedule allows.  
+Title: Awards event model  
+Goal: Implement deterministic Awards unlock tracking.  
 Files likely to be created or edited: `src/game/achievements.ts`, `src/game/types.ts`, `src/game/content.ts`  
 Exact implementation steps:
 1. Define compact achievement list (12-20).
@@ -643,11 +643,11 @@ Required tests:
 - Basic unlock tests.
 Dependencies: M05-T03, M09-T01, M13-T02  
 Complexity: S  
-Required for v1.0: no  
-Can be cut if needed: yes
+Required for v1.0: yes  
+Can be cut if needed: no
 
 ### Task ID: M14-T02
-Title: Achievement UI data adapter (optional)  
+Title: Awards UI data adapter  
 Goal: Provide simple claim-free display list for UI.  
 Files likely to be created or edited: `src/game/selectors.ts`, `src/store/useGameStore.ts`, `src/app/page.tsx`  
 Exact implementation steps:
@@ -660,8 +660,8 @@ Required tests:
 - Selector shape tests.
 Dependencies: M14-T01  
 Complexity: XS  
-Required for v1.0: no  
-Can be cut if needed: yes
+Required for v1.0: yes  
+Can be cut if needed: no
 
 ---
 
@@ -899,6 +899,21 @@ Dependencies: M17-T02, M18-T01, M18-T02
 Complexity: XS  
 Required for v1.0: yes  
 Can be cut if needed: no
+
+---
+
+## RC Hardening Follow-Ups (2026-05-09)
+
+These are post-hardening items identified during release-candidate validation. They are intentionally scoped as safe follow-ups, not broad rewrites.
+
+1. Typecheck pipeline robustness:
+   `npm run typecheck` currently depends on `.next/types` being present; in clean/stale states it can fail before `build`.
+2. Startup mode consistency:
+   local `next start` warns about standalone mode; document/standardize production-like startup command path for CI and local release checks.
+3. Deterministic daily-claim smoke case:
+   add a dedicated seeded scenario where at least one daily is guaranteed claimable for automated smoke reporting.
+4. Optional performance follow-up:
+   evaluate reducing top-level re-render churn from the global 1-second `useNow()` tick if playtest feedback reports UI jank on low-end devices.
 
 ---
 

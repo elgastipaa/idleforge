@@ -35,7 +35,7 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
   - Forge, Mine, Tavern, Market, Library, Shrine
 - Dailies:
   - exactly 3
-  - reset 23:00 local device time
+  - reset 23:00 UTC
   - no streak punishments
 - Vigor:
   - cap 100
@@ -44,11 +44,8 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
 - Reincarnation loop.
 - Offline summary and capped gains.
 - Save/export/import/reset.
+- Awards system and Awards UI.
 - Mobile-first responsive UI.
-
-Optional only if ahead of schedule:
-
-- Achievement system and achievement UI.
 
 ## Out Of Scope (Must Not Ship In MVP)
 
@@ -85,7 +82,7 @@ Optional only if ahead of schedule:
 1. Remove log-in reward extra layer, keep dailies only.
 2. Remove advanced item compare UI, keep basic stat delta.
 3. Remove optional flavor combat lines.
-4. Remove achievements entirely from v1.0.
+4. Reduce Awards UI depth if needed (keep unlock tracking).
 5. Reduce forge upgrade UI complexity but keep upgrade mechanics.
 6. Keep all must-ship systems intact.
 

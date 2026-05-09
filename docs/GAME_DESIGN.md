@@ -155,7 +155,7 @@ Each has level-based scaling cost and direct gameplay impact.
 ## Dailies System
 
 - Exactly 3 active daily tasks.
-- Reset at 23:00 local device time.
+- Reset at 23:00 UTC.
 - No streak penalties.
 - Rewards focus on gold, materials, vigor, and small chest value.
 

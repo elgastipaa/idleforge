@@ -122,14 +122,17 @@ describe("expeditions, vigor, and loot", () => {
     expect(first.summary.unlockedDungeons.map((dungeon) => dungeon.id)).toContain("mossbright-cellar");
   });
 
-  it("spends vigor on boosted starts and applies bounds for success chance", () => {
+  it("spends vigor on boosted claims and applies bounds for success chance", () => {
     const initial = makeReadyState("vigor");
     initial.vigor.current = 100;
-    const boosted = startExpedition(initial, "tollroad-of-trinkets", NOW, { useVigorBoost: true });
+    const boosted = startExpedition(initial, "tollroad-of-trinkets", NOW);
     expect(boosted.ok).toBe(true);
     if (!boosted.ok) throw new Error("boosted start failed");
-    expect(boosted.state.vigor.current).toBe(100 - VIGOR_EXPEDITION_BOOST_COST);
-    expect(boosted.state.activeExpedition?.vigorBoost).toBe(true);
+    const boostedResolved = resolveExpedition(boosted.state, NOW + 60_000, { useVigorBoost: true });
+    expect(boostedResolved.ok).toBe(true);
+    if (!boostedResolved.ok) throw new Error("boosted resolve failed");
+    expect(boostedResolved.state.vigor.current).toBe(100 - VIGOR_EXPEDITION_BOOST_COST);
+    expect(boostedResolved.summary.vigorBoostUsed).toBe(true);
 
     const easy = getSuccessChance(initial, DUNGEONS[0]);
     const hard = getSuccessChance(initial, DUNGEONS[DUNGEONS.length - 1]);
@@ -150,14 +153,14 @@ describe("expeditions, vigor, and loot", () => {
     const normalState = makeReadyState("vigor-reward");
     const boostedState = makeReadyState("vigor-reward");
     boostedState.vigor.current = 100;
-    const normalStarted = startExpedition(normalState, "tollroad-of-trinkets", NOW, { useVigorBoost: false });
-    const boostedStarted = startExpedition(boostedState, "tollroad-of-trinkets", NOW, { useVigorBoost: true });
+    const normalStarted = startExpedition(normalState, "tollroad-of-trinkets", NOW);
+    const boostedStarted = startExpedition(boostedState, "tollroad-of-trinkets", NOW);
     expect(normalStarted.ok).toBe(true);
     expect(boostedStarted.ok).toBe(true);
     if (!normalStarted.ok || !boostedStarted.ok) throw new Error("start failed");
 
     const normalResolved = resolveExpedition(normalStarted.state, NOW + 60_000);
-    const boostedResolved = resolveExpedition(boostedStarted.state, NOW + 60_000);
+    const boostedResolved = resolveExpedition(boostedStarted.state, NOW + 60_000, { useVigorBoost: true });
     expect(normalResolved.ok).toBe(true);
     expect(boostedResolved.ok).toBe(true);
     if (!normalResolved.ok || !boostedResolved.ok) throw new Error("resolve failed");

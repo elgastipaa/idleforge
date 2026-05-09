@@ -2,6 +2,13 @@
 
 Este es el primer documento que toda IA debe leer antes de tocar el proyecto.
 
+## Fuente de verdad canónica
+
+- La fuente de verdad de planificación está en `docs/`.
+- El flujo primario de trabajo es la serie `docs/00..07`.
+- Si un archivo de raíz del repo (por ejemplo `2_0_definition.md`) contradice `docs/`, prevalece `docs/`.
+- Los archivos de raíz se tratan como contexto histórico, no como fuente canónica.
+
 ## Orden obligatorio de lectura
 
 1. `docs/00_README_AI.md`
@@ -25,7 +32,7 @@ Este es el primer documento que toda IA debe leer antes de tocar el proyecto.
 
 - Lógica determinística del juego: `src/game/*`.
 - Orquestación de estado e hidratación/persistencia: `src/store/useGameStore.ts`.
-- Presentación UI: `src/app/page.tsx`.
+- Presentación UI: `src/app/game-view.tsx` (usado por `src/app/page.tsx`).
 - Si agregás una feature, primero extendé tipos y lógica en `src/game`, después store, y recién al final UI.
 
 ## Reglas para no romper arquitectura ni duplicar sistemas

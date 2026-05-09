@@ -26,6 +26,7 @@ import {
   type GameState,
   type HeroClassId,
   type OfflineDeltaSummary,
+  type ResolveExpeditionOptions,
   type RenownUpgradeId,
   type ResolveSummary
 } from "@/game";
@@ -38,8 +39,8 @@ export type GameStore = {
   lastExpeditionResult: ResolveSummary | null;
   lastOfflineSummary: OfflineDeltaSummary | null;
   hydrate: () => void;
-  startExpedition: (dungeonId: string, useVigorBoost?: boolean) => void;
-  claimExpedition: () => void;
+  startExpedition: (dungeonId: string) => void;
+  claimExpedition: (options?: ResolveExpeditionOptions) => void;
   createHero: (name: string, classId: HeroClassId) => void;
   equipItem: (itemId: string) => void;
   sellItem: (itemId: string) => void;
@@ -58,8 +59,11 @@ export type GameStore = {
   exportSave: () => string;
   importSaveRaw: (raw: string) => void;
   resetSave: () => void;
-  clearMessage: () => void;
+  clearNotice: () => void;
+  dismissExpeditionResult: () => void;
 };
+
+const DEBUG_BALANCE_ALLOWED = process.env.NODE_ENV !== "production";
 
 function makeSeed(now: number): string {
   return `guild-${now.toString(36)}`;
@@ -116,7 +120,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     const offline = applyOfflineProgress(loaded.state, now);
-    persist(offline.state);
+    let hydratedState = offline.state;
+    if (!DEBUG_BALANCE_ALLOWED && (hydratedState.settings.debugBalance || hydratedState.mode === "debug")) {
+      hydratedState = structuredClone(hydratedState) as GameState;
+      hydratedState.settings.debugBalance = false;
+      hydratedState.mode = "standard";
+      hydratedState.updatedAt = now;
+    }
+    persist(hydratedState);
     const summaryText = offline.summary
       ? [
           offline.summary.expedition ? `Expedition ${offline.summary.expedition.dungeon.name} resolved.` : null,
@@ -128,7 +139,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           .join(" ")
       : "Welcome back.";
     set({
-      state: offline.state,
+      state: hydratedState,
       hydrated: true,
       error: null,
       lastMessage: `${summaryText}${offline.capped ? " Offline gains were capped at 8 hours." : ""}`,
@@ -149,8 +160,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state, error: null, lastMessage: "Hero created. Your first expedition is ready.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
-  startExpedition: (dungeonId, useVigorBoost = false) => {
-    const result = startExpedition(get().state, dungeonId, Date.now(), { useVigorBoost });
+  startExpedition: (dungeonId) => {
+    const result = startExpedition(get().state, dungeonId, Date.now());
     if (!result.ok) {
       set({ error: result.error });
       return;
@@ -159,8 +170,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state: result.state, error: null, lastMessage: result.message ?? "Expedition started.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
-  claimExpedition: () => {
-    const result = resolveExpedition(get().state, Date.now());
+  claimExpedition: (options = {}) => {
+    const result = resolveExpedition(get().state, Date.now(), options);
     if (!result.ok) {
       set({ error: result.error });
       return;
@@ -272,7 +283,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
     persist(result.state);
-    set({ state: result.state, error: null, lastMessage: result.message ?? "Renown upgraded." });
+    set({ state: result.state, error: null, lastMessage: result.message ?? "Soul Mark upgrade purchased." });
   },
 
   changeClass: (classId) => {
@@ -282,6 +293,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setDebugBalance: (enabled) => {
+    if (!DEBUG_BALANCE_ALLOWED) {
+      set({ error: null, lastMessage: "Debug balance is disabled in playtest builds." });
+      return;
+    }
     const state = structuredClone(get().state) as GameState;
     state.settings.debugBalance = enabled;
     state.mode = enabled ? "debug" : "standard";
@@ -328,5 +343,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state, error: null, lastMessage: "Local save reset.", lastExpeditionResult: null, lastOfflineSummary: null });
   },
 
-  clearMessage: () => set({ error: null, lastMessage: null, lastExpeditionResult: null })
+  clearNotice: () => set({ error: null, lastMessage: null }),
+
+  dismissExpeditionResult: () => set({ lastExpeditionResult: null })
 }));

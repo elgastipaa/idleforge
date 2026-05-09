@@ -30,8 +30,10 @@
   - Forge, Mine, Tavern, Market, Library, Shrine
 - Dailies:
   - exactly 3 active tasks/day
-  - reset at 23:00 local device time
+  - reset at 23:00 UTC
   - no streak punishment
+- Awards:
+  - unlock tracking and UI included in v1.0
 - Vigor:
   - cap 100
   - regen +1 every 5m
@@ -50,10 +52,6 @@
   - capped to 8h
 - Mobile-first UI with dedicated screens:
   - Character Start, Expeditions, Hero, Inventory, Forge, Town, Dailies, Reincarnation, Save/Settings
-
-Optional only if time remains:
-
-- achievements.
 
 ## 2. Explicit Non-Goals
 
@@ -112,7 +110,7 @@ Milestone 7: UI delivery
 Milestone 8: Hardening
 
 - Balance tuning for 5-10m major unlock and 30-60m first reincarnation.
-- Optional achievements only if all release gates are already green.
+- Awards UI polish only if all release gates are already green.
 
 ## 5. Test Plan
 
@@ -125,7 +123,7 @@ Unit tests (`src/game`):
 - inventory cap and overflow behavior
 - forge craft/upgrade transitions
 - town upgrade cost/effect checks
-- daily generation (3 unique tasks/day) and reset at 23:00 local device time
+- daily generation (3 unique tasks/day) and reset at 23:00 UTC
 - no streak penalty logic
 - vigor spend/regeneration/cap checks
 - offline combined cap checks (expedition + mine + vigor, 8h)
@@ -175,7 +173,7 @@ Build gates:
 1. Remove log-in bonus layer, keep dailies only.
 2. Reduce forge preview detail (keep mechanics).
 3. Simplify reward modal flavor text.
-4. Remove optional achievements completely.
+4. Reduce Awards UI polish only.
 5. Simplify desktop side panel and keep mobile-first baseline.
 
 Never cut:

@@ -460,7 +460,7 @@ relicFragment = floor(max(0,mine-8)*0.15*hours)
 Reglas:
 
 - 3 tareas únicas por día.
-- reset 23:00 hora local del dispositivo.
+- reset 23:00 UTC.
 - intenta no repetir set exacto del día anterior.
 - no hay streaks, castigos por no entrar, pagos, premium currency, ads ni battle pass.
 
@@ -542,7 +542,7 @@ Tope:
 Tradeoff de UI:
 
 - Resetea: nivel/XP/base stats, gold/materiales, inventario/equipment, town, dungeon clears, expedición activa y dailies; vigor vuelve a `40`.
-- Persiste: Soul Marks, upgrades permanentes, hero name/class, settings, achievements, lifetime stats, total reincarnations y total Soul Marks earned.
+- Persiste: Soul Marks, upgrades permanentes, hero name/class, settings, Awards, lifetime stats, total reincarnations y total Soul Marks earned.
 
 ---
 

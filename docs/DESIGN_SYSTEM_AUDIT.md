@@ -58,7 +58,7 @@ Still intentionally not extracted:
 - Region/boss cards: medium cards with boss border emphasis remain appropriate.
 - Daily quest cards: medium card today; can move to compact if density becomes an issue.
 - Reincarnation panels: feature-level screen cards remain appropriate.
-- Achievements: data exists in game state, but there is no full achievements screen yet.
+- Awards: data exists in game state and is integrated in current UI; deeper expansion can remain optional.
 - Settings/export/import/reset: medium `GameCard` plus shared buttons/inputs.
 - Empty states: owned by `EmptyState`.
 - Disabled states: centralized through `ActionButton` wrappers and dark-mode CSS overrides.

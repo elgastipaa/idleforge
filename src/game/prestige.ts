@@ -109,5 +109,5 @@ export function buyRenownUpgrade(state: GameState, upgradeId: RenownUpgradeId, n
   next.resources.renown -= cost;
   next.prestige.upgrades[upgradeId] += 1;
   next.updatedAt = now;
-  return { ok: true, state: next, message: "Renown upgrade purchased." };
+  return { ok: true, state: next, message: "Soul Mark upgrade purchased." };
 }

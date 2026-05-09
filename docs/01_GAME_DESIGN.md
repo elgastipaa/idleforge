@@ -13,7 +13,7 @@ Jugador controla **un solo héroe** en un RPG idle de expediciones:
 
 ## Referencias de diseño presentes en el proyecto
 
-No hay referencias en código, pero sí en documentación existente (`docs/PRODUCT_SPEC.md`, `2_0_definition.md` histórico):
+No hay referencias en código, pero sí en documentación existente (`docs/PRODUCT_SPEC.md` y serie `docs/00..07`):
 
 - idle RPG timer-based,
 - loot-driven progression,
@@ -42,7 +42,7 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
 - Resolución determinística con seed.
 - Resultado visible post-claim con momentos destacados:
   primera arma garantizada, rare+ drops, boss loot, level-ups, first boss clear y desbloqueos de dungeon/región.
-- Resultado post-claim compacto con una línea de rewards, chips de momentos importantes, aviso de Vigor x2, level-up destacado, achievements agrupados y rareza visible de loot.
+- Resultado post-claim compacto con una línea de rewards, chips de momentos importantes, aviso de Vigor x2, level-up destacado, Awards agrupados y rareza visible de loot.
 - Siguiente acción contextual después del claim:
   equipar item mejor, intentar siguiente dungeon/boss, abrir dailies, Forge o Town.
 - Feedback global de acciones:
@@ -68,7 +68,7 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   - feedback de estado y upgrade.
 - Dailies:
   - 3 tareas diarias,
-  - reset 23:00 hora local del dispositivo,
+  - reset 23:00 UTC,
   - claim único,
   - sin streak penalties, ads, premium currency ni battle pass.
 - Vigor:
@@ -102,7 +102,7 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   - autosave localStorage,
   - export/import JSON,
   - validación de envelope.
-- Achievements con unlock automático.
+- Awards con unlock automático.
 
 ## Sistemas parcialmente implementados
 
@@ -111,7 +111,7 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   - Parte del código/tipos todavía usa nombres “prestige/renown”.
   - Funcionalmente opera, pero hay inconsistencia de naming.
 - `lastOfflineSummary` existe en store pero no se renderiza en UI actual.
-- Achievements existen en estado y motor (`src/game/achievements.ts`), pero no hay pantalla/panel dedicado en la UI.
+- Awards existen en estado y motor (`src/game/achievements.ts`) y su estado se muestra en la UI.
 
 ## Sistemas planeados (sólo porque aparecen explícitos en docs existentes)
 

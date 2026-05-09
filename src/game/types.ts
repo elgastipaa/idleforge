@@ -312,6 +312,10 @@ export type ActionResult<T = GameState> =
   | { ok: true; state: T; message?: string }
   | { ok: false; state: GameState; error: string };
 
+export type ResolveExpeditionOptions = {
+  useVigorBoost?: boolean;
+};
+
 export type ResolveResult =
   | { ok: true; state: GameState; summary: ResolveSummary }
   | { ok: false; state: GameState; error: string };
@@ -324,6 +328,4 @@ export type ImportResult =
   | { ok: true; state: GameState; message: string }
   | { ok: false; error: string };
 
-export type StartExpeditionOptions = {
-  useVigorBoost?: boolean;
-};
+export type StartExpeditionOptions = Record<string, never>;

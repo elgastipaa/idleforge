@@ -44,7 +44,7 @@ Day 7:
 - Balance tuning.
 - Test hardening.
 - Release checklist pass.
-- Optional achievements only if all release gates are already green.
+- Awards UI polish only if all release gates are already green.
 
 ## Critical Path
 

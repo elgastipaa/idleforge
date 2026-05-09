@@ -1,5 +1,81 @@
 # Decisions Log
 
+## 2026-05-09
+
+### Decision: Canonical source reaffirmed as `docs/` with `00..07` workflow primary
+Descripción:
+Se reafirma que la fuente canónica es `docs/` y el flujo primario operativo es la serie `docs/00..07`.
+Motivo:
+Evitar divergencia entre índices alternativos y documentos históricos en raíz.
+Impacto:
+`docs/README.md` se elimina y los archivos de raíz (como `2_0_definition.md`) pasan a tratarse como contexto histórico no canónico.
+Archivos relacionados:
+- `docs/00_README_AI.md`
+- `docs/07_CHANGELOG.md`
+- `2_0_definition.md`
+
+### Decision: Reset diario canónico fijado en `23:00 UTC`
+Descripción:
+La regla canónica de reset diario se fija en `23:00 UTC` para todas las docs de planificación.
+Motivo:
+Eliminar ambigüedad entre referencias previas de hora local vs UTC.
+Impacto:
+Specs, scope, arquitectura, testing y planes de implementación usan `23:00 UTC` como referencia única.
+Archivos relacionados:
+- `docs/PRODUCT_SPEC.md`
+- `docs/MVP_SCOPE.md`
+- `docs/GAME_DESIGN.md`
+- `docs/TECHNICAL_ARCHITECTURE.md`
+- `docs/TESTING_PLAN.md`
+
+### Decision: Awards se consideran shipped en v1.0
+Descripción:
+Se consolida la postura de que Awards ya forman parte de v1.0.
+Motivo:
+Alinear documentación con el estado actual del producto.
+Impacto:
+Se eliminan referencias a Awards como opcionales y los cut lists sólo permiten recortar polish visual, no remover tracking/unlocks.
+Archivos relacionados:
+- `docs/VERSION_1_0_DEFINITION.md`
+- `docs/PRODUCT_SPEC.md`
+- `docs/MVP_SCOPE.md`
+- `docs/FINAL_IMPLEMENTATION_PLAN.md`
+- `docs/CONTENT_PLAN.md`
+
+### Decision: Vigor boost integrado al momento de claim (no en start)
+Descripción:
+El boost de Vigor se mueve al momento de reclamar la expedición (`Claim x2 · Vig -cost`) y se elimina el control separado en el board.
+Motivo:
+Reducir ruido en el loop principal y concentrar la decisión de riesgo/costo/recompensa en una sola superficie de acción.
+Impacto:
+`startExpedition` deja de gastar Vigor; `resolveExpedition` aplica boost opcional y consume Vigor en claim. La UI de expediciones elimina el toggle independiente.
+Archivos relacionados:
+- `src/game/engine.ts`
+- `src/game/types.ts`
+- `src/store/useGameStore.ts`
+- `src/app/game-view.tsx`
+
+### Decision: Forge segmentado por modos (`Craft` / `Upgrade` / `Advanced`)
+Descripción:
+La pantalla Forge adopta un selector segmentado persistente para mostrar una sola superficie principal por vez.
+Motivo:
+Bajar densidad visual y mejorar escaneabilidad sin recortar funcionalidad.
+Impacto:
+Se reemplaza el patrón de `show/hide advanced` por navegación explícita por modo en la misma pantalla.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+
+### Decision: Town en modo compacto por defecto con detalles on-demand
+Descripción:
+Las tarjetas de edificios muestran por defecto propósito, nivel, costo y CTA; detalles/milestones quedan colapsados y expandibles.
+Motivo:
+Reducir fatiga de lectura en pantallas densas y mantener la información profunda disponible sin navegación adicional.
+Impacto:
+Menor altura inicial de cards en Town y mejor foco en la acción de upgrade.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `docs/mobile_ux_audit.md`
+
 ## 2026-05-07
 
 ### Decision: Inicializar documentación viva desde estado real del repo
@@ -244,3 +320,39 @@ Archivos relacionados:
 - `docs/BALANCE_PLAN.md`
 - `docs/04_CONSTANTS_AND_BALANCE.md`
 - `docs/06_TASKS.md`
+
+### Decision: Definir MVP 2.0 como expansión de retención sin backend
+Descripción:
+Se define una hoja de ruta de MVP 2.0/2.1 priorizando retención 3-7 días, objetivos de mediano plazo y variedad de build usando sistemas existentes (expeditions/forge/inventory/reincarnation), sin abrir infraestructura online.
+Motivo:
+El mayor riesgo actual no es falta de features base, sino falta de objetivos intermedios y retorno diario/semanal más fuerte. Agregar backend/social/PvP ahora elevaría riesgo y tiempo de entrega.
+Impacto:
+El paquete recomendado para MVP 2.0 queda limitado a cinco mejoras mayores:
+- weekly contracts,
+- dungeon mastery + boss milestones,
+- forge orders,
+- build presets + inventory QoL,
+- reincarnation milestone track.
+Todo backend/accounts/cloud save/PvP/guilds/trading/monetización runtime queda explícitamente fuera de MVP 2.0.
+Archivos relacionados:
+- `docs/MVP_2_ROADMAP.md`
+- `docs/06_TASKS.md`
+- `docs/07_CHANGELOG.md`
+
+### Decision: Re-iterar roadmap MVP 2.0 con scoring cuantitativo y red-team
+Descripción:
+Se rehace `docs/MVP_2_ROADMAP.md` con un proceso explícito por pases: crítica, análisis de retención por ventana temporal, scoring de features (20+), selección de scope, comparación de paquetes, plan de implementación por hitos y red-team final.
+Motivo:
+La primera versión del roadmap podía quedar demasiado amplia en algunas partes y no suficientemente rigurosa para ejecución directa sin follow-ups.
+Impacto:
+Se fija un paquete final de MVP 2.0 de 5 mejoras mayores y se agrega `docs/MVP_2_DECISION_SUMMARY.md` como fuente compacta de decisiones y prompt de implementación.
+Alcance explícitamente excluido:
+- backend/accounts/cloud save,
+- social/PvP/trading/auction,
+- expansión de clases/regiones,
+- item sets y sistemas de alto riesgo de balance.
+Archivos relacionados:
+- `docs/MVP_2_ROADMAP.md`
+- `docs/MVP_2_DECISION_SUMMARY.md`
+- `docs/06_TASKS.md`
+- `docs/07_CHANGELOG.md`

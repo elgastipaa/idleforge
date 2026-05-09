@@ -1,5 +1,71 @@
 # Changelog
 
+## 2026-05-09 (UX Cohesion Audit - Phase 2 Implementation)
+
+### Changed
+- Moved Vigor boost to expedition claim time:
+  - active expedition now offers `Claim Expedition` and `Claim x2 · Vig -cost`,
+  - standalone Vigor boost toggle/control was removed from Expedition Board.
+- Updated engine/store wiring so Vigor boost is consumed on claim (`resolveExpedition`) instead of start (`startExpedition`).
+- Reworked Forge into segmented modes (`Craft` / `Upgrade` / `Advanced`) with one main mode surface visible at a time.
+- Compacted Town building cards:
+  - default card now prioritizes purpose, level, cost, and CTA,
+  - deeper feedback/milestones remain available in collapsed details panels.
+- Updated tests for the claim-time Vigor boost flow.
+
+### Documentation
+- Updated `docs/mobile_ux_audit.md` status to mark Phase 1 + Phase 2 as implemented and Phase 3 as pending.
+- Updated `docs/05_DECISIONS_LOG.md` with Phase 2 conceptual decisions.
+- Updated `docs/06_TASKS.md` to reflect completed Phase 2 work and new active focus on Phase 3.
+
+## 2026-05-09 (Docs Consistency Canonicalization)
+
+### Changed
+- Set canonical daily reset wording to `23:00 UTC` across planning docs.
+- Reaffirmed `docs/` as canonical source and `docs/00..07` as primary workflow.
+- Removed `docs/README.md` to avoid competing source-of-truth indexes.
+- Clarified that root-level planning files (for example `2_0_definition.md`) are historical context only.
+- Updated v1.0 documentation to treat Awards as shipped (not optional).
+
+### Notes
+- Documentation-only update.
+- No gameplay logic, save schema, runtime behavior, or dependencies changed.
+
+## 2026-05-09 (MVP 2 Roadmap Re-Iteration Deep Pass)
+
+### Added
+- Added `docs/MVP_2_DECISION_SUMMARY.md` with:
+  - final MVP 2.0 scope,
+  - top 5 build and top 5 avoid lists,
+  - 3/7/14-day versions,
+  - first implementation prompt for coding phase.
+
+### Changed
+- Rewrote `docs/MVP_2_ROADMAP.md` as a stricter multi-pass strategy document:
+  - PASS 1 critique of prior roadmap quality and scope risk,
+  - PASS 2 retention analysis by player timeframe (5m/15m/1h/1d/1w),
+  - PASS 3 scored feature matrix (20+ candidates) with bang-for-buck method,
+  - PASS 4 constrained MVP 2.0 selection (max 5 major improvements),
+  - PASS 5 competing package comparison (Retention-first vs Loot/Buildcraft-first vs Content/Progression-first),
+  - PASS 6 milestone-level implementation plan with cut lines,
+  - PASS 7 red-team self-critique and revised recommendation.
+
+### Notes
+- Planning/docs-only update.
+- No gameplay logic, formulas, save schema, UI runtime behavior, or dependencies changed.
+
+## 2026-05-09 (MVP 2 Roadmap Planning)
+
+### Added
+- Added `docs/MVP_2_ROADMAP.md`:
+  - 15-section MVP 2.0/2.1 roadmap focused on retention, build variety, long-term goals, and monetization readiness without backend.
+  - Ranked feature matrix with complexity/risk/dependencies/backend requirements and phased recommendations (`MVP 2.0`, `2.1`, `3.0`, `Cut`).
+  - Explicit 3-day / 7-day / 14-day delivery options and milestone-level acceptance + testing expectations.
+
+### Notes
+- Planning/docs-only update.
+- No gameplay logic, formulas, save schema, or UI runtime behavior changed.
+
 ## 2026-05-07
 
 ### Added

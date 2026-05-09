@@ -59,6 +59,10 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--surface-app-bg);
   color: var(--text-primary);
