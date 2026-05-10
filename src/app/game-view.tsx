@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useGameStore } from "@/store/useGameStore";
 import type { GameStore } from "@/store/useGameStore";
+import { useIsClient } from "@/hooks/useIsClient";
 import {
   ACHIEVEMENTS,
   BUILDINGS,
@@ -282,7 +283,7 @@ function getVisibleSalvageValue(state: GameState, item: Item): Partial<ResourceS
   };
 }
 
-function formatCompactRewards(summary: ResolveSummary): string {
+function getCompactRewardParts(summary: ResolveSummary): string[] {
   const parts = [`XP +${formatNumber(summary.rewards.xp)}`, `Gold +${formatNumber(summary.rewards.gold)}`];
   (["ore", "crystal", "rune", "relicFragment"] as const).forEach((resource) => {
     const value = summary.rewards.materials[resource] ?? 0;
@@ -290,7 +291,7 @@ function formatCompactRewards(summary: ResolveSummary): string {
       parts.push(`${resourceLabels[resource]} +${formatNumber(value)}`);
     }
   });
-  return parts.join(" · ");
+  return parts;
 }
 
 function rarityClass(rarity: ItemRarity): string {
@@ -431,7 +432,7 @@ function SegmentedControl({
         <button
           key={option.id}
           type="button"
-          className={`min-h-9 rounded-md px-2 text-xs font-black ${value === option.id ? "bg-royal text-white shadow-card" : "text-stone-700 hover:bg-parchment"}`}
+          className={`ui-hover-surface min-h-9 rounded-md px-2 text-xs font-black transition ${value === option.id ? "bg-royal text-white shadow-card" : "text-stone-700"}`}
           onClick={() => onChange(option.id)}
           aria-current={value === option.id ? "page" : undefined}
         >
@@ -455,9 +456,9 @@ function SwipeSubviewDeck({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const panelRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const scrollEndTimerRef = useRef<number | null>(null);
+  const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticScrollRef = useRef(false);
-  const releaseProgrammaticScrollRef = useRef<number | null>(null);
+  const releaseProgrammaticScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -473,9 +474,9 @@ function SwipeSubviewDeck({
       behavior: reducedMotion ? "auto" : "smooth"
     });
     if (releaseProgrammaticScrollRef.current !== null) {
-      window.clearTimeout(releaseProgrammaticScrollRef.current);
+      clearTimeout(releaseProgrammaticScrollRef.current);
     }
-    releaseProgrammaticScrollRef.current = window.setTimeout(() => {
+    releaseProgrammaticScrollRef.current = setTimeout(() => {
       programmaticScrollRef.current = false;
     }, reducedMotion ? 0 : 280);
   }, [reducedMotion, value]);
@@ -483,10 +484,10 @@ function SwipeSubviewDeck({
   useEffect(() => {
     return () => {
       if (scrollEndTimerRef.current !== null) {
-        window.clearTimeout(scrollEndTimerRef.current);
+        clearTimeout(scrollEndTimerRef.current);
       }
       if (releaseProgrammaticScrollRef.current !== null) {
-        window.clearTimeout(releaseProgrammaticScrollRef.current);
+        clearTimeout(releaseProgrammaticScrollRef.current);
       }
     };
   }, []);
@@ -496,9 +497,9 @@ function SwipeSubviewDeck({
       return;
     }
     if (scrollEndTimerRef.current !== null) {
-      window.clearTimeout(scrollEndTimerRef.current);
+      clearTimeout(scrollEndTimerRef.current);
     }
-    scrollEndTimerRef.current = window.setTimeout(() => {
+    scrollEndTimerRef.current = setTimeout(() => {
       const container = containerRef.current;
       if (!container || panels.length === 0) return;
 
@@ -638,11 +639,15 @@ function ForgeItemRow({
 }
 
 function useNow() {
+  const isClient = useIsClient();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
+    if (!isClient) {
+      return;
+    }
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isClient]);
   return now;
 }
 
@@ -694,6 +699,7 @@ function CharacterStart({ store }: { store: GameStore }) {
 function Header({ state }: { state: GameState }) {
   type HeaderChipId = "gold" | "mats" | "renown" | "vigor";
 
+  const isClient = useIsClient();
   const stats = getDerivedStats(state);
   const [openChip, setOpenChip] = useState<HeaderChipId | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(null);
@@ -711,7 +717,8 @@ function Header({ state }: { state: GameState }) {
     const button = chipButtonRefs.current[chip];
     if (!button) return;
     const rect = button.getBoundingClientRect();
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8));
+    const viewportWidth = isClient ? window.innerWidth : POPOVER_WIDTH + 16;
+    const left = Math.max(8, Math.min(rect.left, viewportWidth - POPOVER_WIDTH - 8));
     const top = rect.bottom + 6;
     setPopoverPosition({ left, top });
   };
@@ -722,6 +729,9 @@ function Header({ state }: { state: GameState }) {
   useEffect(() => {
     if (!openChip) {
       setPopoverPosition(null);
+      return;
+    }
+    if (!isClient) {
       return;
     }
     updatePopoverPosition(openChip);
@@ -736,10 +746,11 @@ function Header({ state }: { state: GameState }) {
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
     };
-  }, [openChip]);
+  }, [isClient, openChip]);
 
   useEffect(() => {
     if (!openChip) return;
+    if (!isClient) return;
     const closeOnOutside = (event: PointerEvent) => {
       const target = event.target as Node;
       if (chipPopoverRef.current?.contains(target) || popoverCardRef.current?.contains(target)) {
@@ -758,7 +769,7 @@ function Header({ state }: { state: GameState }) {
       window.removeEventListener("pointerdown", closeOnOutside);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [openChip]);
+  }, [isClient, openChip]);
 
   const popoverTitleByChip: Record<HeaderChipId, string> = {
     gold: resourceLabels.gold,
@@ -847,18 +858,23 @@ function Header({ state }: { state: GameState }) {
       {openChip && popoverPosition && (
         <div
           ref={popoverCardRef}
-          className="fixed z-50 w-44 rounded-lg border border-ink/15 bg-white p-2 shadow-card"
+          className={`fixed z-50 rounded-lg border border-ink/15 bg-white p-2 shadow-card ${openChip === "vigor" ? "w-56" : "w-44"}`}
           style={{ left: `${popoverPosition.left}px`, top: `${popoverPosition.top}px` }}
         >
           <p className="px-1 pb-1 text-[0.65rem] font-black uppercase tracking-wide text-stone-500">{popoverTitleByChip[openChip]}</p>
           <div className="space-y-1">
             {popoverRowsByChip[openChip].map((row) => (
-              <div key={`${openChip}-${row.label}`} className="flex items-center justify-between rounded-md bg-parchment/60 px-2 py-1 text-xs font-bold text-stone-700">
+              <div key={`${openChip}-${row.label}`} className="flex items-center justify-between rounded-md border border-stone-200 bg-stone-100 px-2 py-1 text-xs font-bold text-stone-700">
                 <span>{row.label}</span>
                 <span className="tabular-nums text-ink">{row.value}</span>
               </div>
             ))}
           </div>
+          {openChip === "vigor" && (
+            <p className="mt-1.5 rounded-md border border-stone-200 bg-stone-100 px-2 py-1 text-[0.65rem] font-semibold leading-snug text-stone-600">
+              Vigor regenerates +1 every {formatMs(VIGOR_REGEN_INTERVAL_MS)} up to {state.vigor.max}. Boosting doubles expedition rewards.
+            </p>
+          )}
         </div>
       )}
     </header>
@@ -964,10 +980,10 @@ function MessagePanel({ store, suppressNonError = false }: { store: GameStore; s
 
   useEffect(() => {
     const timeoutMs = store.error ? 6500 : 3200;
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       store.clearNotice();
     }, timeoutMs);
-    return () => window.clearTimeout(timeoutId);
+    return () => clearTimeout(timeoutId);
   }, [store.error, store.lastMessage, store.clearNotice]);
 
   return (
@@ -1000,6 +1016,12 @@ function OfflineSummaryPanel({
   if (!summary) return null;
 
   const hasMineGains = (["ore", "crystal", "rune", "relicFragment"] as const).some((resource) => (summary.mineGains[resource] ?? 0) > 0);
+  const offlineActiveDungeon = store.state.activeExpedition ? getDungeon(store.state.activeExpedition.dungeonId) : null;
+  const expeditionStatusText = summary.expedition
+    ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}`
+    : summary.expeditionReady && offlineActiveDungeon
+      ? `${offlineActiveDungeon.name} ready to claim`
+      : "No expedition resolved";
   const capped = (store.lastMessage ?? "").includes("Offline gains were capped at 8 hours.");
   const dismissSummary = () => {
     store.dismissOfflineSummary();
@@ -1024,7 +1046,7 @@ function OfflineSummaryPanel({
         <div className="overflow-hidden rounded-md border border-ink/10 bg-white/70 text-xs font-semibold text-stone-700">
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 px-2.5 py-1.5">
             <span className="font-black text-ink">Expedition</span>
-            <span className="truncate">{summary.expedition ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}` : "No expedition resolved"}</span>
+            <span className="truncate">{expeditionStatusText}</span>
           </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
             <span className="font-black text-ink">Mine gains</span>
@@ -1043,7 +1065,7 @@ function OfflineSummaryPanel({
           Away for {formatMs(summary.elapsedMs)}. Offline progress is always capped at {formatMs(OFFLINE_CAP_MS)}.
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {summary.expedition && (
+          {(summary.expedition || summary.expeditionReady) && (
             <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("expeditions"))}>
               <Swords size={15} /> Open Expedition
             </SecondaryButton>
@@ -1237,6 +1259,7 @@ function ExpeditionResultPanel({
     summary.achievementsUnlocked.length > 0;
   const itemSellValue = item ? getVisibleSellValue(state, item) : 0;
   const actionButtonClass = "!min-h-9 px-3 py-1 text-xs";
+  const rewardParts = getCompactRewardParts(summary);
   const [showAllMoments, setShowAllMoments] = useState(false);
   const runResultAction = (action: () => void) => {
     action();
@@ -1353,11 +1376,16 @@ function ExpeditionResultPanel({
         </div>
 
         <div className="rounded-lg border border-ink/10 bg-white/70 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <Sparkles size={14} className="shrink-0 text-royal" />
-            <p className="min-w-0 truncate text-sm font-black text-ink" title={formatCompactRewards(summary)}>
-              Rewards: {formatCompactRewards(summary)}
-            </p>
+          <div className="flex items-start gap-2">
+            <Sparkles size={14} className="mt-0.5 shrink-0 text-royal" />
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+              {rewardParts.map((reward, index) => (
+                <span key={`${reward}-${index}`} className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-black text-stone-700 sm:text-[0.82rem]">
+                  {index > 0 && <span aria-hidden="true" className="text-stone-500">·</span>}
+                  <span>{reward}</span>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1465,7 +1493,7 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase text-mystic">Active Expedition</p>
-            <h2 className="font-black">{dungeon.name}</h2>
+            <h2 className="text-[0.94rem] font-black">{dungeon.name}</h2>
             <p className="text-sm text-stone-700">{getZoneForDungeon(dungeon).name}</p>
           </div>
           <Pill className={ready ? "border-emerald bg-emerald-100 text-emerald" : "border-royal/20 bg-blue-50 text-royal"}>
@@ -1483,11 +1511,6 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
             </SecondaryButton>
           )}
         </div>
-        {ready && (
-          <p className="text-xs font-semibold text-stone-600">
-            Vigor regenerates +1 every {formatMs(VIGOR_REGEN_INTERVAL_MS)} up to {state.vigor.max}. Boosting doubles expedition rewards.
-          </p>
-        )}
       </div>
     </Card>
   );
@@ -1538,7 +1561,7 @@ function RegionCard({
       disabled={!region.unlocked}
       className={`w-72 shrink-0 snap-center snap-always rounded-lg border p-3 text-left transition ${
         region.unlocked
-          ? "border-royal/25 bg-white/90 shadow-sm hover:border-royal/60 hover:bg-white/90 hover:ring-1 hover:ring-royal/30 hover:shadow-card"
+          ? "expedition-card-hover border-royal/25 bg-white/90 shadow-sm"
           : "cursor-not-allowed border-stone-200 bg-stone-100/80 opacity-85"
       }`}
       aria-label={`Region ${region.zone.name}`}
@@ -1653,7 +1676,7 @@ function DungeonCard({
 }) {
   const view = getDungeonView(state, dungeon);
   return (
-    <Card className={dungeon.boss ? "border-amber-400/60" : ""}>
+    <Card className={`dungeon-card-hover ${dungeon.boss ? "dungeon-card-hover--boss border-amber-400/60" : ""}`}>
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -1708,17 +1731,17 @@ function FirstSessionMilestones({ state }: { state: GameState }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-black uppercase text-mystic">Next Goal</p>
-          <h2 className="text-lg font-black">{getNextGoal(state)}</h2>
+          <h2 className="text-[0.98rem] font-black">{getNextGoal(state)}</h2>
           {boss && (
             <p className="mt-1 text-sm font-semibold text-stone-700">
               Boss milestone: {boss.name} · {bossReady ? "Ready now" : getUnlockText(state, boss)}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full grid-cols-6 gap-1">
           {steps.map(({ label, done, Icon }) => (
-            <Pill key={label} className={done ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-white text-stone-700"}>
-              {done ? <CheckCircle2 size={13} /> : <Icon size={13} />}
+            <Pill key={label} className={`justify-center !gap-0.5 !px-1 !py-0.5 text-[0.6rem] ${done ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-white text-stone-700"}`}>
+              {done ? <CheckCircle2 size={10} /> : <Icon size={10} />}
               {label}
             </Pill>
           ))}
@@ -1853,7 +1876,6 @@ function ExpeditionsScreen({
   const selectedRegion = selectedRegionId ? regions.find((region) => region.zone.id === selectedRegionId) ?? null : null;
   const hiddenRouteCount = onboardingFocused ? Math.max(0, available.length - visibleDungeons.length) : 0;
   const nextLockedDungeon = getNextLockedDungeon(state);
-  const vigorBoostCost = getVigorBoostCost(state);
   const handleSelectRegion = (regionId: string) => {
     const region = regions.find((entry) => entry.zone.id === regionId);
     if (!region || !region.unlocked) {
@@ -1878,21 +1900,6 @@ function ExpeditionsScreen({
       )}
 
       {!onboardingFocused && <ActiveExpeditionPanel state={state} now={now} store={store} />}
-
-      <Card className={onboardingFocused ? "border-emerald/20 bg-emerald-50/60" : ""}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-black">Expedition Board</h2>
-            <p className="text-sm font-semibold text-stone-700">{onboardingFocused ? "Start one contract, claim rewards, then repeat." : "Pick a contract and push the next route."}</p>
-          </div>
-          <Pill className="border-royal/20 bg-blue-50 text-royal">Vig {state.vigor.current}/{state.vigor.max}</Pill>
-        </div>
-        {!onboardingFocused && (
-          <p className="mt-2 text-xs font-semibold text-stone-600">
-            Vigor boost now applies at claim time with a secondary action ({vigorBoostCost} Vig) so start/claim decisions stay in one place.
-          </p>
-        )}
-      </Card>
 
       <div className="space-y-4">
         {selectedRegion ? (
@@ -2021,7 +2028,7 @@ function HeroScreen({
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black">{state.hero.name}</h2>
+            <h2 className="text-lg font-black">{state.hero.name}</h2>
             <p className="text-sm font-semibold text-stone-700">
               Level {state.hero.level} {activeClass.name}
             </p>
@@ -2570,6 +2577,7 @@ function ReincarnationScreen({
   onViewChange: (view: ReincarnationSubviewId) => void;
   reducedMotion: boolean;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const ready = canPrestige(state);
   const gain = calculatePrestigeRenown(state);
   const levelReady = state.hero.level >= REINCARNATION_LEVEL_REQUIREMENT;
@@ -2687,21 +2695,49 @@ function ReincarnationScreen({
         <PrimaryButton
           className="mt-3"
           disabled={!ready}
-          onClick={() => {
-            if (window.confirm("Reincarnation resets this run's level, resources, gear, town, dungeon clears, expedition, and dailies. Soul Marks, upgrades, achievements, and lifetime stats persist.")) {
-              store.prestige();
-            }
-          }}
+          onClick={() => setConfirmOpen(true)}
         >
           <Sparkles size={16} /> Reincarnate
         </PrimaryButton>
       </Card>
       <SwipeSubviewDeck panels={reincarnationPanels} value={view} onChange={(next) => onViewChange(next as ReincarnationSubviewId)} reducedMotion={reducedMotion} />
+      {confirmOpen && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-3 sm:items-center">
+          <RewardSummary className="w-full max-w-md border-amber-400 bg-amber-50/80">
+            <div className="space-y-2">
+              <p className="text-xs font-black uppercase text-mystic">Confirm Reincarnation</p>
+              <h3 className="text-base font-black">Start a New Cycle?</h3>
+              <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+                This resets this run&apos;s level, resources, gear, town, dungeon clears, expedition, and dailies.
+                Soul Marks, upgrades, achievements, and lifetime stats persist.
+              </p>
+              <p className="text-xs font-semibold text-stone-700">
+                You gain <span className="font-black text-ink">+{gain} Soul Marks</span> from this reincarnation.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => setConfirmOpen(false)}>
+                  Cancel
+                </SecondaryButton>
+                <PrimaryButton
+                  className="!min-h-9 px-3 py-1 text-xs"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    store.prestige();
+                  }}
+                >
+                  <Sparkles size={15} /> Confirm Reincarnation
+                </PrimaryButton>
+              </div>
+            </div>
+          </RewardSummary>
+        </div>
+      )}
     </div>
   );
 }
 
 function SettingsScreen({ state, store }: { state: GameState; store: GameStore }) {
+  const isClient = useIsClient();
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
   const showDebugBalance = process.env.NODE_ENV !== "production";
@@ -2749,7 +2785,7 @@ function SettingsScreen({ state, store }: { state: GameState; store: GameStore }
         <DangerButton
           className="mt-3"
           onClick={() => {
-            if (window.confirm("Delete local save?")) {
+            if (isClient && window.confirm("Delete local save?")) {
               store.resetSave();
               setExportText("");
               setImportText("");
@@ -2770,11 +2806,11 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
   return (
     <aside className="hidden space-y-3 lg:block">
       <Card className="border-royal/20 bg-blue-50/70">
-        <h3 className="font-black">Next Goal</h3>
+        <h3 className="text-[0.94rem] font-black">Next Goal</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">{getNextGoal(state)}</p>
       </Card>
       <Card>
-        <h3 className="font-black">Hero Snapshot</h3>
+        <h3 className="text-[0.94rem] font-black">Hero Snapshot</h3>
         <div className="mt-2 space-y-1 text-sm font-semibold text-stone-700">
           <p>Class: {HERO_CLASSES.find((entry) => entry.id === state.hero.classId)?.name}</p>
           <p>Level: {state.hero.level}</p>
@@ -2784,7 +2820,7 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         </div>
       </Card>
       <Card>
-        <h3 className="font-black">Current Expedition</h3>
+        <h3 className="text-[0.94rem] font-black">Current Expedition</h3>
         {active && state.activeExpedition ? (
           <p className="mt-2 text-sm font-semibold text-stone-700">
             {active.name} · {formatMs(state.activeExpedition.endsAt - now)}
@@ -2794,13 +2830,13 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         )}
       </Card>
       <Card>
-        <h3 className="font-black">Dailies</h3>
+        <h3 className="text-[0.94rem] font-black">Dailies</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">
           {state.dailies.tasks.filter((task) => task.claimed).length}/{state.dailies.tasks.length} claimed
         </p>
       </Card>
       <Card>
-        <h3 className="font-black">Reincarnation Track</h3>
+        <h3 className="text-[0.94rem] font-black">Reincarnation Track</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">Level {state.hero.level}/{REINCARNATION_LEVEL_REQUIREMENT}</p>
         <div className="mt-2">
           <ProgressBar value={reincarnationLevelProgress} />
@@ -2811,8 +2847,10 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
 }
 
 export default function Home() {
+  const isClient = useIsClient();
   const store = useGameStore();
   const now = useNow();
+  const hasRehydratedRef = useRef(false);
   const [tab, setTab] = useState<TabId>("expeditions");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [heroSubview, setHeroSubview] = useState<HeroSubviewId>("overview");
@@ -2820,8 +2858,12 @@ export default function Home() {
   const [reincarnationSubview, setReincarnationSubview] = useState<ReincarnationSubviewId>("overview");
 
   useEffect(() => {
-    store.hydrate();
-  }, [store.hydrate]);
+    if (!isClient || hasRehydratedRef.current) {
+      return;
+    }
+    hasRehydratedRef.current = true;
+    void useGameStore.persist.rehydrate();
+  }, [isClient]);
 
   const state = store.state;
   const onboardingFocused = isOnboardingFocused(state);
@@ -2933,7 +2975,7 @@ export default function Home() {
                 return (
                   <button
                     key={id}
-                    className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 text-xs font-black ${tab === id ? "bg-royal text-white" : "text-ink hover:bg-parchment"}`}
+                    className={`ui-hover-surface flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 text-xs font-black transition ${tab === id ? "bg-royal text-white shadow-card" : "text-ink"}`}
                     aria-current={tab === id ? "page" : undefined}
                     onClick={() => {
                       setTab(id);
@@ -2954,7 +2996,7 @@ export default function Home() {
             return (
               <button
                 key={id}
-                className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${tab === id ? "bg-royal text-white shadow-card" : "text-ink hover:bg-white/70"}`}
+                className={`ui-hover-surface flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${tab === id ? "bg-royal text-white shadow-card" : "text-ink"}`}
                 aria-current={tab === id ? "page" : undefined}
                 onClick={() => setTab(id)}
               >
@@ -2964,8 +3006,8 @@ export default function Home() {
             );
           })}
           <button
-            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${
-              mobileMoreOpen || mobileSecondaryTabs.includes(tab) ? "bg-royal text-white shadow-card" : "text-ink hover:bg-white/70"
+            className={`ui-hover-surface flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[0.64rem] font-black leading-none transition ${
+              mobileMoreOpen || mobileSecondaryTabs.includes(tab) ? "bg-royal text-white shadow-card" : "text-ink"
             }`}
             aria-expanded={mobileMoreOpen}
             onClick={() => setMobileMoreOpen((open) => !open)}
@@ -2981,7 +3023,7 @@ export default function Home() {
           {tabs.map(({ id, label, Icon }) => (
             <button
               key={id}
-              className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-black ${tab === id ? "bg-royal text-white" : "bg-white text-ink hover:bg-parchment"}`}
+              className={`ui-hover-surface inline-flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-black transition ${tab === id ? "bg-royal text-white shadow-card" : "bg-white text-ink"}`}
               onClick={() => setTab(id)}
             >
               <Icon size={17} />

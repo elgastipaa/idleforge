@@ -517,6 +517,9 @@ describe("town, dailies, offline, and saves", () => {
     const offline = applyOfflineProgress(started.state, NOW + 9 * 60 * 60 * 1000);
     expect(offline.capped).toBe(true);
     expect(offline.summary).not.toBeNull();
+    expect(offline.summary?.expedition).toBeNull();
+    expect(offline.summary?.expeditionReady).toBe(true);
+    expect(offline.state.activeExpedition).not.toBeNull();
     expect(offline.state.vigor.current).toBeGreaterThan(0);
     expect(offline.state.resources.ore).toBeGreaterThanOrEqual(0);
   });

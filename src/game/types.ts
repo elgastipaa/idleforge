@@ -297,6 +297,7 @@ export type ResolveSummary = {
 
 export type OfflineDeltaSummary = {
   expedition: ResolveSummary | null;
+  expeditionReady: boolean;
   mineGains: Partial<MaterialBundle>;
   vigorGained: number;
   dailyReset: boolean;

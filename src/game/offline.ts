@@ -1,6 +1,5 @@
 import { OFFLINE_CAP_MS } from "./constants";
 import { ensureDailies } from "./dailies";
-import { resolveExpedition } from "./engine";
 import { cloneState } from "./state";
 import type { GameState, MaterialBundle, OfflineSummary } from "./types";
 import { regenerateVigor } from "./vigor";
@@ -44,21 +43,15 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
   const vigorGained = regenerateVigor(next, effectiveNow).gained;
   const mineGains = applyMineOffline(next, elapsedMs);
   let expeditionSummary = null;
-
-  if (next.activeExpedition && effectiveNow >= next.activeExpedition.endsAt) {
-    const result = resolveExpedition(next, effectiveNow);
-    if (result.ok) {
-      next = cloneState(result.state);
-      expeditionSummary = result.summary;
-    }
-  }
+  const expeditionReady = Boolean(next.activeExpedition && effectiveNow >= next.activeExpedition.endsAt);
 
   next.updatedAt = now;
   const anyMineGains = Object.values(mineGains).some((value) => value > 0);
   const summary =
-    expeditionSummary || dailyPrepared.reset || vigorGained > 0 || anyMineGains
+    expeditionSummary || expeditionReady || dailyPrepared.reset || vigorGained > 0 || anyMineGains
       ? {
           expedition: expeditionSummary,
+          expeditionReady,
           mineGains,
           vigorGained,
           dailyReset: dailyPrepared.reset,
