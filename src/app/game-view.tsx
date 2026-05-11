@@ -31,6 +31,9 @@ import { useIsClient } from "@/hooks/useIsClient";
 import {
   ACHIEVEMENTS,
   BUILDINGS,
+  CARAVAN_FOCUS_DEFINITIONS,
+  CARAVAN_MAX_DURATION_MS,
+  CARAVAN_MIN_DURATION_MS,
   CLASS_PASSIVE_TEXT,
   DAILY_RESET_HOUR_LOCAL,
   DUNGEONS,
@@ -39,6 +42,7 @@ import {
   HERO_CLASSES,
   INVENTORY_LIMIT,
   INVENTORY_NEAR_FULL_THRESHOLD,
+  LOOT_DROP_PITY_THRESHOLD,
   OFFLINE_CAP_MS,
   RARITY_LABEL,
   RENOWN_UPGRADES,
@@ -61,7 +65,6 @@ import {
   getDungeonView,
   getItemScore,
   getItemUpgradeCost,
-  getMineOfflineRate,
   getNextGoal,
   getNextLockedDungeon,
   getRuneAffixMultiplier,
@@ -73,13 +76,18 @@ import {
   getUnlockText,
   getVigorBoostCost,
   getZoneForDungeon,
+  estimateCaravanRewards,
+  formatCaravanRewardText,
+  isCaravanFocusUnlocked,
   xpToNextLevel,
   type BuildingId,
+  type CaravanFocusId,
   type DungeonDefinition,
   type EquipmentSlot,
   type GameState,
   type Item,
   type ItemRarity,
+  type LootFocusId,
   type RenownUpgradeId,
   type ResolveSummary,
   type ResourceState,
@@ -95,7 +103,7 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
   { id: "inventory", label: "Inventory", Icon: Backpack },
   { id: "forge", label: "Forge", Icon: Flame },
   { id: "town", label: "Town", Icon: Hammer },
-  { id: "dailies", label: "Dailies", Icon: Star },
+  { id: "dailies", label: "Contracts", Icon: Star },
   { id: "achievements", label: "Awards", Icon: Trophy },
   { id: "reincarnation", label: "Reincarnation", Icon: Sparkles },
   { id: "settings", label: "Save", Icon: Settings }
@@ -103,6 +111,11 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
 
 const mobilePrimaryTabs: TabId[] = ["expeditions", "hero", "inventory", "forge"];
 const mobileSecondaryTabs: TabId[] = tabs.map((tab) => tab.id).filter((id) => !mobilePrimaryTabs.includes(id)) as TabId[];
+
+const EXPEDITION_SUBVIEWS = [
+  { id: "routes", label: "Routes" },
+  { id: "caravan", label: "Caravan" }
+] as const;
 
 const HERO_SUBVIEWS = [
   { id: "overview", label: "Overview" },
@@ -122,6 +135,7 @@ const REINCARNATION_SUBVIEWS = [
   { id: "upgrades", label: "Upgrades" }
 ] as const;
 
+type ExpeditionSubviewId = (typeof EXPEDITION_SUBVIEWS)[number]["id"];
 type HeroSubviewId = (typeof HERO_SUBVIEWS)[number]["id"];
 type ForgeSubviewId = (typeof FORGE_SUBVIEWS)[number]["id"];
 type ReincarnationSubviewId = (typeof REINCARNATION_SUBVIEWS)[number]["id"];
@@ -169,6 +183,23 @@ function getResourceIcon(resource: keyof ResourceState): typeof Swords {
   }
 }
 
+function getCaravanFocusIcon(focusId: CaravanFocusId): typeof Swords {
+  switch (focusId) {
+    case "xp":
+      return Crown;
+    case "gold":
+      return Coins;
+    case "ore":
+      return Pickaxe;
+    case "crystal":
+      return Gem;
+    case "rune":
+      return Star;
+    default:
+      return Swords;
+  }
+}
+
 const statLabels: Record<keyof Stats, string> = {
   power: "Power",
   defense: "Defense",
@@ -179,6 +210,15 @@ const statLabels: Record<keyof Stats, string> = {
 
 const slotLabels: Record<EquipmentSlot, string> = {
   weapon: "Weapon",
+  helm: "Helm",
+  armor: "Armor",
+  boots: "Boots",
+  relic: "Relic"
+};
+
+const lootFocusShortLabels: Record<LootFocusId, string> = {
+  any: "Any",
+  weapon: "Wpn",
   helm: "Helm",
   armor: "Armor",
   boots: "Boots",
@@ -233,32 +273,6 @@ function formatStats(stats: Partial<Stats>): string {
     .join(", ");
 }
 
-function formatTopStats(stats: Partial<Stats>, limit = 3): string {
-  const parts = (Object.keys(statLabels) as (keyof Stats)[])
-    .filter((key) => (stats[key] ?? 0) > 0)
-    .slice(0, limit)
-    .map((key) => `+${stats[key]} ${statLabels[key]}`);
-  return parts.join(", ");
-}
-
-function formatStatDeltas(stats: Partial<Stats>): string {
-  const parts = (Object.keys(statLabels) as (keyof Stats)[])
-    .filter((key) => (stats[key] ?? 0) !== 0)
-    .map((key) => `${statLabels[key]} ${(stats[key] ?? 0) > 0 ? "+" : ""}${stats[key]}`);
-  return parts.length > 0 ? parts.join(", ") : "No stat delta";
-}
-
-function getItemStatDeltas(item: Item, equipped: Item | null): Partial<Stats> {
-  const deltas: Partial<Stats> = {};
-  (Object.keys(statLabels) as (keyof Stats)[]).forEach((stat) => {
-    const delta = (item.stats[stat] ?? 0) - (equipped?.stats[stat] ?? 0);
-    if (delta !== 0) {
-      deltas[stat] = delta;
-    }
-  });
-  return deltas;
-}
-
 function formatAffixPreview(item: Item, limit = 2): string {
   const visible = item.affixes.slice(0, limit).map((affix) => `${affix.name}: ${affix.description}`);
   const hiddenCount = item.affixes.length - visible.length;
@@ -266,6 +280,39 @@ function formatAffixPreview(item: Item, limit = 2): string {
     visible.push(`+${hiddenCount} more`);
   }
   return visible.join(" · ");
+}
+
+function formatAffixNamePreview(item: Item, limit = 2): string {
+  const visible = item.affixes.slice(0, limit).map((affix) => affix.name);
+  const hiddenCount = item.affixes.length - visible.length;
+  if (hiddenCount > 0) {
+    visible.push(`+${hiddenCount} more`);
+  }
+  return visible.join(", ");
+}
+
+function formatSignedNumber(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatNumber(value)}`;
+}
+
+function getDeltaTextClass(delta: number): string {
+  if (delta > 0) return "text-emerald";
+  if (delta < 0) return "text-red-700";
+  return "text-stone-500";
+}
+
+function getItemStatComparison(item: Item, equipped: Item | null) {
+  return (Object.keys(statLabels) as (keyof Stats)[])
+    .map((stat) => {
+      const value = item.stats[stat] ?? 0;
+      const equippedValue = equipped?.stats[stat] ?? 0;
+      return {
+        stat,
+        value,
+        delta: value - equippedValue
+      };
+    })
+    .filter((entry) => entry.value > 0 || (equipped?.stats[entry.stat] ?? 0) > 0);
 }
 
 function getVisibleSellValue(state: GameState, item: Item): number {
@@ -335,7 +382,7 @@ function RewardSummary({ children, className = "" }: { children: React.ReactNode
 }
 
 function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${className}`}>{children}</span>;
+  return <span className={`badge-surface inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${className}`}>{children}</span>;
 }
 
 function RarityBadge({
@@ -373,7 +420,7 @@ function ResourceChip({
   showLabel?: boolean;
   buttonRef?: (node: HTMLButtonElement | null) => void;
 }) {
-  const chipClassName = `inline-flex min-h-7 max-w-[5.4rem] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[0.63rem] font-black leading-none ${className}`;
+  const chipClassName = `badge-surface inline-flex min-h-7 max-w-[5.4rem] shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[0.63rem] font-black leading-none ${className}`;
   if (onClick) {
     return (
       <button ref={buttonRef} type="button" className={`${chipClassName} cursor-pointer`} title={title} onClick={onClick}>
@@ -525,7 +572,7 @@ function SwipeSubviewDeck({
   };
 
   return (
-    <div ref={containerRef} className="overflow-x-auto snap-x snap-mandatory scroll-smooth pb-1" onScroll={handleScroll}>
+    <div ref={containerRef} className="no-scrollbar overflow-x-auto snap-x snap-mandatory scroll-smooth pb-1" onScroll={handleScroll}>
       <div className="flex min-w-full gap-4">
         {panels.map((panel) => (
           <div
@@ -540,15 +587,6 @@ function SwipeSubviewDeck({
         ))}
       </div>
     </div>
-  );
-}
-
-function StatDelta({ delta, className = "" }: { delta: number; className?: string }) {
-  return (
-    <Pill className={`shrink-0 !px-2 !py-0.5 text-[0.68rem] ${delta >= 0 ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-red-200 bg-red-100 text-red-700"} ${className}`}>
-      {delta >= 0 ? "+" : ""}
-      {delta} vs equipped
-    </Pill>
   );
 }
 
@@ -792,7 +830,7 @@ function Header({ state }: { state: GameState }) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-amber-950/10 bg-parchment/95 px-4 py-3 backdrop-blur">
-      <div className="mx-auto flex min-w-0 max-w-7xl items-center gap-1 overflow-x-auto pb-1">
+      <div className="no-scrollbar mx-auto flex min-w-0 max-w-7xl items-center gap-1 overflow-x-auto pb-1">
         <Pill className="shrink-0 border-emerald/20 bg-emerald-50 text-emerald">
           P {formatNumber(stats.powerScore)}
         </Pill>
@@ -942,10 +980,20 @@ function getMessageFeedback(message: string, isError: boolean) {
     };
   }
 
-  if (/Daily claimed/i.test(message)) {
+  if (/Loot focus/i.test(message)) {
+    return {
+      Icon: Gem,
+      title: "Loot Focus",
+      flavor: "Future expedition drops now lean toward that slot.",
+      className: "border-royal/50 text-blue-100",
+      iconClassName: "text-blue-300"
+    };
+  }
+
+  if (/Daily claimed|Contract claimed|Weekly contract/i.test(message)) {
     return {
       Icon: Star,
-      title: "Daily Reward",
+      title: "Contract Reward",
       flavor: "The notice board pays out before the reset bell.",
       className: "border-violet-400/70 text-violet-100",
       iconClassName: "text-violet-300"
@@ -1016,6 +1064,7 @@ function OfflineSummaryPanel({
   if (!summary) return null;
 
   const hasMineGains = (["ore", "crystal", "rune", "relicFragment"] as const).some((resource) => (summary.mineGains[resource] ?? 0) > 0);
+  const caravanFocus = summary.caravan ? CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === summary.caravan?.focusId) : null;
   const offlineActiveDungeon = store.state.activeExpedition ? getDungeon(store.state.activeExpedition.dungeonId) : null;
   const expeditionStatusText = summary.expedition
     ? `${summary.expedition.dungeon.name} ${summary.expedition.success ? "cleared" : "failed"}`
@@ -1049,15 +1098,31 @@ function OfflineSummaryPanel({
             <span className="truncate">{expeditionStatusText}</span>
           </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
-            <span className="font-black text-ink">Mine gains</span>
-            <span className="truncate">{hasMineGains ? formatResources(summary.mineGains) : "None"}</span>
+            <span className="font-black text-ink">Caravan</span>
+            <span className="truncate">
+              {summary.caravan
+                ? `${caravanFocus?.label ?? "Focus"} ${summary.caravan.completed ? "completed" : "progress"}: ${formatCaravanRewardText(summary.caravan.rewards)}`
+                : "No active job"}
+            </span>
           </div>
+          {hasMineGains && (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+              <span className="font-black text-ink">Mine gains</span>
+              <span className="truncate">{formatResources(summary.mineGains)}</span>
+            </div>
+          )}
+          {summary.caravan && summary.caravan.levelUps.length > 0 && (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+              <span className="font-black text-ink">Level ups</span>
+              <span className="truncate">{summary.caravan.levelUps.map((level) => `Lv${level}`).join(", ")}</span>
+            </div>
+          )}
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
             <span className="font-black text-ink">Vigor</span>
             <span>+{summary.vigorGained}</span>
           </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
-            <span className="font-black text-ink">Dailies</span>
+            <span className="font-black text-ink">Contracts</span>
             <span>{summary.dailyReset ? "Reset while offline" : "No reset during offline time"}</span>
           </div>
         </div>
@@ -1071,7 +1136,7 @@ function OfflineSummaryPanel({
             </SecondaryButton>
           )}
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("dailies"))}>
-            <Star size={15} /> Open Dailies
+            <Star size={15} /> Open Contracts
           </SecondaryButton>
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={dismissSummary}>
             Dismiss
@@ -1448,14 +1513,14 @@ function ExpeditionResultPanel({
                 <Coins size={16} /> Sell {formatNumber(itemSellValue)}
               </SecondaryButton>
             )}
-            {nextDungeon && !state.activeExpedition && (
+            {nextDungeon && !state.activeExpedition && !state.caravan.activeJob && (
               <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.startExpedition(nextDungeon.id))}>
                 <Swords size={16} /> {nextDungeon.boss ? "Attempt Boss" : "Start Next"}
               </SecondaryButton>
             )}
             {dailyReady && (
               <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => onSelectTab("dailies"))}>
-                <Star size={16} /> View Dailies
+                <Star size={16} /> View Contracts
               </SecondaryButton>
             )}
             {canUseForge && !nextDungeon && (
@@ -1599,13 +1664,7 @@ function RegionCarousel({
 
   return (
     <section className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-lg font-black">Choose Region</h3>
-          <p className="text-xs font-semibold text-stone-700">Swipe horizontally and pick an unlocked region.</p>
-        </div>
-      </div>
-      <div className="-mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
+      <div className="no-scrollbar -mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
         <div className="flex min-w-max gap-3 px-[max(0.75rem,calc(50%-9rem))] pb-1">
           {regions.map((region) => (
             <RegionCard key={region.zone.id} region={region} onSelect={onSelectRegion} />
@@ -1630,23 +1689,21 @@ function RegionExpeditionsView({
   return (
     <section className="space-y-3">
       <Card className="border-royal/20 bg-blue-50/70">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase text-mystic">Selected Region</p>
-            <h3 className="text-lg font-black">{region.zone.name}</h3>
-            <p className="text-sm font-semibold text-stone-700">{region.zone.subtitle}</p>
-            <p className="mt-1 text-xs font-semibold text-stone-600">
-              {region.completedCount}/{region.dungeons.length} cleared · {region.availableDungeons.length} currently available
+            <h3 className="truncate text-sm font-black sm:text-base">{region.zone.name}</h3>
+            <p className="text-xs font-semibold text-stone-600">
+              {region.completedCount}/{region.dungeons.length}
             </p>
           </div>
-          <SecondaryButton className="!min-h-9 shrink-0 px-3 py-1 text-xs" onClick={onBack}>
-            <ArrowLeft size={15} /> Back to Regions
+          <SecondaryButton className="!min-h-8 shrink-0 px-2.5 py-1 text-xs" onClick={onBack}>
+            <ArrowLeft size={14} /> Regions
           </SecondaryButton>
         </div>
       </Card>
 
       {region.availableDungeons.length > 0 ? (
-        <div className="-mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
+        <div className="no-scrollbar -mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
           <div className="flex min-w-max gap-3 px-[max(0.75rem,calc(50%-9rem))] pb-1">
             {region.availableDungeons.map((dungeon) => (
               <div key={dungeon.id} className="w-72 shrink-0 snap-center snap-always">
@@ -1703,7 +1760,7 @@ function DungeonCard({
           {formatResources(dungeon.materials) ? `, ${formatResources(dungeon.materials)}` : ""}
         </p>
         {view.unlocked ? (
-          <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition)}>
+          <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition) || Boolean(state.caravan.activeJob)}>
             <Swords size={16} /> Start
           </PrimaryButton>
         ) : (
@@ -1779,7 +1836,7 @@ function OnboardingGuide({
     headline = "Start your first expedition.";
     detail = `Run one quick contract${recommendedDungeon ? ` (${recommendedDungeon.name})` : ""} to unlock your first reward moment.`;
     action = (
-      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon}>
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon || Boolean(state.caravan.activeJob)}>
         <Swords size={16} /> Start First Expedition
       </PrimaryButton>
     );
@@ -1793,7 +1850,7 @@ function OnboardingGuide({
         <Sparkles size={16} /> {ready ? "Claim First Reward" : `Returns in ${formatMs(remaining)}`}
       </PrimaryButton>
     ) : (
-      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon}>
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon || Boolean(state.caravan.activeJob)}>
         <Swords size={16} /> Start Expedition
       </PrimaryButton>
     );
@@ -1812,7 +1869,7 @@ function OnboardingGuide({
     headline = "Start the next expedition.";
     detail = `Repeat the loop${recommendedDungeon ? ` with ${recommendedDungeon.name}` : ""} while your first gains are still fresh.`;
     action = (
-      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon || Boolean(state.activeExpedition)}>
+      <PrimaryButton onClick={() => recommendedDungeon && store.startExpedition(recommendedDungeon.id)} disabled={!recommendedDungeon || Boolean(state.activeExpedition) || Boolean(state.caravan.activeJob)}>
         <ArrowRight size={16} /> Start Next Expedition
       </PrimaryButton>
     );
@@ -1856,16 +1913,175 @@ function OnboardingGuide({
   );
 }
 
+function CaravanScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
+  const activeJob = state.caravan.activeJob;
+  const firstUnlockedFocus = CARAVAN_FOCUS_DEFINITIONS.find((focus) => isCaravanFocusUnlocked(state, focus.id)) ?? CARAVAN_FOCUS_DEFINITIONS[0];
+  const [focusId, setFocusId] = useState<CaravanFocusId>(activeJob?.focusId ?? firstUnlockedFocus.id);
+  const [durationHours, setDurationHours] = useState(() => {
+    const activeHours = activeJob ? Math.round(activeJob.durationMs / CARAVAN_MIN_DURATION_MS) : 4;
+    return Math.min(8, Math.max(1, activeHours));
+  });
+
+  useEffect(() => {
+    if (!isCaravanFocusUnlocked(state, focusId)) {
+      setFocusId(firstUnlockedFocus.id);
+    }
+  }, [firstUnlockedFocus.id, focusId, state]);
+
+  const durationMs = durationHours * CARAVAN_MIN_DURATION_MS;
+  const previewRewards = estimateCaravanRewards(state, focusId, durationMs);
+  const activeFocus = activeJob ? CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === activeJob.focusId) : null;
+  const activeRemaining = activeJob ? Math.max(0, activeJob.endsAt - now) : 0;
+  const activeProgress = activeJob ? ((activeJob.durationMs - activeRemaining) / Math.max(1, activeJob.durationMs)) * 100 : 0;
+  const endingAt = now + durationMs;
+  const selectedFocusId = activeJob?.focusId ?? focusId;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-5 gap-1.5">
+        {CARAVAN_FOCUS_DEFINITIONS.map((focus) => {
+          const unlocked = isCaravanFocusUnlocked(state, focus.id);
+          const Icon = getCaravanFocusIcon(focus.id);
+          const selected = selectedFocusId === focus.id;
+          return (
+            <button
+              key={focus.id}
+              type="button"
+              disabled={!unlocked || Boolean(activeJob)}
+              aria-pressed={selected}
+              onClick={() => setFocusId(focus.id)}
+              className={`ui-hover-surface relative min-h-14 overflow-hidden rounded-lg border bg-parchment/70 px-1.5 py-2 text-center transition ${
+                selected ? "border-amber-400 bg-blue-50/80 shadow-card ring-1 ring-amber-400/50" : "border-ink/10"
+              } ${!unlocked ? "cursor-not-allowed opacity-45" : activeJob && !selected ? "cursor-not-allowed opacity-55" : activeJob ? "cursor-not-allowed" : ""}`}
+            >
+              {selected && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500 shadow-card" aria-hidden="true" />
+              )}
+              <span className="flex flex-col items-center justify-center gap-1 text-[0.68rem] font-black leading-none sm:flex-row sm:text-xs">
+                <Icon size={14} /> {focus.label}
+              </span>
+              {!unlocked && <span className="mt-1 block text-[0.58rem] font-bold leading-tight text-stone-600">Unlocks at Lv{focus.unlockLevel}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeJob && activeFocus && (
+        <Card className="border-stone-300 bg-parchment/70">
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-black uppercase text-stone-600">Active Caravan</p>
+              <h3 className="font-black">{activeFocus.label} focus</h3>
+              <p className="text-xs font-semibold text-stone-700">
+                Ends at {formatLocalClock(activeJob.endsAt)} · {activeRemaining > 0 ? `${formatMs(activeRemaining)} remaining` : "Ready on next return"}
+              </p>
+            </div>
+            <ProgressBar value={activeProgress} className="bg-stone-600" />
+            <DangerButton className="w-full" onClick={() => store.cancelCaravanJob()}>
+              <XCircle size={15} /> Cancel Caravan, no rewards
+            </DangerButton>
+          </div>
+        </Card>
+      )}
+
+      {!activeJob && (
+        <Card>
+          <div className="space-y-4">
+            <h3 className="font-black">Set Away Time</h3>
+            <input
+              type="range"
+              min={CARAVAN_MIN_DURATION_MS / CARAVAN_MIN_DURATION_MS}
+              max={CARAVAN_MAX_DURATION_MS / CARAVAN_MIN_DURATION_MS}
+              step={1}
+              value={durationHours}
+              onChange={(event) => setDurationHours(Number(event.target.value))}
+              className="w-full accent-royal"
+              aria-label="Caravan duration in hours"
+            />
+            <div className="flex justify-between text-[0.68rem] font-black uppercase text-stone-500">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <span key={index + 1}>{index + 1}h</span>
+              ))}
+            </div>
+            <div className="grid gap-2 rounded-lg border border-stone-300 bg-parchment/70 p-3 text-sm font-semibold text-stone-700 sm:grid-cols-2">
+              <p>
+                <span className="block text-[0.68rem] font-black uppercase text-stone-500">Ends</span>
+                <span className="font-black text-ink">{formatLocalClock(endingAt)}</span>
+              </p>
+              <p>
+                <span className="block text-[0.68rem] font-black uppercase text-stone-500">Expected haul</span>
+                <span className="font-black text-ink">{formatCaravanRewardText(previewRewards)}</span>
+              </p>
+            </div>
+            <PrimaryButton className="w-full" onClick={() => store.startCaravanJob(focusId, durationMs)} disabled={!state.settings.heroCreated || !isCaravanFocusUnlocked(state, focusId)}>
+              <Clock size={16} /> Start {durationHours}h Caravan
+            </PrimaryButton>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function EquippedItemsOverview({ state }: { state: GameState }) {
+  const slots = Object.keys(slotLabels) as EquipmentSlot[];
+  const equippedCount = slots.filter((slot) => state.equipment[slot]).length;
+
+  return (
+    <Card>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-black">Equipped Items</h3>
+          <Pill className="border-stone-200 bg-stone-50 text-stone-700">
+            {equippedCount}/{slots.length}
+          </Pill>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {slots.map((slot) => {
+            const item = state.equipment[slot];
+            if (!item) {
+              return (
+                <div key={slot} className="min-h-24 rounded-lg border border-dashed border-stone-300 bg-parchment/70 p-2.5 text-xs font-semibold text-stone-600">
+                  <p className="font-black uppercase text-stone-500">{slotLabels[slot]}</p>
+                  <p className="mt-2 text-stone-600">Empty</p>
+                </div>
+              );
+            }
+
+            return (
+              <div key={slot} className={`${rarityClass(item.rarity)} min-h-24 rounded-lg border p-2.5 text-xs`}>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-black uppercase text-stone-500">{slotLabels[slot]}</span>
+                  <span className="font-black">P {formatNumber(getItemScore(item))}</span>
+                </div>
+                <p className="mt-2 line-clamp-2 font-black leading-snug">{item.name}</p>
+                <p className="mt-1 line-clamp-1 font-semibold text-stone-600">{RARITY_LABEL[item.rarity]} · +{item.upgradeLevel}</p>
+                {formatAffixPreview(item, 1) && <p className="mt-1 line-clamp-1 font-semibold text-stone-600">{formatAffixPreview(item, 1)}</p>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function ExpeditionsScreen({
   state,
   now,
   store,
-  onSelectTab
+  onSelectTab,
+  view,
+  onViewChange,
+  reducedMotion
 }: {
   state: GameState;
   now: number;
   store: GameStore;
   onSelectTab: (tab: TabId) => void;
+  view: ExpeditionSubviewId;
+  onViewChange: (view: ExpeditionSubviewId) => void;
+  reducedMotion: boolean;
 }) {
   const available = getAvailableDungeons(state);
   const onboardingFocused = isOnboardingFocused(state);
@@ -1891,22 +2107,14 @@ function ExpeditionsScreen({
     }
   }, [selectedRegionId, selectedRegion]);
 
-  return (
+  const routeContent = (
     <div className="space-y-3 sm:space-y-4">
-      {onboardingFocused ? (
-        <OnboardingGuide state={state} now={now} store={store} onSelectTab={onSelectTab} />
-      ) : (
-        <FirstSessionMilestones state={state} />
-      )}
+      {onboardingFocused ? <OnboardingGuide state={state} now={now} store={store} onSelectTab={onSelectTab} /> : <FirstSessionMilestones state={state} />}
 
       {!onboardingFocused && <ActiveExpeditionPanel state={state} now={now} store={store} />}
 
       <div className="space-y-4">
-        {selectedRegion ? (
-          <RegionExpeditionsView state={state} store={store} region={selectedRegion} onBack={handleBackToRegions} />
-        ) : (
-          <RegionCarousel regions={regions} onSelectRegion={handleSelectRegion} />
-        )}
+        {selectedRegion ? <RegionExpeditionsView state={state} store={store} region={selectedRegion} onBack={handleBackToRegions} /> : <RegionCarousel regions={regions} onSelectRegion={handleSelectRegion} />}
 
         {onboardingFocused && hiddenRouteCount > 0 && (
           <Card className="border-stone-200 bg-white/80">
@@ -1919,6 +2127,11 @@ function ExpeditionsScreen({
       </div>
     </div>
   );
+  const expeditionPanels: Array<{ id: ExpeditionSubviewId; content: React.ReactNode }> = [
+    { id: "routes", content: routeContent },
+    { id: "caravan", content: <CaravanScreen state={state} now={now} store={store} /> }
+  ];
+  return <SwipeSubviewDeck panels={expeditionPanels} value={view} onChange={(next) => onViewChange(next as ExpeditionSubviewId)} reducedMotion={reducedMotion} />;
 }
 
 function HeroScreen({
@@ -1944,33 +2157,36 @@ function HeroScreen({
     {
       id: "overview",
       content: (
-        <Card>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h3 className="font-black">Current Class</h3>
-                <p className="text-xs font-bold text-royal sm:text-sm">{activeClass.tagline}</p>
+        <div className="space-y-3">
+          <EquippedItemsOverview state={state} />
+          <Card>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-black">Current Class</h3>
+                  <p className="text-xs font-bold text-royal sm:text-sm">{activeClass.tagline}</p>
+                </div>
+                <Pill className="border-stone-200 bg-stone-50 text-stone-700">{activeClass.name}</Pill>
               </div>
-              <Pill className="border-stone-200 bg-stone-50 text-stone-700">{activeClass.name}</Pill>
+              <p className="text-xs font-semibold text-stone-700 sm:text-sm">{activeClass.description}</p>
+              <div className="grid gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-2">
+                {classPassives.slice(0, 2).map((passive) => (
+                  <p key={passive.name} className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
+                    <span className="font-black text-ink">Lv{passive.level} {passive.name}:</span> {passive.effect}
+                  </p>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-5">
+                {(Object.keys(statLabels) as (keyof Stats)[]).map((stat) => (
+                  <p key={`overview-${stat}`} className="rounded-md border border-ink/10 bg-white/70 px-2.5 py-2">
+                    <span className="block text-[0.65rem] font-black uppercase text-stone-500">{statLabels[stat]}</span>
+                    <span className="block text-sm font-black text-ink">{formatNumber(stats[stat])}</span>
+                  </p>
+                ))}
+              </div>
             </div>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">{activeClass.description}</p>
-            <div className="grid gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-2">
-              {classPassives.slice(0, 2).map((passive) => (
-                <p key={passive.name} className="rounded-md border border-ink/10 bg-white/70 px-3 py-2">
-                  <span className="font-black text-ink">Lv{passive.level} {passive.name}:</span> {passive.effect}
-                </p>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-5">
-              {(Object.keys(statLabels) as (keyof Stats)[]).map((stat) => (
-                <p key={`overview-${stat}`} className="rounded-md border border-ink/10 bg-white/70 px-2.5 py-2">
-                  <span className="block text-[0.65rem] font-black uppercase text-stone-500">{statLabels[stat]}</span>
-                  <span className="block text-sm font-black text-ink">{formatNumber(stats[stat])}</span>
-                </p>
-              ))}
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       )
     },
     {
@@ -2052,39 +2268,62 @@ function ItemCard({ state, item, store }: { state: GameState; item: Item; store:
   const itemScore = getItemScore(item);
   const equippedScore = getItemScore(equipped);
   const delta = itemScore - equippedScore;
-  const statDeltas = getItemStatDeltas(item, equipped);
+  const statComparison = getItemStatComparison(item, equipped);
   const sellValue = getVisibleSellValue(state, item);
   const salvageValue = getVisibleSalvageValue(state, item);
+  const salvageText = formatResources(salvageValue) || "No materials";
+  const affixPreview = formatAffixNamePreview(item);
   return (
     <GameCard density="compact" className={`${rarityClass(item.rarity)} ${isRareOrBetter(item) ? "rarity-glow" : ""}`}>
       <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <RarityBadge rarity={item.rarity} />
-              <span className="rounded-full border border-stone-200 bg-white/70 px-2 py-0.5 text-[0.68rem] font-black uppercase text-stone-600">
-                {slotLabels[item.slot]}
-              </span>
-            </div>
-            <h3 className="mt-1 line-clamp-2 text-sm font-black leading-snug">{item.name}</h3>
-            <p className="text-xs font-semibold text-stone-700">
-              ilvl {item.itemLevel} · +{item.upgradeLevel}
-            </p>
-            <p className="text-xs font-black text-stone-700 tabular-nums">
-              Item Power {formatNumber(itemScore)} · Equipped {formatNumber(equippedScore)}
-            </p>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <RarityBadge rarity={item.rarity} />
+            <span className="badge-surface rounded-full border px-2 py-0.5 text-[0.68rem] font-black uppercase text-stone-600">
+              {slotLabels[item.slot]}
+            </span>
           </div>
-          <StatDelta delta={delta} />
+          <h3 className="mt-1 line-clamp-2 text-sm font-black leading-snug">{item.name}</h3>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-black text-stone-700 tabular-nums">
+            <span>Lvl {item.itemLevel}</span>
+            <span className="text-stone-400">•</span>
+            <span>+{item.upgradeLevel}</span>
+            <span className="text-stone-400">•</span>
+            <span>
+              Item Power {formatNumber(itemScore)}{" "}
+              {equipped ? (
+                <span className={getDeltaTextClass(delta)}>({formatSignedNumber(delta)})</span>
+              ) : (
+                <span className="text-emerald">(New slot)</span>
+              )}
+            </span>
+          </p>
         </div>
-        <div className="grid gap-1 text-xs font-semibold text-stone-700">
-          <p className="line-clamp-1">Stats: {formatTopStats(item.stats) || "No stat roll"}</p>
-          <p className="line-clamp-1 font-bold">Delta: {formatStatDeltas(statDeltas)}</p>
-          <p className="line-clamp-2 text-stone-600">Affixes: {formatAffixPreview(item) || "None"}</p>
+
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold text-stone-700">
+          {statComparison.length > 0 ? (
+            statComparison.map((entry, index) => (
+              <span key={entry.stat} className="inline-flex items-center gap-x-1.5">
+                {index > 0 && <span className="text-stone-400">•</span>}
+                <span>
+                  {formatNumber(entry.value)} {statLabels[entry.stat]}
+                </span>
+                {equipped && <span className={getDeltaTextClass(entry.delta)}>({formatSignedNumber(entry.delta)})</span>}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs font-semibold text-stone-600">No stat roll</span>
+          )}
         </div>
-        <div className="grid gap-2 text-xs font-semibold text-stone-700 sm:grid-cols-2">
-          <p>Sell: {formatNumber(sellValue)} Gold</p>
-          <p>Salvage: {formatResources(salvageValue) || "No materials"}</p>
+
+        <p className="line-clamp-1 text-xs font-semibold text-stone-600">Affixes: {affixPreview || "None"}</p>
+
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-stone-700">
+          <span>Sell {formatNumber(sellValue)} Gold</span>
+          <span className="text-stone-400">•</span>
+          <span>Salvage {salvageText}</span>
         </div>
+
         <div className="grid min-w-0 grid-cols-3 gap-1.5">
           <PrimaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.equipItem(item.id)}>
             Equip
@@ -2098,46 +2337,51 @@ function ItemCard({ state, item, store }: { state: GameState; item: Item; store:
 }
 
 function InventoryScreen({ state, store }: { state: GameState; store: GameStore }) {
-  const [filter, setFilter] = useState<"all" | EquipmentSlot>("all");
-  const items = state.inventory.filter((item) => filter === "all" || item.slot === filter);
+  const items = state.inventory;
+  const lootFocusOptions = ["any", ...(Object.keys(slotLabels) as EquipmentSlot[])] as LootFocusId[];
+  const pityProgress = Math.floor((Math.min(state.loot.missesSinceDrop, LOOT_DROP_PITY_THRESHOLD) / LOOT_DROP_PITY_THRESHOLD) * 100);
   const inventoryFull = state.inventory.length >= INVENTORY_LIMIT;
   const inventoryNearFull = state.inventory.length >= INVENTORY_NEAR_FULL_THRESHOLD;
   const capacityPercent = Math.floor((state.inventory.length / INVENTORY_LIMIT) * 100);
   const capacityClass = inventoryFull ? "bg-red-700" : inventoryNearFull ? "bg-amber-500" : "bg-emerald";
-  const capacityCopy = inventoryFull
-    ? "Pack full. Fresh drops convert into salvage until space opens."
-    : inventoryNearFull
-      ? "Pack pressure is high. Sell or salvage before the next loot reveal."
-      : "Pack space is healthy. Keep pushing expeditions for better rolls.";
-  const emptyTitle = state.inventory.length === 0 ? "Your pack is empty" : `No ${filter === "all" ? "items" : slotLabels[filter].toLowerCase()} in this view`;
-  const emptyDescription =
-    state.inventory.length === 0
-      ? "Clear expeditions to bring back weapons, armor, relics, and salvageable finds."
-      : "Change the slot filter or run another contract to find gear for this slot.";
+  const emptyTitle = "Your pack is empty";
+  const emptyDescription = "Clear expeditions to bring back weapons, armor, relics, and salvageable finds.";
   return (
     <div className="space-y-4">
       <Card>
-        <SectionHeader
-          title="Inventory"
-          description={`${state.inventory.length}/${INVENTORY_LIMIT} slots. Overflowed loot auto-salvages.`}
-          action={
-          <select className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold" value={filter} onChange={(event) => setFilter(event.target.value as "all" | EquipmentSlot)}>
-            <option value="all">All Slots</option>
-            {(Object.keys(slotLabels) as EquipmentSlot[]).map((slot) => (
-              <option key={slot} value={slot}>
-                {slotLabels[slot]}
-              </option>
-            ))}
-          </select>
-          }
-        />
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 text-xs font-black uppercase text-stone-600">
             <span>Pack Capacity</span>
-            <span>{capacityPercent}%</span>
+            <span>{state.inventory.length}/{INVENTORY_LIMIT} · {capacityPercent}%</span>
           </div>
           <ProgressBar value={capacityPercent} className={capacityClass} />
-          <p className="text-xs font-semibold text-stone-700">{capacityCopy}</p>
+        </div>
+      </Card>
+      <Card>
+        <SectionHeader
+          title="Loot Focus"
+          action={<Pill className="border-royal/20 bg-blue-50 text-royal">Pity {state.loot.missesSinceDrop}/{LOOT_DROP_PITY_THRESHOLD}</Pill>}
+        />
+        <div className="mt-3 grid grid-cols-6 gap-1.5">
+          {lootFocusOptions.map((focus) => {
+            const selected = state.loot.focusSlot === focus;
+            return (
+              <button
+                key={focus}
+                type="button"
+                aria-pressed={selected}
+                className={`ui-hover-surface min-h-10 rounded-lg border px-1 py-1 text-center text-[0.62rem] font-black uppercase leading-none transition sm:text-xs ${
+                  selected ? "border-amber-400 bg-blue-50/80 text-primary ring-1 ring-amber-400/50" : "border-ink/10 bg-parchment/70 text-stone-600"
+                }`}
+                onClick={() => store.setLootFocus(focus)}
+              >
+                {lootFocusShortLabels[focus]}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3">
+          <ProgressBar value={pityProgress} className="bg-royal" />
         </div>
       </Card>
       {inventoryNearFull && (
@@ -2178,6 +2422,7 @@ function ForgeScreen({
 }) {
   const [slot, setSlot] = useState<"any" | EquipmentSlot>("any");
   const [classBias, setClassBias] = useState(true);
+  const craftSlotOptions = ["any", ...(Object.keys(slotLabels) as EquipmentSlot[])] as ("any" | EquipmentSlot)[];
   const craftCost = getCraftCost(state);
   const craftAffordable = canAfford(state.resources, craftCost);
   const upgradeCandidates = [
@@ -2201,15 +2446,25 @@ function ForgeScreen({
               <p>Forge budget: +{forgeLevel * 2} item stats</p>
               <p>Cost: {formatResources(craftCost)}</p>
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <select className="min-h-11 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold" value={slot} onChange={(event) => setSlot(event.target.value as "any" | EquipmentSlot)}>
-                <option value="any">Any Slot</option>
-                {(Object.keys(slotLabels) as EquipmentSlot[]).map((entry) => (
-                  <option key={entry} value={entry}>
-                    {slotLabels[entry]}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-6 gap-1.5">
+              {craftSlotOptions.map((entry) => {
+                const selected = slot === entry;
+                return (
+                  <button
+                    key={entry}
+                    type="button"
+                    aria-pressed={selected}
+                    className={`ui-hover-surface min-h-10 rounded-lg border px-1 py-1 text-center text-[0.62rem] font-black uppercase leading-none transition sm:text-xs ${
+                      selected ? "border-amber-400 bg-blue-50/80 text-primary ring-1 ring-amber-400/50" : "border-ink/10 bg-parchment/70 text-stone-600"
+                    }`}
+                    onClick={() => setSlot(entry)}
+                  >
+                    {lootFocusShortLabels[entry]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
               <label className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 text-sm font-bold">
                 <input type="checkbox" checked={classBias} onChange={(event) => setClassBias(event.target.checked)} />
                 Class Bias
@@ -2225,34 +2480,31 @@ function ForgeScreen({
     {
       id: "upgrade",
       content: (
-        <Card>
-          <h3 className="font-black">Upgrade Item</h3>
-          {upgradeCandidates.length === 0 ? (
-            <p className="mt-2 text-sm font-semibold text-stone-700">No upgradeable items yet.</p>
-          ) : (
-            <div className="mt-3 grid gap-2">
-              {upgradeCandidates.map((item) => {
-                const cost = getItemUpgradeCost(state, item);
-                const affordable = canAfford(state.resources, cost);
-                return (
-                  <ForgeItemRow
-                    key={item.id}
-                    item={item}
-                    meta={`${slotLabels[item.slot]} · ilvl ${item.itemLevel} · +${item.upgradeLevel}${equippedIds.has(item.id) ? " · equipped" : ""}`}
-                    action={
-                      <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.upgradeItem(item.id)} disabled={!affordable || item.upgradeLevel >= 10}>
-                        <Hammer size={16} /> Upgrade
-                      </PrimaryButton>
-                    }
-                  >
-                    <p className="mt-1 text-xs font-bold text-stone-700">Item Power {formatNumber(getItemScore(item))}</p>
-                    <p className="mt-2 text-xs font-semibold text-stone-700">Cost: {formatResources(cost)}</p>
-                  </ForgeItemRow>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+        upgradeCandidates.length === 0 ? (
+          <EmptyState Icon={Hammer} title="No upgradeable items yet" description="Craft or find gear before upgrading." />
+        ) : (
+          <div className="grid gap-2">
+            {upgradeCandidates.map((item) => {
+              const cost = getItemUpgradeCost(state, item);
+              const affordable = canAfford(state.resources, cost);
+              return (
+                <ForgeItemRow
+                  key={item.id}
+                  item={item}
+                  meta={`${slotLabels[item.slot]} · ilvl ${item.itemLevel} · +${item.upgradeLevel}${equippedIds.has(item.id) ? " · equipped" : ""}`}
+                  action={
+                    <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.upgradeItem(item.id)} disabled={!affordable || item.upgradeLevel >= 10}>
+                      <Hammer size={16} /> Upgrade
+                    </PrimaryButton>
+                  }
+                >
+                  <p className="mt-1 text-xs font-bold text-stone-700">Item Power {formatNumber(getItemScore(item))}</p>
+                  <p className="mt-2 text-xs font-semibold text-stone-700">Cost: {formatResources(cost)}</p>
+                </ForgeItemRow>
+              );
+            })}
+          </div>
+        )
       )
     },
     {
@@ -2343,17 +2595,6 @@ function ForgeScreen({
   );
 }
 
-function formatResourceRate(resources: Partial<ResourceState>): string {
-  return (Object.keys(resourceLabels) as (keyof ResourceState)[])
-    .filter((key) => (resources[key] ?? 0) > 0)
-    .map((key) => {
-      const value = resources[key] ?? 0;
-      const formatted = Number.isInteger(value) ? formatNumber(value) : value.toFixed(1);
-      return `${formatted} ${resourceLabels[key]}`;
-    })
-    .join(", ");
-}
-
 function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): string {
   switch (buildingId) {
     case "forge":
@@ -2361,13 +2602,12 @@ function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): stri
         ? "Affix rerolls unlocked; upgrades and craft budget scale from here."
         : `Affix rerolls unlock at Forge level ${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}.`;
     case "mine": {
-      const rate = formatResourceRate(getMineOfflineRate(state));
       const capHours = Math.floor(OFFLINE_CAP_MS / (60 * 60 * 1000));
-      return rate ? `Offline rate: ${rate}/hr, capped at ${capHours}h.` : `Upgrade once to start offline ore generation; cap is ${capHours}h.`;
+      return `Improves Ore and Crystal Caravan yields. Offline jobs are player-chosen and capped at ${capHours}h.`;
     }
     case "tavern": {
       const ready = state.dailies.tasks.filter((task) => !task.claimed && task.progress >= task.target).length;
-      return `${ready}/${state.dailies.tasks.length} daily rewards ready; rumor: ${getNextGoal(state)}`;
+      return `${ready}/${state.dailies.tasks.length} contracts ready; rumor: ${getNextGoal(state)}`;
     }
     case "market": {
       const pressure = state.inventory.length >= INVENTORY_NEAR_FULL_THRESHOLD ? "Inventory pressure high" : "Inventory pressure stable";
@@ -2393,7 +2633,7 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Town Buildings</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, dailies, unlocks, or reincarnation.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, contracts, unlocks, or reincarnation.</p>
           </div>
           <Pill className={nextAffordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
             {nextAffordable ? `${nextAffordable.name} ready` : "No upgrade ready"}
@@ -2460,24 +2700,67 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
 
 function DailiesScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
   const timeLeft = Math.max(0, state.dailies.nextResetAt - now);
+  const weeklyTimeLeft = Math.max(0, state.dailies.weekly.nextResetAt - now);
   const completed = state.dailies.tasks.filter((task) => task.progress >= task.target).length;
   const claimed = state.dailies.tasks.filter((task) => task.claimed).length;
+  const weeklyTarget = state.dailies.weekly.milestones.at(-1)?.target ?? 15;
+  const weeklyProgress = Math.min(state.dailies.weekly.progress, weeklyTarget);
+  const weeklyPercent = Math.floor((weeklyProgress / Math.max(1, weeklyTarget)) * 100);
   return (
     <div className="space-y-4">
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black">Daily Tasks</h2>
+            <h2 className="text-lg font-black">Contract Board</h2>
             <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-              {DAILY_RESET_HOUR_LOCAL}:00 local reset. No streaks, penalties, premium currency, or ads.
+              One main contract, two side contracts. {DAILY_RESET_HOUR_LOCAL}:00 local reset.
             </p>
             <p className="mt-2 text-xs font-bold text-royal sm:text-sm">
               Reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
             </p>
           </div>
           <Pill className="border-royal/20 bg-blue-50 text-royal">
-            {completed}/{state.dailies.tasks.length} complete · {claimed} claimed
+            {completed}/{state.dailies.tasks.length} done · {claimed} claimed
           </Pill>
+        </div>
+      </Card>
+      <Card className="border-amber-400/40 bg-amber-50/70">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="font-black">Weekly Chest</h3>
+              <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+                Claim daily contracts to unlock 3 weekly payouts. Resets in {formatMs(weeklyTimeLeft)}.
+              </p>
+            </div>
+            <Pill className="border-amber-400 bg-amber-100 text-amber-900">
+              {weeklyProgress}/{weeklyTarget}
+            </Pill>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-full rounded-full bg-amber-500" style={{ width: `${weeklyPercent}%` }} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {state.dailies.weekly.milestones.map((milestone, index) => {
+              const done = weeklyProgress >= milestone.target;
+              return (
+                <div key={milestone.target} className={`rounded-lg border p-2.5 text-xs font-semibold ${milestone.claimed ? "border-emerald/30 bg-emerald-50/80" : "border-amber-300 bg-parchment/70"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-black">Milestone {index + 1}</span>
+                    <span className="font-black text-stone-600">{milestone.target}</span>
+                  </div>
+                  <p className="mt-1 text-stone-700">
+                    {formatNumber(milestone.reward.gold)} Gold
+                    {formatResources(milestone.reward.materials) ? `, ${formatResources(milestone.reward.materials)}` : ""}
+                    , +{milestone.reward.vigor} Vigor
+                  </p>
+                  <SecondaryButton className="mt-2 w-full" onClick={() => store.claimWeeklyContract(index)} disabled={!done || milestone.claimed}>
+                    {milestone.claimed ? "Claimed" : done ? "Claim" : "Locked"}
+                  </SecondaryButton>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </Card>
       <div className="grid gap-3">
@@ -2488,7 +2771,12 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
             <Card key={task.id} className={task.claimed ? "border-emerald/30 bg-emerald-50/70" : ""}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-black">{task.label}</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-black">{task.label}</h3>
+                    <Pill className={task.role === "primary" ? "border-royal/20 bg-blue-50 text-royal" : "border-stone-200 bg-stone-50 text-stone-700"}>
+                      {task.role === "primary" ? "Main" : "Side"}
+                    </Pill>
+                  </div>
                   <p className="text-xs font-semibold text-stone-700 sm:text-sm">
                     Progress: {task.progress}/{task.target}
                   </p>
@@ -2587,7 +2875,7 @@ function ReincarnationScreen({
   const clearedGateRoute = gateRoute.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0).length;
   const levelProgress = Math.min(100, Math.floor((state.hero.level / REINCARNATION_LEVEL_REQUIREMENT) * 100));
   const bossProgress = bossClear ? 100 : Math.min(99, Math.floor((clearedGateRoute / Math.max(1, gateRoute.length)) * 100));
-  const resetItems = ["Hero level, XP, and base stats", "Gold, materials, inventory, and equipment", "Town buildings, dungeon clears, active expedition, and dailies", "Vigor returns to 40 current"];
+  const resetItems = ["Hero level, XP, and base stats", "Gold, materials, inventory, and equipment", "Town buildings, dungeon clears, active expedition, and contracts", "Vigor returns to 40 current"];
   const persistItems = ["Soul Marks and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
   const reincarnationPanels: Array<{ id: ReincarnationSubviewId; content: React.ReactNode }> = [
     {
@@ -2708,7 +2996,7 @@ function ReincarnationScreen({
               <p className="text-xs font-black uppercase text-mystic">Confirm Reincarnation</p>
               <h3 className="text-base font-black">Start a New Cycle?</h3>
               <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-                This resets this run&apos;s level, resources, gear, town, dungeon clears, expedition, and dailies.
+                This resets this run&apos;s level, resources, gear, town, dungeon clears, expedition, and contracts.
                 Soul Marks, upgrades, achievements, and lifetime stats persist.
               </p>
               <p className="text-xs font-semibold text-stone-700">
@@ -2830,7 +3118,7 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         )}
       </Card>
       <Card>
-        <h3 className="text-[0.94rem] font-black">Dailies</h3>
+        <h3 className="text-[0.94rem] font-black">Contracts</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">
           {state.dailies.tasks.filter((task) => task.claimed).length}/{state.dailies.tasks.length} claimed
         </p>
@@ -2853,6 +3141,7 @@ export default function Home() {
   const hasRehydratedRef = useRef(false);
   const [tab, setTab] = useState<TabId>("expeditions");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [expeditionSubview, setExpeditionSubview] = useState<ExpeditionSubviewId>("routes");
   const [heroSubview, setHeroSubview] = useState<HeroSubviewId>("overview");
   const [forgeSubview, setForgeSubview] = useState<ForgeSubviewId>("craft");
   const [reincarnationSubview, setReincarnationSubview] = useState<ReincarnationSubviewId>("overview");
@@ -2902,6 +3191,22 @@ export default function Home() {
   let topSubtabValue: string | null = null;
   let topSubtabChange: ((id: string) => void) | null = null;
   switch (tab) {
+    case "expeditions":
+      topSubtabOptions = [...EXPEDITION_SUBVIEWS];
+      topSubtabValue = expeditionSubview;
+      topSubtabChange = (id) => setExpeditionSubview(id as ExpeditionSubviewId);
+      screen = (
+        <ExpeditionsScreen
+          state={state}
+          now={now}
+          store={store}
+          onSelectTab={setTab}
+          view={expeditionSubview}
+          onViewChange={setExpeditionSubview}
+          reducedMotion={state.settings.reducedMotion}
+        />
+      );
+      break;
     case "hero":
       topSubtabOptions = [...HERO_SUBVIEWS];
       topSubtabValue = heroSubview;
@@ -2944,7 +3249,17 @@ export default function Home() {
       screen = <SettingsScreen state={state} store={store} />;
       break;
     default:
-      screen = <ExpeditionsScreen state={state} now={now} store={store} onSelectTab={setTab} />;
+      screen = (
+        <ExpeditionsScreen
+          state={state}
+          now={now}
+          store={store}
+          onSelectTab={setTab}
+          view={expeditionSubview}
+          onViewChange={setExpeditionSubview}
+          reducedMotion={state.settings.reducedMotion}
+        />
+      );
       break;
   }
 

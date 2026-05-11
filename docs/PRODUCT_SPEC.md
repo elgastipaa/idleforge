@@ -12,13 +12,13 @@ Relic Forge Idle is a mobile-first, text/card-based, single-player fantasy idle 
 
 Player fantasy:
 
-"I am a fantasy adventurer with a growing personal town and relic forge. I run expeditions, gain loot, improve gear, unlock regions, beat bosses, complete dailies, and reincarnate for permanent growth."
+"I am a fantasy adventurer with a growing personal town and relic forge. I run expeditions, gain loot, improve gear, unlock regions, beat bosses, complete contracts, and reincarnate for permanent growth."
 
 ## Target Experience
 
 - Short session friendly (15 seconds to 3 minute expeditions early).
 - Longer grind available (5 to 60 minute expeditions later).
-- Constant visible progression: hero level, gear quality, town levels, region unlocks, dailies, and reincarnation.
+- Constant visible progression: hero level, gear quality, town levels, region unlocks, contracts, and reincarnation.
 
 ## North Star
 
@@ -26,6 +26,7 @@ Deliver an infinite-MMORPG feeling without multiplayer by combining:
 
 - Timers and returns.
 - Loot excitement and upgrade decisions.
+- Loot direction through a soft slot focus, pity counter, and early anti-duplicate weighting.
 - Reincarnation loops with permanent progression.
 
 ## Platform And Tech Constraints
@@ -47,10 +48,12 @@ Deliver an infinite-MMORPG feeling without multiplayer by combining:
 - 5 equipment slots: weapon, helm, armor, boots, relic.
 - 4 rarities: common, rare, epic, legendary.
 - Affixes and comparison.
+- Loot focus and pity: included.
 - Equip/sell/salvage.
 - Forge crafting and item upgrade.
 - Town buildings: Forge, Mine, Tavern, Market, Library, Shrine.
-- Dailies: included.
+- Caravan offline jobs: included under Expeditions.
+- Contracts: 1 main + 2 side contracts/day, plus weekly chest milestones.
 - 3 class passive milestones per class: included.
 - Vigor: included as non-monetized boost.
 - Reincarnation: included.
@@ -62,11 +65,11 @@ Deliver an infinite-MMORPG feeling without multiplayer by combining:
 
 - Inventory limit: `30`.
 - Offline expedition cap: `8h`.
-- Mine passive cap: `8h`.
+- Caravan offline job cap: `8h`.
 - Vigor cap: `100`.
 - Vigor regen: `+1` every `5m`.
-- Daily task count: `3`.
-- Daily reset: `23:00 UTC`.
+- Contract count: `3/day`.
+- Contract reset: `23:00 local`.
 - No streak punishment in v1.0.
 
 ## Pacing Targets

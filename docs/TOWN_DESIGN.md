@@ -21,12 +21,14 @@ Forge:
 
 Mine:
 
-- passive material generation.
-- offline accumulation up to 8h.
+- expedition material multiplier.
+- improves Ore and Crystal Caravan yields.
+- no longer grants passive offline materials by itself.
 
 Tavern:
 
-- daily quest access and reward quality bump.
+- XP multiplier and stamina.
+- contract readiness flavor in Town feedback.
 
 Market:
 

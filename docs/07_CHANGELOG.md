@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-05-10 (Caravan, Contracts, Loot Direction Lite)
+
+### Added
+- Added Caravan offline jobs under Expeditions:
+  - selectable `1h..8h` duration,
+  - focus resource unlocks by hero level,
+  - one active Caravan at a time,
+  - cancel gives no rewards.
+- Added Loot Direction Lite:
+  - Inventory Loot Focus selector (`any` or one equipment slot),
+  - expedition drop pity after repeated misses,
+  - early anti-duplicate slot weighting.
+- Added equipped item overview above Current Class in the Hero overview subtab.
+
+### Changed
+- Visible Dailies tab is now Contracts.
+- Contracts now use 1 Main + 2 Side per day plus weekly chest milestones.
+- Starting new Expeditions is blocked while a Caravan is active.
+- Inventory item cards now merge item level, upgrade level, item power delta, stat deltas, and sell/salvage values into compact rows; stats are dot-separated text instead of chips.
+- Inventory capacity header now removes title/copy/filter dropdown and shows `current/cap · percent` in the row.
+- Loot Focus now uses six compact buttons instead of a dropdown and removes helper copy.
+- Forge Craft now uses compact slot buttons instead of a slot dropdown.
+- Forge Upgrade removes the redundant outer `Upgrade Item` card and shows upgrade item rows directly.
+- Global dark-surface overrides now cover Tailwind light opacity variants used by chips/cards, preventing bright badge backgrounds across screens.
+- Caravan focus selection now has a stronger selected state with a ring, marker, and full-opacity active focus.
+- Root `docs/` were synced to the current implementation; `docs/design/` remains strategic design context.
+
 ## 2026-05-09 (Global Subtabs + Swipe Navigation for Sectioned Tabs)
 
 ### Changed
@@ -42,7 +69,7 @@
 ## 2026-05-09 (Offline Summary Density Pass)
 
 ### Changed
-- Compacted `Offline Summary` into one inner card with four tight rows (`Expedition`, `Mine gains`, `Vigor`, `Dailies`) instead of four separate mini-cards.
+- Compacted `Offline Summary` into one inner card with tight rows (`Expedition`, `Caravan`, `Vigor`, `Contracts`) instead of separate mini-cards.
 - Removed obsolete stacked-details toggle path in `OfflineSummaryPanel` after adopting single-priority overlay flow.
 - Kept elapsed-time copy (`Away for ...`) as the status line instead of a "Last update" timestamp.
 
@@ -92,7 +119,7 @@
 ## 2026-05-09 (Docs Consistency Canonicalization)
 
 ### Changed
-- Set canonical daily reset wording to `23:00 UTC` across planning docs.
+- Set canonical contract reset wording to `23:00 local` across planning docs.
 - Reaffirmed `docs/` as canonical source and `docs/00..07` as primary workflow.
 - Removed `docs/README.md` to avoid competing source-of-truth indexes.
 - Clarified that root-level planning files (for example `2_0_definition.md`) are historical context only.
@@ -251,15 +278,15 @@
 
 ### Added
 - Added `purpose` and `milestones` metadata to every Town building.
-- Added `getMineOfflineRate(state)` so the Town UI can show Mine passive material rate.
+- Added `getMineOfflineRate(state)` so the Town UI could show the former Mine material-rate display. This was later superseded by Caravan jobs.
 - Added Town UI feedback for:
   - Forge crafting/upgrades/rerolls,
-  - Mine offline material rate and offline cap,
+  - legacy Mine material-rate display and offline cap,
   - Tavern daily readiness and next-goal rumor,
   - Market inventory pressure and sell multiplier,
   - Library next unlock hint,
   - Shrine reincarnation readiness/Soul Marks.
-- Added tests covering building metadata and Mine offline rate.
+- Added tests covering building metadata and legacy Mine material-rate display.
 
 ### Changed
 - Town screen now renders card-based/mobile-first building cards with level progress, purpose, current benefit, next level benefit, upgrade cost, milestones, and upgrade readiness.
@@ -291,11 +318,11 @@
 - No complex skill tree, second prestige layer, or awakening classes were added.
 - Class awakening is documented as post-MVP.
 
-## 2026-05-08 (MVP 2.0 Dailies and Vigor Polish)
+## 2026-05-08 (MVP 2.0 Contracts and Vigor Polish)
 
 ### Added
-- Added local-time daily reset behavior using `DAILY_RESET_HOUR_LOCAL = 23`.
-- Dailies UI now shows local reset time, reset countdown, completed/claimed counts, progress bars, rewards, and no-streak/no-monetization policy copy.
+- Added local-time contract reset behavior using `DAILY_RESET_HOUR_LOCAL = 23`.
+- Contracts UI now shows local reset time, reset countdown, completed/claimed counts, progress bars, rewards, and no-streak/no-monetization policy copy.
 - Expedition board now explains Vigor regeneration and only enables Vigor boost when the player has enough Vigor.
 - Added tests for local reset boundaries and Vigor reward clamping.
 
@@ -310,7 +337,7 @@
 
 ### Added
 - Added expedition reward reveal tiles for XP, Gold, materials, Vigor boost, level-up, achievements, unlocks, and short fantasy flavor.
-- Added notice/toast-style cards for important actions including Forge work, Town upgrades, gear actions, dailies, reincarnation, and errors.
+- Added notice/toast-style cards for important actions including Forge work, Town upgrades, gear actions, contracts, reincarnation, and errors.
 - Added inventory capacity progress, clearer near-full/full warnings, and richer empty states.
 - Added reincarnation progress bars for the level gate and boss route.
 - Added persistent Next Goal visibility in the header and desktop sidebar.

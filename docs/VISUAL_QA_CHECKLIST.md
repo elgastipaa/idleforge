@@ -36,7 +36,7 @@ Behavior:
 - Inventory
 - Forge
 - Town
-- Dailies
+- Contracts
 - Reincarnation
 - Settings/export/import/reset
 - Expedition claim result
@@ -50,7 +50,7 @@ Behavior:
 - Inventory cards: compact, readable, controlled rarity styling.
 - Forge rows: long names truncate and action buttons stay aligned.
 - Town cards: medium density; no oversized visual bloat.
-- Daily cards: compact and readable on mobile.
+- Contract cards: compact and readable on mobile.
 - Reincarnation panel: feature card density only where appropriate.
 - Settings controls: input/textarea/button readability in dark theme.
 - Disabled states: visible and readable.

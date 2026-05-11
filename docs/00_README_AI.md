@@ -26,7 +26,7 @@ Este es el primer documento que toda IA debe leer antes de tocar el proyecto.
 - No tocar lógica de juego desde UI (`src/app`) ni desde store (`src/store`) si debe vivir en `src/game`.
 - Mantener cambios chicos, focalizados y verificables.
 - Evitar renombrados masivos o refactors grandes dentro de tareas de feature.
-- No duplicar sistemas existentes (por ejemplo: no crear otra implementación de dailies/vigor/save).
+- No duplicar sistemas existentes (por ejemplo: no crear otra implementación de dailies/Contracts/vigor/save).
 
 ## Reglas para mantener arquitectura
 
@@ -40,7 +40,7 @@ Este es el primer documento que toda IA debe leer antes de tocar el proyecto.
 - Antes de crear un archivo nuevo, revisar si ya existe un lugar correcto para esa lógica.
 - Antes de crear una constante, revisar `src/game/constants.ts` y `src/game/content.ts`.
 - Antes de crear persistencia, revisar `src/game/save.ts` y store.
-- Antes de agregar progreso temporal, revisar `updatedAt`, `applyOfflineProgress`, `ensureDailies`, `regenerateVigor`.
+- Antes de agregar progreso temporal, revisar `updatedAt`, `applyOfflineProgress`, `ensureDailies`, `regenerateVigor`, `caravan.ts`.
 
 ## Flujo obligatorio de trabajo (antes/durante/después)
 

@@ -1,8 +1,17 @@
-import { INVENTORY_LIMIT, RARITY_MULTIPLIER } from "./constants";
+import {
+  EQUIPMENT_SLOTS,
+  INVENTORY_LIMIT,
+  LOOT_DROP_PITY_THRESHOLD,
+  LOOT_EARLY_ANTI_DUPLICATE_ITEM_COUNT,
+  LOOT_FOCUS_SLOT_WEIGHT_MULTIPLIER,
+  LOOT_RECENT_SLOT_MEMORY,
+  RARITY_MULTIPLIER
+} from "./constants";
 import { getAffixEffectTotal } from "./affixes";
 import { AFFIX_POOL, RARITY_PREFIX, SLOT_BASE_NAMES } from "./content";
 import { getLootChance, getRarityMultiplier } from "./balance";
-import type { Affix, DungeonDefinition, EquipmentSlot, GameState, Item, ItemRarity, MaterialBundle, Stats } from "./types";
+import { cloneState } from "./state";
+import type { ActionResult, Affix, DungeonDefinition, EquipmentSlot, GameState, Item, ItemRarity, LootFocusId, MaterialBundle, Stats } from "./types";
 import type { Rng } from "./rng";
 
 const SLOT_WEIGHTS: { slot: EquipmentSlot; weight: number }[] = [
@@ -59,6 +68,56 @@ export function rollSlot(rng: Rng): EquipmentSlot {
     rng,
     SLOT_WEIGHTS.map((entry) => ({ value: entry.slot, weight: entry.weight }))
   );
+}
+
+export function isLootFocusId(value: unknown): value is LootFocusId {
+  return value === "any" || EQUIPMENT_SLOTS.includes(value as EquipmentSlot);
+}
+
+export function setLootFocus(state: GameState, focusSlot: LootFocusId, now: number): ActionResult {
+  if (!isLootFocusId(focusSlot)) {
+    return { ok: false, state, error: "Unknown loot focus." };
+  }
+
+  const next = cloneState(state);
+  next.loot.focusSlot = focusSlot;
+  next.updatedAt = now;
+  return { ok: true, state: next, message: focusSlot === "any" ? "Loot focus cleared." : `Loot focus set to ${focusSlot}.` };
+}
+
+export function getLootSlotWeights(state: GameState): { slot: EquipmentSlot; weight: number }[] {
+  const focusSlot = isLootFocusId(state.loot?.focusSlot) ? state.loot.focusSlot : "any";
+  const earlyAntiDuplicate = state.lifetime.totalItemsFound < LOOT_EARLY_ANTI_DUPLICATE_ITEM_COUNT;
+  const recentSlots = new Set((state.loot?.recentSlots ?? []).slice(0, LOOT_RECENT_SLOT_MEMORY));
+  return SLOT_WEIGHTS.map((entry) => {
+    let weight = entry.weight;
+    if (focusSlot === entry.slot) {
+      weight *= LOOT_FOCUS_SLOT_WEIGHT_MULTIPLIER;
+    }
+    if (earlyAntiDuplicate && recentSlots.has(entry.slot) && focusSlot !== entry.slot) {
+      weight *= 0.35;
+    }
+    if (earlyAntiDuplicate && !state.equipment[entry.slot]) {
+      weight *= 1.25;
+    }
+    return { slot: entry.slot, weight };
+  });
+}
+
+function rollDirectedSlot(state: GameState, rng: Rng): EquipmentSlot {
+  return weightedPick(
+    rng,
+    getLootSlotWeights(state).map((entry) => ({ value: entry.slot, weight: entry.weight }))
+  );
+}
+
+export function recordLootDrop(state: GameState, slot: EquipmentSlot) {
+  state.loot.missesSinceDrop = 0;
+  state.loot.recentSlots = [slot, ...state.loot.recentSlots.filter((recentSlot) => recentSlot !== slot)].slice(0, LOOT_RECENT_SLOT_MEMORY);
+}
+
+export function recordLootMiss(state: GameState) {
+  state.loot.missesSinceDrop = Math.min(LOOT_DROP_PITY_THRESHOLD, state.loot.missesSinceDrop + 1);
 }
 
 function affixCountForRarity(rarity: ItemRarity): number {
@@ -127,10 +186,10 @@ export function createItem(
   rng: Rng,
   runId: number,
   forced?: Partial<Pick<Item, "slot" | "rarity">>,
-  options?: { bossBonus?: boolean }
+  options?: { bossBonus?: boolean; useLootDirection?: boolean }
 ): Item {
   const rarity = forced?.rarity ?? rollRarity(state, rng, options?.bossBonus);
-  const slot = forced?.slot ?? rollSlot(rng);
+  const slot = forced?.slot ?? (options?.useLootDirection ? rollDirectedSlot(state, rng) : rollSlot(rng));
   const baseName = rng.pick(SLOT_BASE_NAMES[slot]);
   const prefix = rng.pick(RARITY_PREFIX[rarity]);
   const affixes = pickAffixes(rng, affixCountForRarity(rarity), slot);
@@ -180,8 +239,9 @@ export function maybeGenerateLoot(
     return createItem(state, dungeon, rng, runId, { slot: "weapon", rarity: "common" }, options);
   }
 
-  if (options.forceDrop || rng.next() <= getLootChance(state, dungeon)) {
-    return createItem(state, dungeon, rng, runId, undefined, options);
+  const pityDrop = state.loot.missesSinceDrop >= LOOT_DROP_PITY_THRESHOLD;
+  if (options.forceDrop || pityDrop || rng.next() <= getLootChance(state, dungeon)) {
+    return createItem(state, dungeon, rng, runId, undefined, { ...options, useLootDirection: true });
   }
 
   return null;

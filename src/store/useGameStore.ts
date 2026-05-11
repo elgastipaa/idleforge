@@ -7,6 +7,8 @@ import {
   applyOfflineProgress,
   buyBuildingUpgrade,
   claimDailyTask,
+  claimWeeklyContractMilestone,
+  cancelCaravanJob,
   craftItem,
   buyRenownUpgrade,
   changeHeroClass,
@@ -22,11 +24,15 @@ import {
   salvageItem,
   sellItem,
   serializeSave,
+  setLootFocus,
+  startCaravanJob,
   startExpedition,
   upgradeItem,
   type BuildingId,
+  type CaravanFocusId,
   type GameState,
   type HeroClassId,
+  type LootFocusId,
   type OfflineDeltaSummary,
   type ResolveExpeditionOptions,
   type RenownUpgradeId,
@@ -47,10 +53,14 @@ export type GameStore = {
   sellItem: (itemId: string) => void;
   salvageItem: (itemId: string) => void;
   craftItem: (slot?: "weapon" | "helm" | "armor" | "boots" | "relic", classBias?: boolean) => void;
+  setLootFocus: (focusSlot: LootFocusId) => void;
   upgradeItem: (itemId: string) => void;
   rerollItemAffix: (itemId: string, affixIndex: number) => void;
   buyBuilding: (buildingId: BuildingId) => void;
   claimDaily: (taskId: string) => void;
+  claimWeeklyContract: (milestoneIndex: number) => void;
+  startCaravanJob: (focusId: CaravanFocusId, durationMs: number) => void;
+  cancelCaravanJob: () => void;
   prestige: () => void;
   buyRenownUpgrade: (upgradeId: RenownUpgradeId) => void;
   changeClass: (classId: HeroClassId) => void;
@@ -142,8 +152,9 @@ const gamePersistStorage: PersistStorage<PersistedGameSnapshot> = {
               ? `Expedition ${getDungeon(hydratedState.activeExpedition.dungeonId).name} is ready to claim.`
               : null,
             offline.summary.vigorGained > 0 ? `+${offline.summary.vigorGained} Vigor regenerated.` : null,
+            offline.summary.caravan ? `Caravan returned with ${offline.summary.caravan.completed ? "completed" : "partial"} progress.` : null,
             Object.values(offline.summary.mineGains).some((value) => value > 0) ? "Mine generated materials." : null,
-            offline.summary.dailyReset ? "Dailies refreshed." : null
+            offline.summary.dailyReset ? "Contracts refreshed." : null
           ]
             .filter(Boolean)
             .join(" ")
@@ -264,6 +275,15 @@ export const useGameStore = create<GameStore>()(
         set({ state: result.state, error: null, lastMessage: result.message ?? "Item crafted." });
       },
 
+      setLootFocus: (focusSlot) => {
+        const result = setLootFocus(get().state, focusSlot, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Loot focus updated." });
+      },
+
       upgradeItem: (itemId) => {
         const result = upgradeItem(get().state, itemId, Date.now());
         if (!result.ok) {
@@ -297,7 +317,34 @@ export const useGameStore = create<GameStore>()(
           set({ error: result.error });
           return;
         }
-        set({ state: result.state, error: null, lastMessage: result.message ?? "Daily claimed." });
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Contract claimed." });
+      },
+
+      claimWeeklyContract: (milestoneIndex) => {
+        const result = claimWeeklyContractMilestone(get().state, milestoneIndex, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Weekly contract claimed." });
+      },
+
+      startCaravanJob: (focusId, durationMs) => {
+        const result = startCaravanJob(get().state, focusId, durationMs, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan planned.", lastOfflineSummary: null });
+      },
+
+      cancelCaravanJob: () => {
+        const result = cancelCaravanJob(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan canceled.", lastOfflineSummary: null });
       },
 
       prestige: () => {

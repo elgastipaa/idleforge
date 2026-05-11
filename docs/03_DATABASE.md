@@ -44,10 +44,12 @@ Campos raíz relevantes:
 - `vigor`
 - `inventory`
 - `equipment`
+- `loot`
 - `activeExpedition`
 - `dungeonClears`
 - `town`
-- `dailies`
+- `caravan`
+- `dailies` (UI: Contracts)
 - `achievements`
 - `prestige`
 - `lifetime`
@@ -58,6 +60,15 @@ Definición completa: `src/game/types.ts`.
 ## Modelo persistido relevante para loot
 
 Los ítems de `inventory` y `equipment` se guardan completos dentro de `GameState`.
+Además, `loot` guarda la dirección de drops y el contador de pity:
+
+```ts
+type LootState = {
+  focusSlot: "any" | "weapon" | "helm" | "armor" | "boots" | "relic";
+  missesSinceDrop: number;
+  recentSlots: EquipmentSlot[];
+};
+```
 
 ```ts
 type Item = {
@@ -108,15 +119,17 @@ type Affix = {
 - `game` y `saveVersion`.
 - shape base de `GameState`.
 - clases, dungeon activo, slots de equipment y límite de inventario.
+- loot focus/pity/recent slots.
+- Caravan activa opcional.
 - vigor (`0..max`, `max<=100`).
-- dailies (`3 tareas` + tipos válidos).
+- dailies/Contracts (`1 Main + 2 Side` + tipos válidos + weekly milestones).
 - upgrades de progreso permanente.
 
 ## Riesgos / inconsistencias de persistencia
 
 1. No hay estrategia de migración multi-versión más allá de `saveVersion` fijo.
 2. Si cambian tipos de estado, hay riesgo de romper imports viejos sin migrador.
-3. Validación de reward de dailies es superficial (shape básica; no valida todos los rangos numéricos finos).
+3. Validación de reward de Contracts es superficial (shape básica; no valida todos los rangos numéricos finos).
 4. No se valida en profundidad la forma interna completa de cada `item` de inventario/equipment durante import, incluyendo `affixes.effects`.
 
 ## Futura DB sugerida (NO implementada)

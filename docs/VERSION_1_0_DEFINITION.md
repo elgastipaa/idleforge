@@ -10,7 +10,7 @@ v1.0 is complete when a player can:
 4. Manage loot in 5 slots with 4 rarities and affixes.
 5. Use forge actions (craft and upgrade).
 6. Upgrade all 6 town buildings.
-7. Complete and claim 3 daily tasks.
+7. Complete and claim daily Contracts (1 Main + 2 Side) and progress the weekly chest.
 8. Use vigor boosts with regeneration.
 9. Reincarnate and spend permanent progression.
 10. Save/load/export/import/reset locally.
@@ -29,7 +29,7 @@ Note:
 - Any backend dependency.
 - Non-deterministic core simulation.
 - Missing reincarnation.
-- Missing dailies.
+- Missing contracts.
 - Missing class passives.
 - Missing offline caps.
 - Missing inventory cap behavior.
@@ -50,5 +50,5 @@ Note:
 
 - The permanent reincarnation currency is labeled **Soul Marks** in UI and stored internally as `resources.renown`.
 - Awards are shipped in v1.0.
-- Mine passive income is applied automatically during offline calculation (8h cap), without a separate manual "collect mine" button.
+- Caravan is the active offline job system: 1h to 8h jobs, one active Caravan at a time, cancel gives no rewards.
 - Overflow loot at inventory cap (`30`) is auto-salvaged (not auto-sold).

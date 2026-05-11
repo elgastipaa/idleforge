@@ -125,6 +125,10 @@ export function getNextGoal(state: GameState): string {
     return `Finish ${active.name}.`;
   }
 
+  if (state.caravan.activeJob) {
+    return "Caravan is active. Wait for it to finish or cancel it from Expeditions.";
+  }
+
   const firstDungeon = DUNGEONS[0];
   if (!hasClearedDungeon(state, firstDungeon.id)) {
     return `Start ${firstDungeon.name}; first loot arrives in ${formatGoalDuration(getDurationMs(state, firstDungeon))}.`;

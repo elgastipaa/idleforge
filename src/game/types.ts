@@ -96,6 +96,14 @@ export type Item = {
 
 export type EquipmentState = Record<EquipmentSlot, Item | null>;
 
+export type LootFocusId = "any" | EquipmentSlot;
+
+export type LootState = {
+  focusSlot: LootFocusId;
+  missesSinceDrop: number;
+  recentSlots: EquipmentSlot[];
+};
+
 export type BuildingState = Record<BuildingId, number>;
 
 export type BuildingMilestone = {
@@ -177,6 +185,32 @@ export type VigorState = {
   lastTickAt: number;
 };
 
+export type CaravanFocusId = "xp" | "gold" | "ore" | "crystal" | "rune";
+
+export type CaravanFocusDefinition = {
+  id: CaravanFocusId;
+  label: string;
+  unlockLevel: number;
+  description: string;
+};
+
+export type CaravanRewardSummary = {
+  xp: number;
+  gold: number;
+  materials: Partial<MaterialBundle>;
+};
+
+export type ActiveCaravanJob = {
+  focusId: CaravanFocusId;
+  durationMs: number;
+  startedAt: number;
+  endsAt: number;
+};
+
+export type CaravanState = {
+  activeJob: ActiveCaravanJob | null;
+};
+
 export type DailyTaskKind =
   | "complete_expeditions"
   | "win_expeditions"
@@ -193,9 +227,12 @@ export type DailyReward = {
   vigor: number;
 };
 
+export type DailyTaskRole = "primary" | "secondary";
+
 export type DailyTaskState = {
   id: string;
   kind: DailyTaskKind;
+  role: DailyTaskRole;
   label: string;
   target: number;
   progress: number;
@@ -203,11 +240,25 @@ export type DailyTaskState = {
   reward: DailyReward;
 };
 
+export type WeeklyContractMilestone = {
+  target: number;
+  claimed: boolean;
+  reward: DailyReward;
+};
+
+export type WeeklyContractState = {
+  windowStartAt: number;
+  nextResetAt: number;
+  progress: number;
+  milestones: WeeklyContractMilestone[];
+};
+
 export type DailyState = {
   windowStartAt: number;
   nextResetAt: number;
   tasks: DailyTaskState[];
   lastTaskSetKey: string | null;
+  weekly: WeeklyContractState;
 };
 
 export type LifetimeStats = {
@@ -246,9 +297,11 @@ export type GameState = {
   vigor: VigorState;
   inventory: Item[];
   equipment: EquipmentState;
+  loot: LootState;
   activeExpedition: ActiveExpedition | null;
   dungeonClears: Record<string, number>;
   town: BuildingState;
+  caravan: CaravanState;
   dailies: DailyState;
   achievements: Record<string, AchievementState>;
   prestige: PrestigeState;
@@ -298,6 +351,13 @@ export type ResolveSummary = {
 export type OfflineDeltaSummary = {
   expedition: ResolveSummary | null;
   expeditionReady: boolean;
+  caravan: {
+    focusId: CaravanFocusId;
+    rewards: CaravanRewardSummary;
+    elapsedMs: number;
+    completed: boolean;
+    levelUps: number[];
+  } | null;
   mineGains: Partial<MaterialBundle>;
   vigorGained: number;
   dailyReset: boolean;

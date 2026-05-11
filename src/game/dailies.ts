@@ -3,7 +3,9 @@ import { DAILY_TASK_POOL, DUNGEONS } from "./content";
 import { isDungeonUnlocked } from "./expeditions";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
-import type { ActionResult, DailyTaskKind, DailyTaskState, GameState, MaterialBundle } from "./types";
+import type { ActionResult, DailyReward, DailyTaskKind, DailyTaskState, GameState, MaterialBundle, WeeklyContractState } from "./types";
+
+const WEEKLY_CONTRACT_TARGETS = [3, 9, 15] as const;
 
 export function getDailyWindowStartAt(now: number): number {
   const date = new Date(now);
@@ -20,6 +22,33 @@ export function getNextDailyResetAt(now: number): number {
     windowStart.getFullYear(),
     windowStart.getMonth(),
     windowStart.getDate() + 1,
+    DAILY_RESET_HOUR_LOCAL,
+    0,
+    0,
+    0
+  ).getTime();
+}
+
+export function getWeeklyWindowStartAt(now: number): number {
+  const dailyWindowStart = new Date(getDailyWindowStartAt(now));
+  const daysSinceMonday = (dailyWindowStart.getDay() + 6) % 7;
+  return new Date(
+    dailyWindowStart.getFullYear(),
+    dailyWindowStart.getMonth(),
+    dailyWindowStart.getDate() - daysSinceMonday,
+    DAILY_RESET_HOUR_LOCAL,
+    0,
+    0,
+    0
+  ).getTime();
+}
+
+export function getNextWeeklyResetAt(now: number): number {
+  const windowStart = new Date(getWeeklyWindowStartAt(now));
+  return new Date(
+    windowStart.getFullYear(),
+    windowStart.getMonth(),
+    windowStart.getDate() + 7,
     DAILY_RESET_HOUR_LOCAL,
     0,
     0,
@@ -108,6 +137,26 @@ function getBestUnlockedNonBossDungeon(state: GameState) {
   }, candidates[0]);
 }
 
+function createWeeklyContracts(state: GameState, now: number): WeeklyContractState {
+  const windowStartAt = getWeeklyWindowStartAt(now);
+  const bestDungeon = getBestUnlockedNonBossDungeon(state);
+  const rewardScales = [0.35, 0.75, 1.25];
+  return {
+    windowStartAt,
+    nextResetAt: getNextWeeklyResetAt(now),
+    progress: 0,
+    milestones: WEEKLY_CONTRACT_TARGETS.map((target, index) => ({
+      target,
+      claimed: false,
+      reward: {
+        gold: Math.max(1, Math.floor(bestDungeon.baseGold * rewardScales[index])),
+        materials: addScaledMaterials(bestDungeon.materials, rewardScales[index]),
+        vigor: [15, 25, 40][index]
+      }
+    }))
+  };
+}
+
 function createDailyTasks(state: GameState, now: number, previousKey: string | null): DailyTaskState[] {
   const windowStartAt = getDailyWindowStartAt(now);
   const definitions = getEligibleTaskDefinitions(state);
@@ -121,13 +170,15 @@ function createDailyTasks(state: GameState, now: number, previousKey: string | n
 
   return kinds.map((kind, index) => {
     const definition = DAILY_TASK_POOL.find((entry) => entry.kind === kind) ?? DAILY_TASK_POOL[0];
-    const ratio = rng.pick([0.08, 0.1, 0.12]);
+    const role = index === 0 ? "primary" : "secondary";
+    const ratio = role === "primary" ? rng.pick([0.16, 0.18, 0.2]) : rng.pick([0.08, 0.1, 0.12]);
     const rewardGold = Math.max(1, Math.floor(bestDungeon.baseGold * ratio));
     const rewardMaterials = addScaledMaterials(bestDungeon.materials, ratio);
-    const rewardVigor = rng.int(8, 12);
+    const rewardVigor = role === "primary" ? rng.int(14, 18) : rng.int(8, 12);
     return {
       id: `${windowStartAt}-${kind}-${index}`,
       kind: definition.kind,
+      role,
       label: definition.label,
       target: definition.target,
       progress: 0,
@@ -143,20 +194,32 @@ function createDailyTasks(state: GameState, now: number, previousKey: string | n
 
 export function ensureDailies(state: GameState, now: number): { state: GameState; reset: boolean } {
   const windowStartAt = getDailyWindowStartAt(now);
+  const weeklyWindowStartAt = getWeeklyWindowStartAt(now);
   const needsReset = now >= state.dailies.nextResetAt || state.dailies.windowStartAt !== windowStartAt || state.dailies.tasks.length !== DAILY_TASK_COUNT;
-  if (!needsReset) {
+  const weekly = state.dailies.weekly;
+  const needsWeeklyReset =
+    !weekly ||
+    now >= weekly.nextResetAt ||
+    weekly.windowStartAt !== weeklyWindowStartAt ||
+    weekly.milestones.length !== WEEKLY_CONTRACT_TARGETS.length;
+  if (!needsReset && !needsWeeklyReset) {
     return { state, reset: false };
   }
 
   const next = cloneState(state);
-  const previousKey = state.dailies.tasks.length === DAILY_TASK_COUNT ? getTaskSetKey(state.dailies.tasks) : state.dailies.lastTaskSetKey;
-  const tasks = createDailyTasks(next, now, previousKey);
-  next.dailies.windowStartAt = windowStartAt;
-  next.dailies.nextResetAt = getNextDailyResetAt(now);
-  next.dailies.lastTaskSetKey = getTaskSetKey(tasks);
-  next.dailies.tasks = tasks;
+  if (needsWeeklyReset) {
+    next.dailies.weekly = createWeeklyContracts(next, now);
+  }
+  if (needsReset) {
+    const previousKey = state.dailies.tasks.length === DAILY_TASK_COUNT ? getTaskSetKey(state.dailies.tasks) : state.dailies.lastTaskSetKey;
+    const tasks = createDailyTasks(next, now, previousKey);
+    next.dailies.windowStartAt = windowStartAt;
+    next.dailies.nextResetAt = getNextDailyResetAt(now);
+    next.dailies.lastTaskSetKey = getTaskSetKey(tasks);
+    next.dailies.tasks = tasks;
+  }
   next.updatedAt = now;
-  return { state: next, reset: true };
+  return { state: next, reset: needsReset };
 }
 
 export function applyDailyProgress(
@@ -199,6 +262,12 @@ function addMaterials(state: GameState, materials: Partial<MaterialBundle>) {
   state.resources.relicFragment += materials.relicFragment ?? 0;
 }
 
+function addDailyReward(state: GameState, reward: DailyReward) {
+  state.resources.gold += reward.gold;
+  addMaterials(state, reward.materials);
+  state.vigor.current = Math.min(state.vigor.max, state.vigor.current + reward.vigor);
+}
+
 export function claimDailyTask(state: GameState, taskId: string, now: number): ActionResult {
   const ensured = ensureDailies(state, now);
   const taskIndex = ensured.state.dailies.tasks.findIndex((task) => task.id === taskId);
@@ -217,10 +286,32 @@ export function claimDailyTask(state: GameState, taskId: string, now: number): A
 
   const next = cloneState(ensured.state);
   next.dailies.tasks[taskIndex].claimed = true;
-  next.resources.gold += task.reward.gold;
-  addMaterials(next, task.reward.materials);
-  next.vigor.current = Math.min(next.vigor.max, next.vigor.current + task.reward.vigor);
+  addDailyReward(next, task.reward);
+  const weeklyTarget = next.dailies.weekly.milestones.at(-1)?.target ?? WEEKLY_CONTRACT_TARGETS[WEEKLY_CONTRACT_TARGETS.length - 1];
+  next.dailies.weekly.progress = Math.min(weeklyTarget, next.dailies.weekly.progress + 1);
   next.lifetime.totalDailyClaims += 1;
   next.updatedAt = now;
-  return { ok: true, state: next, message: `Daily claimed: ${task.label}.` };
+  return { ok: true, state: next, message: `Contract claimed: ${task.label}.` };
+}
+
+export function claimWeeklyContractMilestone(state: GameState, milestoneIndex: number, now: number): ActionResult {
+  const ensured = ensureDailies(state, now);
+  const milestone = ensured.state.dailies.weekly.milestones[milestoneIndex];
+  if (!milestone) {
+    return { ok: false, state: ensured.state, error: "Weekly milestone not found." };
+  }
+
+  if (milestone.claimed) {
+    return { ok: false, state: ensured.state, error: "Weekly milestone already claimed." };
+  }
+
+  if (ensured.state.dailies.weekly.progress < milestone.target) {
+    return { ok: false, state: ensured.state, error: "Weekly milestone is not complete yet." };
+  }
+
+  const next = cloneState(ensured.state);
+  next.dailies.weekly.milestones[milestoneIndex].claimed = true;
+  addDailyReward(next, milestone.reward);
+  next.updatedAt = now;
+  return { ok: true, state: next, message: `Weekly contract milestone claimed: ${milestone.target}.` };
 }

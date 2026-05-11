@@ -58,7 +58,7 @@ Title: Finalize canonical GameState schema
 Goal: Lock all state fields for hero-first v1.0 systems.  
 Files likely to be created or edited: `src/game/types.ts`, `src/game/state.ts`  
 Exact implementation steps:
-1. Ensure state includes hero, resources, vigor, inventory, equipment, expedition, town, dailies, reincarnation, settings.
+1. Ensure state includes hero, resources, vigor, inventory, equipment, loot, expedition, town, caravan, dailies/Contracts, reincarnation, settings.
 2. Ensure inventory cap constant is 30.
 3. Ensure state timestamps support deterministic offline processing.
 Acceptance criteria:
@@ -462,18 +462,18 @@ Can be cut if needed: no
 
 ---
 
-## Milestone 11 - Dailies and Vigor
+## Milestone 11 - Contracts and Vigor
 
 ### Task ID: M11-T01
-Title: Daily task generation engine  
-Goal: Generate exactly 3 unique tasks per daily cycle.  
+Title: Contract generation engine  
+Goal: Generate exactly 3 unique contracts per daily cycle: 1 Main + 2 Side.  
 Files likely to be created or edited: `src/game/dailies.ts` (create), `src/game/types.ts`, `src/game/content.ts`  
 Exact implementation steps:
 1. Implement task pool and eligibility filters.
-2. Select 3 unique tasks deterministically.
+2. Select 1 Main + 2 Side contracts deterministically.
 3. Store generated set with reset timestamp.
 Acceptance criteria:
-- Daily set always has exactly 3 valid tasks.
+- Contract set always has exactly 3 valid contracts with the required role split.
 Required tests:
 - Uniqueness/count tests.
 Dependencies: M02-T01, M02-T02
@@ -482,11 +482,11 @@ Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M11-T02
-Title: Daily reset scheduler (23:00 UTC)
-Goal: Reset dailies on fixed schedule with clock-safe logic.
+Title: Contract reset scheduler (23:00 local)
+Goal: Reset contracts on fixed schedule with clock-safe logic.
 Files likely to be created or edited: `src/game/dailies.ts`, `src/game/offline.ts`
 Exact implementation steps:
-1. Implement deterministic reset boundary at 23:00 UTC.
+1. Implement deterministic reset boundary at 23:00 local.
 2. Regenerate tasks on boundary crossing.
 3. Ensure no streak logic exists.
 Acceptance criteria:
@@ -499,7 +499,7 @@ Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M11-T03
-Title: Daily progress and claim flow  
+Title: Contract progress and claim flow  
 Goal: Track progress updates and claim rewards exactly once.  
 Files likely to be created or edited: `src/game/dailies.ts`, `src/game/engine.ts`  
 Exact implementation steps:
@@ -542,7 +542,7 @@ Goal: Apply one 8h capped elapsed-time window to all offline systems.
 Files likely to be created or edited: `src/game/offline.ts`, `src/game/constants.ts`  
 Exact implementation steps:
 1. Compute capped elapsed delta.
-2. Use same capped delta for expedition, mine, vigor, and dailies reset checks.
+2. Use same capped delta for expedition, Caravan, vigor, and contract reset checks.
 3. Return summary payload for UI.
 Acceptance criteria:
 - Offline gains never exceed 8h cap.
@@ -558,7 +558,7 @@ Title: Offline summary message model
 Goal: Provide deterministic player-facing summary data.  
 Files likely to be created or edited: `src/game/offline.ts`, `src/game/types.ts`  
 Exact implementation steps:
-1. Define summary fields for completed expedition, mine gains, vigor gained, daily reset.
+1. Define summary fields for completed expedition, Caravan payout, vigor gained, and contract reset.
 2. Ensure summary is non-null only when changes occurred.
 3. Ensure summary does not mutate state.
 Acceptance criteria:
@@ -736,17 +736,17 @@ Required for v1.0: yes
 Can be cut if needed: no
 
 ### Task ID: M15-T05
-Title: Dailies, Vigor, and Reincarnation UI integration  
+Title: Contracts, Vigor, and Reincarnation UI integration  
 Goal: Integrate retention and long-loop systems into mobile flow.  
 Files likely to be created or edited: `src/app/page.tsx`, `src/store/useGameStore.ts`  
 Exact implementation steps:
-1. Render 3 daily tasks and reset timer.
+1. Render 1 Main + 2 Side contracts, weekly chest progress, and reset timer.
 2. Render vigor current/cap and boost toggle.
 3. Render reincarnation gate, gain preview, and confirm action.
 Acceptance criteria:
 - Player can complete full retention and reincarnation loop from UI.
 Required tests:
-- Manual dailies/vigor/reincarnation smoke.
+- Manual contracts/vigor/reincarnation smoke.
 Dependencies: M11-T04, M13-T03  
 Complexity: M  
 Required for v1.0: yes  
@@ -817,7 +817,7 @@ Goal: Implement all required deterministic tests from plan docs.
 Files likely to be created or edited: `src/game/__tests__/core.test.ts`, additional `src/game/__tests__/*.test.ts`  
 Exact implementation steps:
 1. Split broad tests into focused suites.
-2. Add missing edge cases (daily reset boundary, offline multi-cap, reincarnation invariants).
+2. Add missing edge cases (contract reset boundary, offline multi-cap, reincarnation invariants).
 3. Ensure no React dependency in core tests.
 Acceptance criteria:
 - Core logic coverage includes all mandatory systems.

@@ -2,7 +2,7 @@
 
 ## Fase actual inferida
 
-**Fase: UX Cohesion Audit - Phase 3 implementada.**
+**Fase: MVP 2.x retention/core loop implementation.**
 
 ## Strategic Planning Update (2026-05-09)
 
@@ -22,11 +22,21 @@
   - `docs/MVP_2_DECISION_SUMMARY.md`
 - Final recommended MVP 2.0 package stays scope-capped to 5 major improvements:
   - Tavern contracts + weekly quests,
-  - better dailies + vigor improvements,
+  - better contracts + vigor improvements,
   - inventory QoL + 2 build presets,
   - reincarnation upgrade expansion (small and capped),
   - forge targeting-lite (reroll clarity first, enhancement optional/cuttable).
 - Explicit package comparison and red-team review were added to reduce scope creep risk before implementation.
+
+## Current Development Update (2026-05-10)
+
+- Caravan offline jobs are implemented under Expeditions.
+- Contracts replaced the visible Dailies tab while keeping `src/game/dailies.ts` as the internal module.
+- Loot Direction Lite is implemented: soft slot focus, pity after repeated misses, and early anti-duplicate slot weighting.
+- Hero Overview shows currently equipped items before the class summary.
+- Inventory item cards are compacted: power delta is inline, stat deltas are shown beside each stat in a dot-separated row, and sell/salvage values share one row.
+- Loot Focus uses six compact buttons instead of a dropdown and keeps copy minimal.
+- Global badge/chip surfaces are dark-token driven to avoid Tailwind light utility variants leaking bright backgrounds into the UI.
 
 El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistemas core.
 
@@ -50,9 +60,9 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 - Momentos especiales destacados en el resultado:
   primera arma garantizada, rare+ drops, boss loot, level-ups, first boss clear y region unlock.
 - Siguiente acción contextual después del claim:
-  equipar item mejor, empezar siguiente dungeon/boss, abrir dailies, Forge o Town.
+  equipar item mejor, empezar siguiente dungeon/boss, abrir contracts, Forge o Town.
 - Notices tipo toast/card para acciones importantes:
-  Forge/craft/reroll/upgrade, Town building upgrade, equip/sell/salvage, dailies, reincarnation y errores.
+  Forge/craft/reroll/upgrade, Town building upgrade, equip/sell/salvage, contracts, reincarnation y errores.
 - Loot MVP 2.0:
   32 afijos con efectos de utilidad equipados, mejor naming, mejor escalado de rareza, rare/epic/legendary con tratamiento visual diferenciado.
 - Comparación de equipo:
@@ -65,12 +75,12 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
   cada edificio muestra propósito, costo, beneficio actual, próximo beneficio, milestones y feedback contextual sin decoración/base placement.
 - Town en modo compacto por defecto (propósito/nivel/costo/CTA) con detalles expandibles on-demand.
 - Overlays en modo de prioridad única (resultado > offline > mensaje) para evitar stacks simultáneos.
-- Offline Summary compactado en una única tarjeta con 4 filas densas (Expedition/Mine/Vigor/Dailies) y copy de tiempo transcurrido (`Away for ...`).
+- Offline Summary compactado en una única tarjeta con filas densas (Expedition/Caravan/Vigor/Contracts) y copy de tiempo transcurrido (`Away for ...`).
 - Hero y Reincarnation con subviews segmentadas compactas por defecto.
 - Town (6 edificios, costos y efectos).
-- Dailies (3/día, reset local, progreso claro, claim único, sin streak punishment).
+- Contracts (1 Main + 2 Side por día, reset local, weekly chest, progreso claro, claim único, sin streak punishment).
 - Vigor (regen/cap/reward diario) y boost integrado en claim de expedición (`Claim x2 · Vig -cost`).
-- Offline progress cap 8h.
+- Offline progress cap 8h, incluyendo Caravan jobs.
 - Reincarnación + upgrades permanentes.
 - Reincarnation progress visible con barras para level gate y boss route.
 - Save/export/import/reset local.
@@ -120,7 +130,7 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
 3. **Consolidar constantes de balance en tablas dedicadas**:
    minimizar hardcodes repetidos.
 4. **Expandir tests**:
-   separar por módulo (`engine`, `dailies`, `save`, `forge`, `prestige`).
+   separar por módulo (`engine`, `dailies/contracts`, `save`, `forge`, `prestige`).
 5. **Centralizar textos/fórmulas de edificios**:
    reducir la necesidad de sincronizar manualmente `BUILDINGS.effectText` con balance.
 
@@ -161,9 +171,9 @@ El juego está jugable end-to-end en cliente y ya incluye la mayoría de sistema
    - upgrades permanentes muestran efecto actual/próximo/costo,
    - pacing validado: 30-60m producción y 5-10m debug/dev,
    - class awakening documentado como post-MVP.
-5. **MVP 2.0 dailies/vigor polish**:
-   - reset diario a las 23:00 UTC,
-   - UI con progreso, claim, reward y timer UTC,
+5. **MVP 2.0 contracts/vigor polish**:
+   - reset diario a las 23:00 local,
+   - UI con progreso, claim, reward, weekly chest y timer local,
    - reward de vigor clampado al cap,
    - boost de Vigor aplicado en claim y sólo habilitado con vigor suficiente,
    - política explícita sin payments, premium currency, ads, battle pass, streak punishment ni FOMO pesado.

@@ -146,10 +146,10 @@ Reason:
 - Item upgrade cost formula.
 - Affix reroll cost formula.
 - Inventory cap and warning thresholds (`30`, warning at `24`).
-- Offline cap (`8h`) and Mine offline formula.
+- Offline cap (`8h`) and Caravan job payout formulas.
 - Vigor cap/regen/cost/multiplier (`100`, `+1/5m`, `20`, `x2`).
 - Reincarnation gate (`level 10` + `curator-of-blue-fire`).
-- Daily reset, task count, and rewards.
+- Contract reset, role count, weekly chest milestones, and rewards.
 
 ## Current Core Formulas
 

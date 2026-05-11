@@ -66,7 +66,7 @@ Scope: planning only, no code changes
 | --- | --- | --- | --- | --- | --- |
 | First 5 minutes | Hero creation, first expeditions, first drops, first Town upgrade | Quick power gain and first meaningful item | Confusion from too many systems at once; low perceived agency | Immediate "next goal" and first short contract | Add one clear short objective ribbon (contract/daily focus) and stronger payoff feedback |
 | First 15 minutes | Region 1 loop, first boss/craft, inventory management starts | Rare+ drop, first forge decision, boss clear | RNG frustration, inventory friction, unclear best action | Directed forge objective + clearer build comparison | Add forge targeting-lite and inventory quick decisions |
-| First hour | Region progression, dailies, first reincarnation route | Reincarnation unlock and permanent acceleration | Repetition and weak medium-term goals | Weekly quest progress + reincarnation milestone goals | Add weekly structure and visible run-to-run milestone ladder |
+| First hour | Region progression, contracts, first reincarnation route | Reincarnation unlock and permanent acceleration | Repetition and weak medium-term goals | Weekly quest progress + reincarnation milestone goals | Add weekly structure and visible run-to-run milestone ladder |
 | First day | Multiple sessions, experimentation, resource planning | Better build, smoother repeat sessions | Feels "samey" between sessions; decision fatigue | Reset-resistant goals (weekly chest, mastery tiers) | Add low-pressure weekly progression and preset/loadout convenience |
 | First week | Habit formation or churn | Efficient loop mastery and personal optimization | No evolving objective horizon after first novelty | Layered goals with compact complexity | Add 3-7 day cadence: contracts + mastery + reincarnation upgrades |
 
@@ -94,7 +94,7 @@ Scoring model (1-5 each):
 | Challenge dungeons | 4 | 3 | 4 | 4 | 4 | 3 | 5 | 3 | 3 | 1 |
 | Region events | 3 | 4 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 4 |
 | Tavern contracts | 5 | 5 | 4 | 3 | 2 | 3 | 3 | 4 | 5 | 12 |
-| Better dailies | 4 | 5 | 3 | 2 | 2 | 2 | 3 | 3 | 5 | 11 |
+| Better contracts | 4 | 5 | 3 | 2 | 2 | 2 | 3 | 3 | 5 | 11 |
 | Weekly quests | 4 | 5 | 4 | 3 | 2 | 3 | 3 | 4 | 5 | 11 |
 | Vigor improvements | 3 | 4 | 3 | 2 | 2 | 2 | 3 | 4 | 5 | 10 |
 | Reincarnation upgrades | 4 | 4 | 4 | 3 | 2 | 3 | 4 | 3 | 5 | 8 |
@@ -114,7 +114,7 @@ Scoring model (1-5 each):
 
 Highest ROI for MVP 2.0 is concentrated in systems that:
 
-- add repeat goals (`Tavern contracts`, `Weekly quests`, `Better dailies`),
+- add repeat goals (`Tavern contracts`, `Weekly quests`, `Better contracts`),
 - reduce friction (`Inventory QoL`, `Build presets`),
 - deepen existing loops with low infra risk (`Reincarnation upgrades`, `Forge targeting-lite`),
 - improve decision quality (`Manual analytics` + `Feedback form`) without gameplay bloat.
@@ -128,7 +128,7 @@ Low ROI for MVP 2.0 right now:
 Chosen MVP 2.0 scope:
 
 1. Tavern Contracts + Weekly Quests (single system)
-2. Better Dailies + Vigor Improvements (single system)
+2. Better Contracts + Vigor Improvements (single system)
 3. Inventory QoL + Build Presets (single system)
 4. Reincarnation Upgrade Expansion (small, capped)
 5. Forge Targeting Lite (reroll UX + one-step enhancement, no recipe tree)
@@ -137,7 +137,7 @@ Chosen MVP 2.0 scope:
 
 - High impact: creates 3-7 day objective structure beyond one-session pacing.
 - Feasible: reuses existing action counters and reset logic.
-- Reuse: `dailies`, `expeditions`, `store` action hooks.
+- Reuse: `dailies.ts`/Contracts, `expeditions`, `store` action hooks.
 - Behavior improved: more return sessions and fewer "what do I do now" moments.
 - Risks: chore fatigue if contract volume too high.
 - Keep small:
@@ -145,7 +145,7 @@ Chosen MVP 2.0 scope:
   - one flexible weekly chest,
   - no reroll economy, no new currency.
 
-### 2) Better Dailies + Vigor Improvements
+### 2) Better Contracts + Vigor Improvements
 
 - High impact: strengthens day-to-day return motivation and session pacing.
 - Feasible: existing daily task pool and vigor systems already stable.
@@ -153,7 +153,7 @@ Chosen MVP 2.0 scope:
 - Behavior improved: more frequent short check-ins without punishment loops.
 - Risks: reward inflation and vigor becoming mandatory.
 - Keep small:
-  - keep 3 dailies/day,
+  - keep 3 contracts/day,
   - add one daily "focus bonus" objective,
   - cap vigor bonus impact and preserve non-vigor viability.
 
@@ -208,7 +208,7 @@ Chosen MVP 2.0 scope:
 Features:
 
 - Tavern contracts + weekly quests
-- Better dailies + vigor improvements
+- Better contracts + vigor improvements
 - Inventory QoL + 2 build presets
 - Reincarnation upgrade expansion
 - Manual analytics + feedback form
@@ -313,7 +313,7 @@ Reason:
 
 ### Milestone 2 - Core Logic
 
-- Goal: implement deterministic rules for contracts/dailies-vigor/presets/reincarnation-lite/forge-lite.
+- Goal: implement deterministic rules for contracts/vigor/presets/reincarnation-lite/forge-lite.
 - Tasks:
   - add contract generation/progress/claim rules.
   - add daily focus bonus rules and vigor tuning clamps.
@@ -441,11 +441,11 @@ Reason:
 - Is this too much?  
   Yes, if all five systems are implemented at full depth. Must enforce "lite" definitions.
 - Is this actually addictive?  
-  Yes, if contracts/dailies/reincarnation each provide visible short and medium-term goals.
+  Yes, if contracts/vigor/reincarnation each provide visible short and medium-term goals.
 - Does it improve retention?  
   Yes, because it explicitly targets first-day and first-week return loops.
 - Does it reuse existing systems?  
-  Yes; all selected features piggyback on dailies, vigor, forge, inventory, prestige, and expedition counters.
+  Yes; all selected features piggyback on contracts, vigor, forge, inventory, prestige, and expedition counters.
 - Could this break stable MVP?  
   Yes, mainly via reward inflation and save-schema mistakes.
 - Could a player understand it?  
@@ -466,7 +466,7 @@ This keeps the roadmap high-impact while reducing balance and implementation ris
 ## Final Recommended MVP 2.0 Scope
 
 1. Tavern contracts + weekly quests (3 weekly objectives + 1 weekly chest).
-2. Better dailies + vigor clarity/tuning (no new currency, no punishment loops).
+2. Better contracts + vigor clarity/tuning (no new currency, no punishment loops).
 3. Inventory QoL + 2 build presets (lock/filter/preset swap).
 4. Reincarnation upgrades (max 2 new capped upgrades).
 5. Forge targeting-lite (reroll clarity and optional single-step enhancement).

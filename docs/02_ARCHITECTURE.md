@@ -38,6 +38,7 @@ src/
     inventory.ts
     forge.ts
     town.ts
+    caravan.ts
     dailies.ts
     vigor.ts
     offline.ts
@@ -80,6 +81,9 @@ src/
 - Helpers/servicios de dominio:
   - efectos equipados de afijos: `affixes.ts`,
   - fórmulas: `balance.ts`,
+  - loot direction/pity: `loot.ts`,
+  - Caravan offline jobs: `caravan.ts`,
+  - Contracts diarios/semanales: `dailies.ts`,
   - save/import: `save.ts`,
   - offline: `offline.ts`,
   - rng: `rng.ts`.
@@ -110,8 +114,7 @@ src/
 3. Constante duplicada/inconsistente:
    - `RENOWN_UPGRADE_MAX` y `REINCARNATION_UPGRADE_MAX` en `constants.ts` (solo una se usa en flujo principal).
 4. Store repite patrón de `structuredClone` + persist en muchas acciones (acoplamiento repetitivo).
-5. `lastOfflineSummary` se guarda pero no se aprovecha en UI.
-6. La capa de dark mode usa overrides globales sobre utilidades Tailwind existentes; las rarezas ya usan clases semánticas, pero una futura extracción de componentes debería migrar el resto de colores a tokens/clases semánticas.
+5. La capa de dark mode usa overrides globales sobre utilidades Tailwind existentes; las rarezas ya usan clases semánticas, pero una futura extracción de componentes debería migrar el resto de colores a tokens/clases semánticas.
 
 ## Duplicaciones o inconsistencias detectadas
 
@@ -122,6 +125,6 @@ src/
 
 - No meter fórmulas en `page.tsx`.
 - No meter reglas de negocio en `useGameStore.ts`.
-- No crear módulos alternativos de save/offline/dailies/vigor fuera de `src/game`.
+- No crear módulos alternativos de save/offline/dailies/contracts/vigor fuera de `src/game`.
 - No añadir una segunda fuente de verdad de estado.
 - No introducir backend parcial “temporal” para gameplay.

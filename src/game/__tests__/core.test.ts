@@ -8,6 +8,7 @@ import {
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
   INVENTORY_LIMIT,
+  LOOT_DROP_PITY_THRESHOLD,
   REINCARNATION_GATE_BOSS_ID,
   REINCARNATION_LEVEL_REQUIREMENT,
   RENOWN_UPGRADES,
@@ -19,11 +20,14 @@ import {
   buyBuildingUpgrade,
   canAfford,
   canPrestige,
+  cancelCaravanJob,
   claimDailyTask,
+  claimWeeklyContractMilestone,
   createInitialState,
   createRng,
   craftItem,
   ensureDailies,
+  estimateCaravanRewards,
   equipItem,
   getAvailableDungeons,
   getAffixRerollCost,
@@ -34,14 +38,16 @@ import {
   getDailyWindowStartAt,
   getGoldMultiplier,
   getItemUpgradeCost,
+  getLootSlotWeights,
   getLootChance,
   getMaterialMultiplier,
-  getMineOfflineRate,
   getNextDailyResetAt,
+  getNextWeeklyResetAt,
   getNextGoal,
   getSellMultiplier,
   getSuccessChance,
   getVigorBoostCost,
+  getWeeklyWindowStartAt,
   getXpMultiplier,
   importSave,
   loadSave,
@@ -52,6 +58,8 @@ import {
   salvageItem,
   sellItem,
   serializeSave,
+  setLootFocus,
+  startCaravanJob,
   startExpedition,
   upgradeItem,
   xpToNextLevel
@@ -95,6 +103,8 @@ describe("state and RNG determinism", () => {
     expect(a).toEqual(b);
     expect(a.vigor.max).toBe(100);
     expect(a.dailies.tasks).toHaveLength(DAILY_TASK_COUNT);
+    expect(a.loot.focusSlot).toBe("any");
+    expect(a.loot.missesSinceDrop).toBe(0);
     expect(a.settings.heroCreated).toBe(false);
   });
 
@@ -278,6 +288,42 @@ describe("expeditions, vigor, and loot", () => {
     }
   });
 
+  it("uses loot focus, early anti-duplicates, and pity for expedition drops", () => {
+    const state = makeReadyState("loot-direction");
+    state.lifetime.totalItemsFound = 12;
+    const focused = setLootFocus(state, "relic", NOW);
+    expect(focused.ok).toBe(true);
+    if (!focused.ok) throw new Error("loot focus failed");
+
+    const weights = getLootSlotWeights(focused.state);
+    const relicWeight = weights.find((entry) => entry.slot === "relic")?.weight ?? 0;
+    const unfocusedRelicWeight = getLootSlotWeights(state).find((entry) => entry.slot === "relic")?.weight ?? 0;
+    expect(relicWeight).toBeGreaterThan(unfocusedRelicWeight);
+
+    const duplicateGuard = makeReadyState("loot-anti-duplicate");
+    duplicateGuard.lifetime.totalItemsFound = 2;
+    duplicateGuard.loot.recentSlots = ["weapon"];
+    const guardedWeights = getLootSlotWeights(duplicateGuard);
+    const weaponWeight = guardedWeights.find((entry) => entry.slot === "weapon")?.weight ?? 0;
+    const armorWeight = guardedWeights.find((entry) => entry.slot === "armor")?.weight ?? 0;
+    expect(weaponWeight).toBeLessThan(armorWeight);
+
+    const pityState = focused.state;
+    pityState.hero.level = 10;
+    pityState.hero.baseStats = { power: 500, defense: 500, speed: 500, luck: 500, stamina: 500 };
+    pityState.loot.missesSinceDrop = LOOT_DROP_PITY_THRESHOLD;
+    const started = startExpedition(pityState, "tollroad-of-trinkets", NOW + 1);
+    expect(started.ok).toBe(true);
+    if (!started.ok) throw new Error("pity expedition start failed");
+    const resolved = resolveExpedition(started.state, NOW + 60_000);
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) throw new Error("pity expedition resolve failed");
+    expect(resolved.summary.success).toBe(true);
+    expect(resolved.summary.item).not.toBeNull();
+    expect(resolved.state.loot.missesSinceDrop).toBe(0);
+    expect(resolved.state.loot.recentSlots[0]).toBe(resolved.summary.item?.slot);
+  });
+
   it("ships broad gameplay affixes and applies equipped utility effects", () => {
     expect(AFFIX_POOL.length).toBeGreaterThanOrEqual(25);
     expect(AFFIX_POOL.some((affix) => affix.effects?.xpMultiplier)).toBe(true);
@@ -454,7 +500,7 @@ describe("town, dailies, offline, and saves", () => {
     expect(getBuildingEffectText("shrine", 1)).toBe("+2 power score, +4% Soul Marks on reincarnation");
   });
 
-  it("keeps town building metadata and mine offline rates visible for the town UI", () => {
+  it("keeps town building metadata and Mine scaling visible through Caravan yields", () => {
     expect(BUILDINGS).toHaveLength(6);
     BUILDINGS.forEach((building) => {
       expect(building.purpose.length).toBeGreaterThan(10);
@@ -462,8 +508,11 @@ describe("town, dailies, offline, and saves", () => {
     });
 
     const state = makeReadyState("mine-rate");
+    state.hero.level = 15;
+    const baseCrystal = estimateCaravanRewards(state, "crystal", 60 * 60 * 1000).materials.crystal ?? 0;
     state.town.mine = 6;
-    expect(getMineOfflineRate(state)).toEqual({ ore: 24, crystal: 6, rune: 0.9, relicFragment: 0 });
+    const boostedCrystal = estimateCaravanRewards(state, "crystal", 60 * 60 * 1000).materials.crystal ?? 0;
+    expect(boostedCrystal).toBeGreaterThan(baseCrystal);
   });
 
   it("tracks and claims dailies once", () => {
@@ -487,8 +536,39 @@ describe("town, dailies, offline, and saves", () => {
     expect(claimed.ok).toBe(true);
     if (!claimed.ok) throw new Error("claim failed");
     expect(claimed.state.vigor.current).toBe(claimed.state.vigor.max);
+    expect(claimed.state.dailies.weekly.progress).toBe(1);
     const claimedAgain = claimDailyTask(claimed.state, claimable.id, NOW + 3);
     expect(claimedAgain.ok).toBe(false);
+  });
+
+  it("tracks weekly contract milestones from daily claims", () => {
+    let state = makeReadyState("weekly-contracts");
+    state.dailies.weekly.progress = 2;
+    const progressed = applyDailyProgress(state, NOW + 1, {
+      complete_expeditions: 10,
+      win_expeditions: 10,
+      defeat_boss: 10,
+      salvage_items: 10,
+      sell_items: 10,
+      craft_item: 10,
+      upgrade_building: 10,
+      spend_vigor: 100
+    }).state;
+    const claimable = progressed.dailies.tasks.find((task) => task.progress >= task.target);
+    expect(claimable).toBeDefined();
+    if (!claimable) throw new Error("no claimable contract");
+
+    const claimedDaily = claimDailyTask(progressed, claimable.id, NOW + 2);
+    expect(claimedDaily.ok).toBe(true);
+    if (!claimedDaily.ok) throw new Error("daily contract claim failed");
+    expect(claimedDaily.state.dailies.weekly.progress).toBe(3);
+
+    const milestone = claimWeeklyContractMilestone(claimedDaily.state, 0, NOW + 3);
+    expect(milestone.ok).toBe(true);
+    if (!milestone.ok) throw new Error("weekly milestone claim failed");
+    expect(milestone.state.dailies.weekly.milestones[0].claimed).toBe(true);
+    const sameMilestone = claimWeeklyContractMilestone(milestone.state, 0, NOW + 4);
+    expect(sameMilestone.ok).toBe(false);
   });
 
   it("resets dailies at the local daily reset boundary", () => {
@@ -507,7 +587,25 @@ describe("town, dailies, offline, and saves", () => {
     expect(after.dailies.lastTaskSetKey).not.toBe(beforeKey);
   });
 
-  it("applies offline expedition, mine, vigor, and cap behavior", () => {
+  it("resets weekly contracts at the weekly reset boundary", () => {
+    const beforeReset = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, -1, 0).getTime();
+    const afterReset = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, 1, 0).getTime();
+    const expectedWindowStart = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
+    const expectedNextReset = new Date(2026, 0, 12, DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
+    const state = createInitialState("weekly-boundary", beforeReset);
+    state.settings.heroCreated = true;
+    const seeded = ensureDailies(state, beforeReset).state;
+    seeded.dailies.weekly.progress = 9;
+    seeded.dailies.weekly.milestones[0].claimed = true;
+    const after = ensureDailies(seeded, afterReset).state;
+    expect(getWeeklyWindowStartAt(afterReset)).toBe(expectedWindowStart);
+    expect(getNextWeeklyResetAt(afterReset)).toBe(expectedNextReset);
+    expect(after.dailies.weekly.windowStartAt).toBe(expectedWindowStart);
+    expect(after.dailies.weekly.progress).toBe(0);
+    expect(after.dailies.weekly.milestones.some((milestone) => milestone.claimed)).toBe(false);
+  });
+
+  it("applies offline expedition, vigor, and cap behavior", () => {
     const state = makeReadyState("offline");
     state.town.mine = 6;
     state.vigor.current = 0;
@@ -522,6 +620,81 @@ describe("town, dailies, offline, and saves", () => {
     expect(offline.state.activeExpedition).not.toBeNull();
     expect(offline.state.vigor.current).toBeGreaterThan(0);
     expect(offline.state.resources.ore).toBeGreaterThanOrEqual(0);
+  });
+
+  it("applies a chosen Caravan offline job and clears it when complete", () => {
+    const state = makeReadyState("caravan");
+    state.hero.level = 5;
+    const locked = startCaravanJob(state, "rune", 2 * 60 * 60 * 1000, NOW);
+    expect(locked.ok).toBe(false);
+
+    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+
+    const offline = applyOfflineProgress(planned.state, NOW + 3 * 60 * 60 * 1000);
+    expect(offline.summary?.caravan?.focusId).toBe("ore");
+    expect(offline.summary?.caravan?.completed).toBe(true);
+    expect(offline.state.resources.ore).toBeGreaterThan(planned.state.resources.ore);
+    expect(offline.state.caravan.activeJob).toBeNull();
+    expect(offline.summary?.mineGains).toEqual({});
+  });
+
+  it("does not round short Caravan returns up to a full hour", () => {
+    const state = makeReadyState("short-caravan");
+    state.hero.level = 5;
+    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+
+    const offline = applyOfflineProgress(planned.state, NOW + 10 * 60 * 1000);
+    expect(offline.summary?.caravan?.completed).toBe(false);
+    expect(offline.summary?.caravan?.elapsedMs).toBe(10 * 60 * 1000);
+    expect(offline.summary?.caravan?.rewards).toEqual({ xp: 0, gold: 0, materials: {} });
+    expect(offline.state.resources).toEqual(planned.state.resources);
+    expect(offline.state.caravan.activeJob).not.toBeNull();
+  });
+
+  it("blocks replacing an active Caravan and cancels it without rewards", () => {
+    const state = makeReadyState("single-caravan");
+    state.hero.level = 5;
+    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+
+    const blocked = startCaravanJob(planned.state, "xp", 60 * 60 * 1000, NOW + 10 * 60 * 1000);
+    expect(blocked.ok).toBe(false);
+    expect(blocked.state.caravan.activeJob?.focusId).toBe("ore");
+
+    const resourcesBeforeCancel = { ...planned.state.resources };
+    const canceled = cancelCaravanJob(planned.state, NOW + 30 * 60 * 1000);
+    expect(canceled.ok).toBe(true);
+    if (!canceled.ok) throw new Error("caravan cancel failed");
+    expect(canceled.state.caravan.activeJob).toBeNull();
+    expect(canceled.state.resources).toEqual(resourcesBeforeCancel);
+
+    const next = startCaravanJob(canceled.state, "xp", 60 * 60 * 1000, NOW + 31 * 60 * 1000);
+    expect(next.ok).toBe(true);
+  });
+
+  it("allows a Caravan over an active expedition but blocks new expeditions during Caravan", () => {
+    const state = makeReadyState("caravan-expedition-lock");
+    const expedition = startExpedition(state, "tollroad-of-trinkets", NOW);
+    expect(expedition.ok).toBe(true);
+    if (!expedition.ok) throw new Error("expedition start failed");
+
+    const caravanWithExpedition = startCaravanJob(expedition.state, "xp", 60 * 60 * 1000, NOW + 1_000);
+    expect(caravanWithExpedition.ok).toBe(true);
+    if (!caravanWithExpedition.ok) throw new Error("caravan over expedition failed");
+    expect(caravanWithExpedition.state.activeExpedition).not.toBeNull();
+
+    const caravanOnly = startCaravanJob(state, "xp", 60 * 60 * 1000, NOW);
+    expect(caravanOnly.ok).toBe(true);
+    if (!caravanOnly.ok) throw new Error("caravan start failed");
+    const blocked = startExpedition(caravanOnly.state, "tollroad-of-trinkets", NOW + 1_000);
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) throw new Error("expedition should be blocked");
+    expect(blocked.error).toContain("Caravan");
   });
 
   it("round-trips save import/export and rejects invalid JSON", () => {

@@ -1,5 +1,47 @@
 # Decisions Log
 
+## 2026-05-10
+
+### Decision: Loot Direction Lite como control suave de drops
+Descripción:
+Se agrega `loot.focusSlot` con opción `any` o slot de equipo, pity de drops de expedición y memoria corta de slots recientes.
+Motivo:
+Dar dirección al jugador sin convertir el loot en compra determinística ni eliminar la emoción de drops.
+Impacto:
+Las expediciones usan bias de slot para generar items, el pity fuerza un drop tras varias misiones sin item y los drops tempranos reducen repetición de slots. El estado se guarda y se valida en imports.
+Archivos relacionados:
+- `src/game/loot.ts`
+- `src/game/constants.ts`
+- `src/game/types.ts`
+- `src/game/save.ts`
+- `src/app/game-view.tsx`
+
+### Decision: Caravan es el job offline activo
+Descripción:
+La pantalla Expeditions incluye Caravan como subtab. El jugador elige duración `1h..8h` y un foco de recurso desbloqueado por nivel.
+Motivo:
+Reemplazar el concepto de ingreso pasivo de Mine por una decisión explícita de ausencia con límites claros.
+Impacto:
+Sólo puede haber una Caravan activa. No se puede iniciar otra mientras corre; cancelar no entrega recompensas. Mientras una Caravan está activa no se pueden iniciar nuevas expediciones, aunque una expedición ya activa puede terminar normalmente.
+Archivos relacionados:
+- `src/game/caravan.ts`
+- `src/game/offline.ts`
+- `src/game/expeditions.ts`
+- `src/store/useGameStore.ts`
+- `src/app/game-view.tsx`
+
+### Decision: Dailies pasa a llamarse Contracts en UI
+Descripción:
+El tab visible es Contracts y el sistema diario se modela como 1 Main + 2 Side por día con weekly chest.
+Motivo:
+El nombre Contracts comunica mejor fantasía y retención sin sonar a checklist genérica.
+Impacto:
+Se conserva `src/game/dailies.ts` como módulo interno para evitar refactors de riesgo, pero las docs y UI distinguen nombre interno vs nombre visible.
+Archivos relacionados:
+- `src/game/dailies.ts`
+- `src/app/game-view.tsx`
+- `src/store/useGameStore.ts`
+
 ## 2026-05-09
 
 ### Decision: Subtabs globales por pantalla + navegación por swipe horizontal en contenido central
@@ -50,13 +92,13 @@ Archivos relacionados:
 - `docs/07_CHANGELOG.md`
 - `2_0_definition.md`
 
-### Decision: Reset diario canónico fijado en `23:00 UTC`
+### Decision: Reset diario canónico fijado en `23:00 local`
 Descripción:
-La regla canónica de reset diario se fija en `23:00 UTC` para todas las docs de planificación.
+La regla canónica de reset diario se fija en `23:00 local` para todas las docs de planificación.
 Motivo:
 Eliminar ambigüedad entre referencias previas de hora local vs UTC.
 Impacto:
-Specs, scope, arquitectura, testing y planes de implementación usan `23:00 UTC` como referencia única.
+Specs, scope, arquitectura, testing y planes de implementación usan `23:00 local` como referencia única.
 Archivos relacionados:
 - `docs/PRODUCT_SPEC.md`
 - `docs/MVP_SCOPE.md`
@@ -124,9 +166,9 @@ Archivos relacionados:
 - `src/store/useGameStore.ts`
 - `docs/mobile_ux_audit.md`
 
-### Decision: Offline Summary compactado en una sola tarjeta de 4 filas
+### Decision: Offline Summary compactado en una sola tarjeta de filas densas
 Descripción:
-El panel `Offline Summary` se compacta para mostrar `Expedition`, `Mine gains`, `Vigor` y `Dailies` en una sola tarjeta interna con cuatro filas densas, y se conserva copy de tiempo transcurrido (`Away for ...`) en lugar de timestamp de "Last update".
+El panel `Offline Summary` se compacta para mostrar `Expedition`, `Caravan`, `Vigor` y `Contracts` en una sola tarjeta interna con filas densas, y se conserva copy de tiempo transcurrido (`Away for ...`) en lugar de timestamp de "Last update".
 Motivo:
 Reducir altura total del panel y mejorar escaneo rápido en retorno de sesión sin perder información clave.
 Impacto:
@@ -166,7 +208,7 @@ Archivos relacionados:
 
 ### Decision: Lógica de juego centralizada en `src/game`
 Descripción:
-Las reglas de progresión, economía, dailies, vigor, offline, save y reincarnación viven en módulos de `src/game`.
+Las reglas de progresión, economía, dailies/Contracts, vigor, offline, save y reincarnación viven en módulos de `src/game`.
 Motivo:
 Determinismo, testabilidad y separación UI/lógica.
 Impacto:
@@ -200,9 +242,9 @@ Archivos relacionados:
 - `src/game/expeditions.ts`
 - `src/game/__tests__/core.test.ts`
 
-### Decision: Dailies y vigor incluidos en MVP real
+### Decision: Contracts y vigor incluidos en MVP real
 Descripción:
-Se implementan 3 dailies por día con reset a las 23:00 hora local del dispositivo y recurso vigor (cap 100, +1/5m, boost x2 por 20).
+Se implementan 1 Main + 2 Side contracts por día con reset a las 23:00 hora local, weekly chest y recurso vigor (cap 100, +1/5m, boost x2 por 20).
 Motivo:
 Retención y decisiones de timing sin monetización, premium currency, ads, battle pass, streak punishment ni FOMO pesado.
 Impacto:

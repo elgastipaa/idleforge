@@ -5,7 +5,7 @@ Date: 2026-05-09
 ## 1. Final Recommended MVP 2.0 Scope
 
 - Tavern contracts + weekly quests (3 weekly contracts + 1 weekly chest).
-- Better dailies + vigor improvements (focus bonus + clarity + capped reward impact).
+- Better contracts + vigor improvements (focus bonus + clarity + capped reward impact).
 - Inventory QoL + 2 build presets (item lock, filters, quick preset swap).
 - Reincarnation upgrade expansion (max 2 new upgrades, hard-capped).
 - Forge targeting-lite (reroll transparency first, optional single-step enhancement).
@@ -13,7 +13,7 @@ Date: 2026-05-09
 ## 2. Top 5 Features To Build
 
 1. Tavern contracts + weekly quests
-2. Better dailies + vigor improvements
+2. Better contracts + vigor improvements
 3. Inventory QoL + build presets
 4. Reincarnation upgrades (small and capped)
 5. Forge targeting-lite
@@ -29,7 +29,7 @@ Date: 2026-05-09
 ## 4. Why This Is The Highest Bang-for-Buck Path
 
 - Targets first-day and first-week retention directly, not indirectly.
-- Reuses existing stable systems (`dailies`, `vigor`, `forge`, `inventory`, `prestige`) instead of building new infrastructure.
+- Reuses existing stable systems (`dailies.ts`/Contracts, `vigor`, `forge`, `inventory`, `prestige`) instead of building new infrastructure.
 - Reduces friction in every session (inventory/presets) while adding medium-term goals (contracts/reincarnation).
 - Keeps scope cuttable: forge enhancement can be removed without breaking core package.
 - Enables measurement for next decisions (manual analytics + feedback loop in implementation plan).
@@ -43,7 +43,7 @@ Date: 2026-05-09
 ## 6. 7-Day Version
 
 - Full contracts + weekly quests.
-- Better dailies + vigor tuning.
+- Better contracts + vigor tuning.
 - Inventory QoL + 2 presets.
 - Reincarnation upgrade expansion.
 - Forge reroll transparency improvements.
@@ -65,7 +65,7 @@ Implement MVP 2.0 Retention-First package exactly as documented.
 
 Scope (must implement):
 1) Tavern contracts + weekly quests
-2) Better dailies + vigor improvements
+2) Better contracts + vigor improvements
 3) Inventory QoL + 2 build presets
 4) Reincarnation upgrade expansion (max 2 new upgrades)
 5) Forge targeting-lite (reroll clarity first; enhancement optional and cuttable)

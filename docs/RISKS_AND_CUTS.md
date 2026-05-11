@@ -14,7 +14,7 @@ Risk 3: Forge system complexity expands beyond MVP.
 
 - Mitigation: lock forge to salvage + random craft + item upgrade only.
 
-Risk 4: Dailies feel punitive or manipulative.
+Risk 4: Contracts feel punitive or manipulative.
 
 - Mitigation: fixed 3 tasks, no streak punishment, moderate rewards.
 
@@ -33,12 +33,12 @@ Risk 7: Cross-doc mismatch on reincarnation gate.
 ## Mandatory Locks
 
 - Inventory is 30 for MVP.
-- Dailies reset at 23:00 UTC.
+- Contracts reset at 23:00 local.
 - Vigor is free-only in MVP.
 
 ## Cut Ladder (If Schedule Slips)
 
-1. Remove login bonus layer, keep dailies only.
+1. Remove login bonus layer, keep contracts only.
 2. Simplify reward summary flavor text.
 3. Simplify forge preview UI (not mechanics).
 4. Reduce Awards UI detail if needed.
@@ -47,7 +47,7 @@ Risk 7: Cross-doc mismatch on reincarnation gate.
 Do not cut:
 
 - Reincarnation.
-- Dailies.
+- Contracts.
 - Class passives.
 - Offline caps.
 - Save import/export.
@@ -58,6 +58,6 @@ Do not cut:
 
 ## Actual MVP Cuts (2026-05-07)
 
-- No login bonus layer beyond dailies (kept intentionally cut).
+- No login bonus layer beyond contracts (kept intentionally cut).
 - Forge remains single-step random craft + direct upgrade (no recipe tree, no reroll).
 - Achievements are passive unlock-only (no separate claim economy).

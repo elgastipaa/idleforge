@@ -17,7 +17,7 @@ Online references reviewed:
 
 Patterns found:
 
-- Retention loops: daily tasks, weekly goals, timed bosses, clan/activity check-ins, long missions, achievement currencies, soft streaks, reset windows, and visible milestone ladders.
+- Retention loops: daily contracts, weekly goals, timed bosses, clan/activity check-ins, long missions, achievement currencies, soft streaks, reset windows, and visible milestone ladders.
 - Progression systems: gear score, item rarity, upgrade levels, permanent account upgrades, building levels, skill/mastery tracks, pets/companions as passive bonuses, and region/boss gates.
 - Timers: expedition timers, energy/nerve regeneration, long education/building timers, boss key refreshes, offline progress windows, and server/world resets.
 - Economy: multiple currencies work when each has a clear source and sink; uncontrolled premium currencies, upgrade gambling, and too many token types create confusion.
@@ -33,7 +33,7 @@ Patterns found:
 
 ## 2. What Fits This Game
 
-This game already has the right base for a browser idle RPG: one hero, timed expeditions, deterministic rewards, loot, forge, town, dailies, vigor, offline progress, achievements, and reincarnation. The best-fitting patterns are therefore extensions of those systems, not new genres.
+This game already has the right base for a browser idle RPG: one hero, timed expeditions, deterministic rewards, loot, forge, town, contracts, vigor, offline progress, achievements, and reincarnation. The best-fitting patterns are therefore extensions of those systems, not new genres.
 
 Good fits:
 
@@ -67,13 +67,13 @@ Avoid for now:
 - Split `src/app/page.tsx` into UI slices without moving formulas into UI.
 - Improve offline summary visibility.
 - Add an achievements panel using existing state.
-- Expand tests around save/import, forge, dailies, vigor, reincarnation, and economy formulas.
+- Expand tests around save/import, forge, contracts, vigor, reincarnation, and economy formulas.
 - Centralize recurring balance constants before adding more systems.
 
 ### Version 1.5
 
 - Add dungeon mastery per existing dungeon.
-- Add expedition contracts using current dailies/expedition data.
+- Add expedition contracts using current contracts/expedition data.
 - Add simple forge orders for slot-focused crafting goals.
 - Improve inventory UX: lock item, filter by slot/rarity, clearer compare.
 - Add non-monetized companion prototypes earned from achievements or bosses.
@@ -94,7 +94,7 @@ Avoid for now:
 ### Expedition Contracts
 
 Purpose:
-Give players medium-term goals that sit between dailies and reincarnation.
+Give players medium-term goals that sit between contracts and reincarnation.
 
 Player Value:
 Players always have a clear next target beyond repeating the highest unlocked dungeon.
@@ -109,7 +109,7 @@ Risk:
 Can become a chores list if too many contracts stack.
 
 Dependencies:
-Existing expeditions, dailies, achievements, reward summary, and inventory actions.
+Existing expeditions, contracts, achievements, reward summary, and inventory actions.
 
 MVP-safe version:
 Add 3 weekly contracts generated from existing actions, with simple rewards and no new currency.
@@ -230,7 +230,7 @@ Player Value:
 Players get gentle structure and catch-up, not anxiety.
 
 Core Loop Impact:
-Dailies become part of a broader weekly rhythm.
+Contracts become part of a broader weekly rhythm.
 
 Implementation Complexity:
 Low.
@@ -239,7 +239,7 @@ Risk:
 Streaks can become manipulative if rewards compound too strongly.
 
 Dependencies:
-Dailies, reset logic, local time/UTC rules, reward economy.
+Contracts, reset logic, local time/UTC rules, reward economy.
 
 MVP-safe version:
 Track weekly completion points; let players earn the weekly chest through any 4 of 7 days.
@@ -303,9 +303,9 @@ Guild chat, guild wars, donations that become mandatory, raid scheduling pressur
 
 Recommended retention improvements:
 
-- Daily goals: keep 3 dailies, make tasks easy to understand, and avoid requiring every subsystem every day.
+- Daily goals: keep 3 contracts, make tasks easy to understand, and avoid requiring every subsystem every day.
 - Long missions: add weekly contracts and reincarnation milestones that can be progressed over multiple sessions.
-- Offline rewards: show a fuller offline summary for expedition, mine, vigor, dailies, and inventory overflow.
+- Offline rewards: show a fuller offline summary for expedition, mine, vigor, contracts, and inventory overflow.
 - Soft streaks: reward weekly participation through flexible points, not strict consecutive logins.
 - Timed chests: use earned timer chests from bosses or weekly goals; never make them expire aggressively.
 - Simple events: use short event modifiers like "Forge Week: +10% ore from bosses" with clear start/end dates.
@@ -333,7 +333,7 @@ Keep the economy readable:
 
 Sources:
 
-- Expeditions, dailies, offline mine, salvage/sell, weekly contracts, boss milestones, reincarnation.
+- Expeditions, contracts, Caravan jobs, salvage/sell, weekly contracts, boss milestones, reincarnation.
 
 Sinks:
 
@@ -374,7 +374,7 @@ Do not use:
 Prepare technically before 2.0:
 
 - Modules:
-  - `contracts.ts` for weekly/long goals.
+  - `dailies.ts` for Contracts, weekly chest progress, and long goals.
   - `mastery.ts` for dungeon mastery.
   - `companions.ts` for permanent passive bonuses.
   - `events.ts` only after event rules are data-driven.

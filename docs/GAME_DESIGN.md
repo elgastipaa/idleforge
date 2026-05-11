@@ -2,7 +2,7 @@
 
 ## Core Loop
 
-Choose expedition -> wait -> resolve -> gain XP/gold/materials/loot -> equip/sell/salvage/craft -> upgrade town -> unlock region boss -> complete dailies -> reincarnate -> repeat.
+Choose expedition -> wait -> resolve -> gain XP/gold/materials/loot -> equip/sell/salvage/craft -> upgrade town -> unlock region boss -> complete contracts -> reincarnate -> repeat.
 
 ## Player Model
 
@@ -152,10 +152,11 @@ Buildings:
 
 Each has level-based scaling cost and direct gameplay impact.
 
-## Dailies System
+## Contracts System
 
-- Exactly 3 active daily tasks.
-- Reset at 23:00 UTC.
+- 1 Main contract and 2 Side contracts active each day.
+- Weekly chest track with 3 milestones from claimed contracts.
+- Reset at 23:00 local time.
 - No streak penalties.
 - Rewards focus on gold, materials, vigor, and small chest value.
 
@@ -184,7 +185,7 @@ Concept:
 ## Offline Progress
 
 - Complete active expedition if timer elapsed while away.
-- Apply mine passive generation while away.
+- Apply active Caravan progress/reward if a job was planned.
 - Apply vigor regen while away.
 - 8h cap for all passive/offline gains.
 - Show "While you were away" summary.

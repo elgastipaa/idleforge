@@ -1,6 +1,7 @@
 import { BUILDING_IDS, DAILY_TASK_COUNT, EQUIPMENT_SLOTS, INVENTORY_LIMIT, SAVE_GAME_NAME, SAVE_VERSION, VIGOR_MAX } from "./constants";
+import { CARAVAN_FOCUS_DEFINITIONS, clampCaravanDurationMs } from "./caravan";
 import { ACHIEVEMENTS, DAILY_TASK_POOL, DUNGEONS, HERO_CLASSES } from "./content";
-import { createEmptyAchievements } from "./state";
+import { createEmptyAchievements, createEmptyCaravan, createEmptyDailies, createEmptyLootState } from "./state";
 import type { GameState, ImportResult } from "./types";
 
 export type SaveEnvelope = {
@@ -35,6 +36,14 @@ function validateState(state: unknown): state is GameState {
   const equipment = state.equipment;
   if (!isRecord(equipment)) return false;
   if (!EQUIPMENT_SLOTS.every((slot) => slot in equipment)) return false;
+  if (state.loot !== undefined) {
+    const loot = state.loot;
+    if (!isRecord(loot)) return false;
+    if (loot.focusSlot !== "any" && !EQUIPMENT_SLOTS.includes(loot.focusSlot as (typeof EQUIPMENT_SLOTS)[number])) return false;
+    if (!finiteNumber(loot.missesSinceDrop) || Number(loot.missesSinceDrop) < 0) return false;
+    if (!Array.isArray(loot.recentSlots)) return false;
+    if (!loot.recentSlots.every((slot) => EQUIPMENT_SLOTS.includes(slot as (typeof EQUIPMENT_SLOTS)[number]))) return false;
+  }
   const town = state.town;
   if (!isRecord(town)) return false;
   if (!BUILDING_IDS.every((id) => finiteNumber(town[id]) && Number(town[id]) >= 0)) return false;
@@ -44,6 +53,18 @@ function validateState(state: unknown): state is GameState {
     if (!DUNGEONS.some((dungeon) => dungeon.id === activeExpedition.dungeonId)) return false;
     if (!finiteNumber(activeExpedition.startedAt) || !finiteNumber(activeExpedition.endsAt)) return false;
     if (typeof activeExpedition.vigorBoost !== "boolean") return false;
+  }
+  const caravan = state.caravan;
+  if (caravan !== undefined) {
+    if (!isRecord(caravan)) return false;
+    if (caravan.activeJob !== null && caravan.activeJob !== undefined) {
+      const activeJob = caravan.activeJob;
+      if (!isRecord(activeJob)) return false;
+      if (!CARAVAN_FOCUS_DEFINITIONS.some((focus) => focus.id === activeJob.focusId)) return false;
+      if (!finiteNumber(activeJob.durationMs) || activeJob.durationMs !== clampCaravanDurationMs(activeJob.durationMs)) return false;
+      if (!finiteNumber(activeJob.startedAt) || !finiteNumber(activeJob.endsAt)) return false;
+      if (activeJob.endsAt <= activeJob.startedAt) return false;
+    }
   }
   const vigor = state.vigor;
   if (!isRecord(vigor)) return false;
@@ -58,9 +79,20 @@ function validateState(state: unknown): state is GameState {
     if (!isRecord(task)) return false;
     if (typeof task.id !== "string" || typeof task.label !== "string") return false;
     if (!DAILY_TASK_POOL.some((entry) => entry.kind === task.kind)) return false;
+    if (task.role !== undefined && task.role !== "primary" && task.role !== "secondary") return false;
     if (!finiteNumber(task.target) || !finiteNumber(task.progress)) return false;
     if (typeof task.claimed !== "boolean") return false;
     if (!isRecord(task.reward)) return false;
+  }
+  if (dailies.weekly !== undefined) {
+    const weekly = dailies.weekly;
+    if (!isRecord(weekly)) return false;
+    if (!finiteNumber(weekly.windowStartAt) || !finiteNumber(weekly.nextResetAt) || !finiteNumber(weekly.progress)) return false;
+    if (!Array.isArray(weekly.milestones) || weekly.milestones.length !== 3) return false;
+    for (const milestone of weekly.milestones) {
+      if (!isRecord(milestone)) return false;
+      if (!finiteNumber(milestone.target) || typeof milestone.claimed !== "boolean" || !isRecord(milestone.reward)) return false;
+    }
   }
   const prestige = state.prestige;
   if (!isRecord(prestige) || !isRecord(prestige.upgrades)) return false;
@@ -72,9 +104,26 @@ function validateState(state: unknown): state is GameState {
 
 export function normalizeImportedState(state: GameState, now: number): GameState {
   const achievements = createEmptyAchievements();
+  const emptyDailies = createEmptyDailies(now);
   ACHIEVEMENTS.forEach((achievement) => {
     achievements[achievement.id] = state.achievements?.[achievement.id] ?? { unlockedAt: null };
   });
+  const tasks = Array.isArray(state.dailies?.tasks)
+    ? state.dailies.tasks.slice(0, DAILY_TASK_COUNT).map((task, index) => ({
+        ...task,
+        role: task.role === "primary" || task.role === "secondary" ? task.role : index === 0 ? "primary" : "secondary"
+      }))
+    : [];
+  const weekly = state.dailies?.weekly ?? emptyDailies.weekly;
+  const loot = state.loot
+    ? {
+        focusSlot: state.loot.focusSlot === "any" || EQUIPMENT_SLOTS.includes(state.loot.focusSlot) ? state.loot.focusSlot : "any",
+        missesSinceDrop: finiteNumber(state.loot.missesSinceDrop) ? Math.max(0, state.loot.missesSinceDrop) : 0,
+        recentSlots: Array.isArray(state.loot.recentSlots)
+          ? state.loot.recentSlots.filter((slot) => EQUIPMENT_SLOTS.includes(slot)).slice(0, 2)
+          : []
+      }
+    : createEmptyLootState();
 
   return {
     ...state,
@@ -87,9 +136,12 @@ export function normalizeImportedState(state: GameState, now: number): GameState
     dailies: {
       windowStartAt: finiteNumber(state.dailies?.windowStartAt) ? state.dailies.windowStartAt : now,
       nextResetAt: finiteNumber(state.dailies?.nextResetAt) ? state.dailies.nextResetAt : now,
-      tasks: Array.isArray(state.dailies?.tasks) ? state.dailies.tasks.slice(0, DAILY_TASK_COUNT) : [],
-      lastTaskSetKey: typeof state.dailies?.lastTaskSetKey === "string" ? state.dailies.lastTaskSetKey : null
+      tasks,
+      lastTaskSetKey: typeof state.dailies?.lastTaskSetKey === "string" ? state.dailies.lastTaskSetKey : null,
+      weekly
     },
+    loot,
+    caravan: state.caravan?.activeJob ? { activeJob: state.caravan.activeJob } : createEmptyCaravan(),
     updatedAt: now,
     lifetime: {
       ...state.lifetime,

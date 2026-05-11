@@ -1,6 +1,6 @@
-import { BUILDING_IDS, DAILY_TASK_COUNT, EMPTY_RESOURCES, EQUIPMENT_SLOTS, GAME_VERSION, VIGOR_MAX } from "./constants";
+import { BUILDING_IDS, DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT, EMPTY_RESOURCES, EQUIPMENT_SLOTS, GAME_VERSION, VIGOR_MAX } from "./constants";
 import { ACHIEVEMENTS, HERO_CLASSES } from "./content";
-import type { AchievementState, BuildingState, DailyState, EquipmentState, GameMode, GameState, HeroClassId } from "./types";
+import type { AchievementState, BuildingState, CaravanState, DailyState, EquipmentState, GameMode, GameState, HeroClassId, LootState } from "./types";
 
 export function createEmptyEquipment(): EquipmentState {
   return EQUIPMENT_SLOTS.reduce((equipment, slot) => {
@@ -23,20 +23,47 @@ export function createEmptyAchievements(): Record<string, AchievementState> {
   }, {});
 }
 
+export function createEmptyCaravan(): CaravanState {
+  return {
+    activeJob: null
+  };
+}
+
+export function createEmptyLootState(): LootState {
+  return {
+    focusSlot: "any",
+    missesSinceDrop: 0,
+    recentSlots: []
+  };
+}
+
 export function createEmptyDailies(now: number): DailyState {
+  const date = new Date(now);
+  const weeklyWindowStartAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
   return {
     windowStartAt: now,
     nextResetAt: now,
     tasks: Array.from({ length: DAILY_TASK_COUNT }).map((_, index) => ({
       id: `pending-${index + 1}`,
       kind: "complete_expeditions",
+      role: index === 0 ? "primary" : "secondary",
       label: "Preparing daily task...",
       target: 1,
       progress: 0,
       claimed: false,
       reward: { gold: 0, materials: {}, vigor: 0 }
     })),
-    lastTaskSetKey: null
+    lastTaskSetKey: null,
+    weekly: {
+      windowStartAt: weeklyWindowStartAt,
+      nextResetAt: weeklyWindowStartAt,
+      progress: 0,
+      milestones: [
+        { target: 3, claimed: false, reward: { gold: 0, materials: {}, vigor: 0 } },
+        { target: 9, claimed: false, reward: { gold: 0, materials: {}, vigor: 0 } },
+        { target: 15, claimed: false, reward: { gold: 0, materials: {}, vigor: 0 } }
+      ]
+    }
   };
 }
 
@@ -65,9 +92,11 @@ export function createInitialState(seed: string, now: number, classId: HeroClass
     },
     inventory: [],
     equipment: createEmptyEquipment(),
+    loot: createEmptyLootState(),
     activeExpedition: null,
     dungeonClears: {},
     town: createEmptyTown(),
+    caravan: createEmptyCaravan(),
     dailies: createEmptyDailies(now),
     achievements: createEmptyAchievements(),
     prestige: {

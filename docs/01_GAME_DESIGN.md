@@ -7,7 +7,7 @@ Jugador controla **un solo héroe** en un RPG idle de expediciones:
 - sale a dungeons con timer,
 - resuelve recompensas determinísticas,
 - mejora equipo e infraestructura,
-- completa dailies,
+- completa contracts,
 - usa vigor como boost,
 - hace reincarnación para progreso permanente.
 
@@ -29,7 +29,7 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
 6. Equipar / vender / salvear.
 7. Craftear o mejorar ítems en Forge.
 8. Subir edificios del pueblo.
-9. Completar/claim dailies.
+9. Completar/claim contracts.
 10. Reincarnar al cumplir gate (Lv10 + boss región 3).
 
 ## Sistemas existentes reales (implementados)
@@ -44,15 +44,18 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   primera arma garantizada, rare+ drops, boss loot, level-ups, first boss clear y desbloqueos de dungeon/región.
 - Resultado post-claim compacto con una línea de rewards, chips de momentos importantes, aviso de Vigor x2, level-up destacado, Awards agrupados y rareza visible de loot.
 - Siguiente acción contextual después del claim:
-  equipar item mejor, intentar siguiente dungeon/boss, abrir dailies, Forge o Town.
+  equipar item mejor, intentar siguiente dungeon/boss, abrir contracts, Forge o Town.
 - Feedback global de acciones:
-  mensajes tipo notice/toast para errores, Forge, Town upgrades, equip/sell/salvage, dailies y reincarnation.
+  mensajes tipo notice/toast para errores, Forge, Town upgrades, equip/sell/salvage, contracts y reincarnation.
 - Loot:
   - 5 slots (`weapon/helm/armor/boots/relic`),
   - 4 rarezas,
   - 32 afijos con stats y efectos de utilidad equipados,
   - nombres por rareza + base de slot + prefijo/sufijo de afijo,
-  - comparación por Item Power, delta total, delta de stats y delta de utilidad.
+  - comparación por Item Power, delta total, delta de stats y delta de utilidad,
+  - Loot Focus en Inventory para sesgar drops de expedición hacia un slot,
+  - pity de drop después de rachas sin loot,
+  - anti-duplicado temprano por peso de slots recientes.
 - Inventario con cap 30, barra de capacidad y warning desde 24.
 - Overflow de loot: auto-salvage con aviso explícito cuando inventario está lleno.
 - Economía de ítems: equip/sell/salvage con valor visible de venta y materiales visibles de salvage.
@@ -66,9 +69,10 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   - costo/current/next visibles,
   - milestones por edificio,
   - feedback de estado y upgrade.
-- Dailies:
-  - 3 tareas diarias,
-  - reset 23:00 UTC,
+- Contracts:
+  - 1 contrato Main + 2 Side por día,
+  - reset 23:00 hora local,
+  - weekly chest con 3 hitos por contratos reclamados,
   - claim único,
   - sin streak penalties, ads, premium currency ni battle pass.
 - Vigor:
@@ -79,9 +83,9 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
 - Offline progress:
   - cap 8h,
   - resolución expedición,
-  - mine gains,
+  - progreso/payout de Caravan si hay job activo,
   - vigor regen,
-  - reset diario.
+  - reset de Contracts.
 - Reincarnación:
   - gate: nivel 10 + `curator-of-blue-fire`,
   - Soul Marks (internamente `renown`),
@@ -110,7 +114,6 @@ No hay referencias en código, pero sí en documentación existente (`docs/PRODU
   - UI usa “Reincarnation / Soul Marks”.
   - Parte del código/tipos todavía usa nombres “prestige/renown”.
   - Funcionalmente opera, pero hay inconsistencia de naming.
-- `lastOfflineSummary` existe en store pero no se renderiza en UI actual.
 - Awards existen en estado y motor (`src/game/achievements.ts`) y su estado se muestra en la UI.
 
 ## Sistemas planeados (sólo porque aparecen explícitos en docs existentes)
@@ -144,4 +147,4 @@ No están implementados en `src/`.
 - Timer-based/idle: mantener el corazón del juego en timers + resolución determinística.
 - Modular: mantener reglas en `src/game`.
 - Evitar feature creep: usar `docs/06_TASKS.md` como guardrail.
-- Evitar duplicación: no reimplementar lógica de economy/dailies/vigor/save fuera de `src/game`.
+- Evitar duplicación: no reimplementar lógica de economy/contracts/vigor/save fuera de `src/game`.

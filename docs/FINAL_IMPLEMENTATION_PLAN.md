@@ -28,9 +28,10 @@
   - upgrade item level
 - Town buildings:
   - Forge, Mine, Tavern, Market, Library, Shrine
-- Dailies:
-  - exactly 3 active tasks/day
-  - reset at 23:00 UTC
+- Contracts:
+  - 1 Main + 2 Side contracts/day
+  - reset at 23:00 local
+  - weekly chest with 3 milestones
   - no streak punishment
 - Awards:
   - unlock tracking and UI included in v1.0
@@ -47,11 +48,11 @@
   - reset confirmation
 - Offline progress:
   - expedition completion
-  - mine passive
+  - active Caravan progress/reward
   - vigor regen
   - capped to 8h
 - Mobile-first UI with dedicated screens:
-  - Character Start, Expeditions, Hero, Inventory, Forge, Town, Dailies, Reincarnation, Save/Settings
+  - Character Start, Expeditions, Hero, Inventory, Forge, Town, Contracts, Reincarnation, Save/Settings
 
 ## 2. Explicit Non-Goals
 
@@ -71,7 +72,7 @@
 1. Deterministic simulation core (`src/game`).
 2. Expedition -> reward -> loot -> inventory loop.
 3. Forge + town progression.
-4. Dailies + vigor + offline caps.
+4. Contracts + vigor + offline caps.
 5. Reincarnation loop.
 6. Save/import/export/reset.
 7. Mobile-first UI integration.
@@ -93,7 +94,7 @@ Milestone 3: Economy core
 
 Milestone 4: Retention core
 
-- Dailies (3/day, reset), vigor spend/regen, offline cap behavior.
+- Contracts (1 Main + 2 Side/day, weekly chest), vigor spend/regen, offline cap behavior.
 
 Milestone 5: Reincarnation core
 
@@ -123,10 +124,10 @@ Unit tests (`src/game`):
 - inventory cap and overflow behavior
 - forge craft/upgrade transitions
 - town upgrade cost/effect checks
-- daily generation (3 unique tasks/day) and reset at 23:00 UTC
+- contract generation (1 Main + 2 Side/day) and reset at 23:00 local
 - no streak penalty logic
 - vigor spend/regeneration/cap checks
-- offline combined cap checks (expedition + mine + vigor, 8h)
+- offline combined cap checks (expedition + Caravan + vigor, 8h)
 - reincarnation gate and reset/persist invariants
 - save import/export validation and failure safety
 
@@ -153,7 +154,7 @@ Build gates:
   - production 30-60m
   - debug 5-10m
 - Offline cap behavior correct at 8h.
-- Dailies reset and no-streak policy verified.
+- Contracts reset and no-streak policy verified.
 - Vigor cap/regeneration/spend verified.
 - Save/import/export/reset verified.
 - Mobile-first ergonomics verified on narrow viewport.
@@ -164,13 +165,13 @@ Build gates:
 - Scope creep from MMO-like extras.
 - Formula drift from under-specified constants.
 - Reincarnation pacing misses target.
-- Daily system becomes mandatory/grindy.
+- Contract system becomes mandatory/grindy.
 - Inventory frustration at cap 30.
 - UI complexity grows too large for schedule.
 
 ## 8. Cut List If Time Runs Short
 
-1. Remove log-in bonus layer, keep dailies only.
+1. Remove log-in bonus layer, keep contracts only.
 2. Reduce forge preview detail (keep mechanics).
 3. Simplify reward modal flavor text.
 4. Reduce Awards UI polish only.
@@ -180,7 +181,7 @@ Never cut:
 
 - deterministic expedition loop
 - class passives
-- dailies (3/day, reset, no streak)
+- contracts (3/day, reset, no streak)
 - vigor cap/regeneration/spend
 - reincarnation loop
 - offline caps

@@ -30,7 +30,7 @@ Day 4:
 
 Day 5:
 
-- Dailies system and reset schedule.
+- Contracts system and reset schedule.
 - Reincarnation system and permanent upgrades.
 - Save/import/export/reset safety.
 
@@ -51,7 +51,7 @@ Day 7:
 1. Deterministic engine.
 2. Loot + forge + town loop.
 3. Reincarnation.
-4. Dailies and vigor.
+4. Contracts and vigor.
 5. UI.
 
 ## Done When

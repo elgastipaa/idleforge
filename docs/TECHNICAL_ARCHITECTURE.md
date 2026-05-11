@@ -62,6 +62,7 @@ Forbidden in MVP architecture:
 - `loot.ts`
 - `heroes.ts`
 - `town.ts`
+- `caravan.ts`
 - `prestige.ts`
 - `achievements.ts`
 - `dailies.ts`
@@ -82,10 +83,12 @@ type GameState = {
   vigor: { current: number; max: 100; lastTickAt: number };
   inventory: Item[];
   equipment: EquipmentState;
+  loot: LootState;
   activeExpedition: ActiveExpedition | null;
   dungeonClears: Record<string, number>;
   town: TownState;
-  dailies: DailyState;
+  caravan: CaravanState;
+  dailies: DailyState; // UI label: Contracts
   reincarnation: ReincarnationState;
   settings: SettingsState;
 };
@@ -102,17 +105,18 @@ type GameState = {
 Apply capped simulation on load:
 
 - Expedition completion.
-- Mine passive generation.
+- Caravan progress and payout if an active job completes.
 - Vigor regeneration.
 
 Cap:
 
 - 8h maximum elapsed time for offline calculations.
 
-## Daily Reset System
+## Contracts Reset System
 
-- Reset schedule: 23:00 UTC.
-- Fixed 3 tasks/day.
+- Reset schedule: 23:00 local time.
+- Fixed 3 contracts/day: 1 main + 2 side.
+- Weekly chest tracks claimed daily contracts across 3 milestones.
 - No streak tracking in MVP.
 
 ## UI Integration Contracts

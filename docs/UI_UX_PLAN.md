@@ -22,7 +22,7 @@
 4. Inventory
 5. Forge
 6. Town
-7. Dailies
+7. Contracts
 8. Reincarnation
 9. Save/Settings
 
@@ -99,11 +99,12 @@ Buildings:
 - Library
 - Shrine
 
-## Dailies Screen
+## Contracts Screen
 
-- 3 daily tasks.
-- Reset timer to 23:00 UTC.
+- 1 Main + 2 Side contracts.
+- Reset timer to 23:00 local.
 - Claim buttons.
+- Weekly chest milestone progress.
 - No streak display.
 
 ## Reincarnation Screen

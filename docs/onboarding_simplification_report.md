@@ -39,7 +39,7 @@ Implementation notes:
 - First-session clarity pass: implemented guided next-step rail and single-action early states.
 - Mobile navigation and density pass: implemented primary mobile tabs + "More" overflow panel.
 - Early pacing rebalance: smoothed first-zone expedition durations to reduce abrupt boredom spikes.
-- Context-aware dailies: gated task pool so early players avoid boss/sell/salvage/craft tasks before readiness.
+- Context-aware contracts: gated task pool so early players avoid boss/sell/salvage/craft tasks before readiness.
 - Reward presentation upgrade: added highlighted celebration panel for first weapon, rare+, and boss milestones.
 - Forge/Town simplification: added progressive disclosure for advanced/long sections.
 - Playtest integrity controls: debug balance hidden in production playtest builds and blocked at store level.

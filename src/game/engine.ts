@@ -27,7 +27,7 @@ import { applyDailyProgress, ensureDailies } from "./dailies";
 import { isDungeonUnlocked } from "./expeditions";
 import { addXp } from "./heroes";
 import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getRuneGainPassiveMultiplier } from "./heroes";
-import { inventoryHasSpace, maybeGenerateLoot } from "./loot";
+import { inventoryHasSpace, maybeGenerateLoot, recordLootDrop, recordLootMiss } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
 import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveExpeditionOptions, ResolveResult, RewardSummary } from "./types";
@@ -45,6 +45,10 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
 
   if (state.activeExpedition) {
     return { ok: false, state, error: "An expedition is already underway." };
+  }
+
+  if (state.caravan.activeJob) {
+    return { ok: false, state, error: "Cancel the active Caravan before starting a new expedition." };
   }
 
   if (!isDungeonUnlocked(state, dungeon)) {
@@ -209,6 +213,7 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
     }
     item = maybeGenerateLoot(next, dungeon, rng, active.runId, { forceDrop: dungeon.boss, bossBonus: dungeon.boss });
     if (item) {
+      recordLootDrop(next, item.slot);
       next.lifetime.totalItemsFound += 1;
       if (item.rarity === "legendary") {
         next.lifetime.legendaryItemsFound += 1;
@@ -220,6 +225,8 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
         addSalvagedItemResources(next, item);
         next.lifetime.totalItemsSalvaged += 1;
       }
+    } else {
+      recordLootMiss(next);
     }
   } else {
     next.lifetime.expeditionsFailed += 1;

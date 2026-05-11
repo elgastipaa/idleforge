@@ -111,9 +111,9 @@ Utility:
 - Library
 - Shrine
 
-## Daily Task Content (MVP Pool)
+## Contract Content (MVP Pool)
 
-Task candidates:
+Contract candidates:
 
 - Complete 3 expeditions.
 - Win 2 expeditions.
@@ -124,9 +124,10 @@ Task candidates:
 - Upgrade 1 building.
 - Spend 20 Vigor.
 
-Daily selection:
+Contract selection:
 
-- Pick exactly 3 unique tasks/day.
+- Pick exactly 3 unique contracts/day.
+- Roles: 1 Main + 2 Side.
 
 ## Achievement Content Baseline
 
@@ -142,7 +143,7 @@ Categories:
 - crafting
 - town upgrades
 - reincarnation
-- dailies completed
+- contracts completed
 
 ## Post-MVP Content
 

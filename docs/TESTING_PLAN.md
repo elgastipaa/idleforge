@@ -20,13 +20,13 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 - Forge craft and item upgrade actions.
 - Town upgrade costs/effects.
 - Class passive unlock and effect application.
-- Daily generation and reset at 23:00 UTC.
-- Daily task uniqueness (3 unique tasks/day).
+- Contract generation and reset at 23:00 local.
+- Contract role mix: 1 Main + 2 Side per day.
 - No streak penalty behavior across resets.
 - Vigor regen (+1/5m, cap 100).
 - Vigor spend (20 cost, 2.0x reward multiplier).
 - Offline cap behavior (8h).
-- Combined offline cap behavior for expedition + mine + vigor.
+- Combined offline cap behavior for expedition + Caravan + vigor.
 - Reincarnation reset/persist rules.
 - Reincarnation gate check (level 10 + region 3 boss clear).
 - Save export/import validation.
@@ -43,8 +43,8 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 - First expedition complete and reward modal.
 - Equip item and see stat delta.
 - Upgrade first town building.
-- Claim one daily reward.
-- Verify daily reset at 23:00 UTC with deterministic clock input.
+- Claim one contract reward.
+- Verify contract reset at 23:00 local with deterministic clock input.
 - Perform first reincarnation from prepared state.
 
 ## Balance Regression Checks
@@ -63,5 +63,5 @@ Focus on deterministic simulation correctness first, then UI integration smoke c
 ## Done When
 
 - Critical gameplay systems have deterministic tests.
-- Reincarnation, dailies, vigor, and offline caps are covered by tests.
+- Reincarnation, contracts, vigor, and offline caps are covered by tests.
 - First-session path invariants have at least one regression test each.

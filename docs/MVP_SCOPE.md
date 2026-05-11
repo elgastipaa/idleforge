@@ -25,6 +25,9 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
   - 4 rarities
   - affixes
   - comparison
+  - soft slot focus
+  - pity counter
+  - early anti-duplicate slot weighting
 - Inventory limit 30.
 - Equip/sell/salvage.
 - Forge:
@@ -33,9 +36,14 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
   - item upgrade
 - Town:
   - Forge, Mine, Tavern, Market, Library, Shrine
-- Dailies:
-  - exactly 3
-  - reset 23:00 UTC
+- Caravan:
+  - 1 to 8h chosen offline job
+  - focus resource unlocks by hero level
+  - no replacement while active; cancel only with no rewards
+- Contracts:
+  - 1 main + 2 side/day
+  - reset 23:00 local
+  - weekly chest with 3 milestones
   - no streak punishments
 - Vigor:
   - cap 100
@@ -67,7 +75,7 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
 ## Offline And Passive Caps (Locked)
 
 - Expedition offline resolution cap: 8h.
-- Mine passive cap: 8h.
+- Caravan job cap: 8h.
 - Vigor regen during offline: 8h cap window.
 
 ## Pacing Targets (Locked)
@@ -79,7 +87,7 @@ If a feature does not strengthen the expedition-loot-town-reincarnation loop, it
 
 ## Cut Ladder If Behind
 
-1. Remove log-in reward extra layer, keep dailies only.
+1. Remove log-in reward extra layer, keep contracts only.
 2. Remove advanced item compare UI, keep basic stat delta.
 3. Remove optional flavor combat lines.
 4. Reduce Awards UI depth if needed (keep unlock tracking).

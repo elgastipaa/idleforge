@@ -1,7 +1,7 @@
 import { DEBUG_REINCARNATION_MULTIPLIER, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUIREMENT, REINCARNATION_UPGRADE_MAX } from "./constants";
 import { refreshAchievements } from "./achievements";
 import { DUNGEONS } from "./content";
-import { cloneState, createEmptyDailies, createEmptyEquipment, createEmptyTown } from "./state";
+import { cloneState, createEmptyCaravan, createEmptyDailies, createEmptyEquipment, createEmptyLootState, createEmptyTown } from "./state";
 import { getHeroClass } from "./balance";
 import type { ActionResult, GameState, PrestigeResult, RenownUpgrades } from "./types";
 
@@ -78,9 +78,11 @@ export function performPrestige(state: GameState, now: number): PrestigeResult {
   next.vigor.lastTickAt = now;
   next.inventory = [];
   next.equipment = createEmptyEquipment();
+  next.loot = createEmptyLootState();
   next.activeExpedition = null;
   next.dungeonClears = {};
   next.town = createEmptyTown();
+  next.caravan = createEmptyCaravan();
   next.dailies = createEmptyDailies(now);
   next.prestige.totalPrestiges += 1;
   next.prestige.renownEarned += renownGained;

@@ -286,6 +286,15 @@ clamp(
 
 `longMissionLootChance` aplica a dungeons con duración base `>= 30m`.
 
+Loot Direction Lite:
+
+- `state.loot.focusSlot`: `"any"` o un slot de equipo.
+- Cuando hay foco, el peso del slot elegido se multiplica por `LOOT_FOCUS_SLOT_WEIGHT_MULTIPLIER` (`3`).
+- El foco aplica sólo a drops de expedición; Forge sigue usando su selector propio de slot/class bias.
+- Pity: si `missesSinceDrop >= LOOT_DROP_PITY_THRESHOLD` (`3`), la siguiente expedición exitosa fuerza drop.
+- Anti-duplicado temprano: hasta `LOOT_EARLY_ANTI_DUPLICATE_ITEM_COUNT` (`10`) ítems encontrados, los slots recientes bajan peso si no son el foco.
+- Memoria de slots recientes: `LOOT_RECENT_SLOT_MEMORY` (`2`).
+
 Item Power:
 
 ```ts
@@ -420,7 +429,7 @@ Base costs iniciales:
 Efectos de balance usados por motor:
 
 - Forge: power/defense y budget de ítems.
-- Mine: multiplicador de materiales + generación offline.
+- Mine: multiplicador de materiales de expedición y mejora de yields Ore/Crystal de Caravan.
 - Tavern: XP multiplier + stamina.
 - Library: luck + bonus de success.
 - Market: gold multiplier + sell multiplier.
@@ -439,30 +448,29 @@ Nota:
 
 - Los textos anteriores están cubiertos por `src/game/__tests__/core.test.ts` para evitar nuevo drift visible.
 
-Mine offline:
+Caravan / offline jobs:
 
-```ts
-ore = floor(mine*4*hours)
-crystal = floor(max(0,mine-1)*1.2*hours)
-rune = floor(max(0,mine-4)*0.45*hours)
-relicFragment = floor(max(0,mine-8)*0.15*hours)
-```
-
-- `getMineOfflineRate(state)` expone la tasa/hora para la UI de Town.
+- Archivo: `caravan.ts`.
 - cap global offline: `8h`.
+- duración seleccionable: `1h..8h`.
+- sólo una Caravan activa a la vez.
+- cancelar Caravan no entrega recompensas.
+- mientras Caravan está activa no se pueden iniciar nuevas Expeditions; si ya había una Expedition activa antes, se mantiene.
+- Mine mejora yields de Ore/Crystal Caravan; Market mejora Gold; Tavern mejora XP; Library mejora Runes.
 
 ---
 
-## 8) Dailies
+## 8) Contracts
 
 - Archivo: `dailies.ts`
 
 Reglas:
 
-- 3 tareas únicas por día.
-- reset 23:00 UTC.
+- 1 contrato Main + 2 Side por día.
+- reset 23:00 hora local.
 - intenta no repetir set exacto del día anterior.
 - no hay streaks, castigos por no entrar, pagos, premium currency, ads ni battle pass.
+- weekly chest: 3 hitos (`3/9/15`) basados en contratos reclamados.
 
 Pool:
 
@@ -477,10 +485,13 @@ Pool:
 
 Rewards:
 
-- ratio elegido por RNG: `0.08 / 0.10 / 0.12`
+- Main ratio elegido por RNG: `0.16 / 0.18 / 0.20`
+- Side ratio elegido por RNG: `0.08 / 0.10 / 0.12`
 - oro/materiales se calculan sobre mejor dungeon no-boss desbloqueado.
-- vigor por tarea: `8..12`
+- vigor Main: `14..18`
+- vigor Side: `8..12`
 - el reward de vigor se clampa a `state.vigor.max`.
+- weekly chest ratios: `0.35 / 0.75 / 1.25` del mejor dungeon no-boss desbloqueado.
 
 ---
 
@@ -541,7 +552,7 @@ Tope:
 
 Tradeoff de UI:
 
-- Resetea: nivel/XP/base stats, gold/materiales, inventario/equipment, town, dungeon clears, expedición activa y dailies; vigor vuelve a `40`.
+- Resetea: nivel/XP/base stats, gold/materiales, inventario/equipment, town, dungeon clears, expedición activa y contracts; vigor vuelve a `40`.
 - Persiste: Soul Marks, upgrades permanentes, hero name/class, settings, Awards, lifetime stats, total reincarnations y total Soul Marks earned.
 
 ---
@@ -563,7 +574,7 @@ Cobertura de tests relevante:
   - auto-salvage al cap de inventario,
   - mínimo de 25 afijos y presencia de categorías clave,
   - aplicación de efectos equipados a XP, oro por región, loot chance, success chance, costo de craft y costo de Vigor,
-  - reset local de dailies, claim único y cap de reward de Vigor,
+  - reset local de contracts, claim único y cap de reward de Vigor,
   - gate/costo/resultado de reroll de afijo en Forge,
   - textos visibles de edificios contra fórmulas actuales.
   - pacing MVP 2.0 para first expedition, first Town upgrade, first boss/craft, rare-window y first reincarnation production/debug.

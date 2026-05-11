@@ -38,6 +38,12 @@
   --input-border: rgba(158, 173, 198, 0.34);
   --badge-bg: rgba(24, 35, 54, 0.94);
   --badge-text: #d6e0f5;
+  --chip-neutral-bg: rgba(24, 35, 54, 0.9);
+  --chip-info-bg: rgba(40, 79, 154, 0.34);
+  --chip-success-bg: rgba(10, 86, 68, 0.44);
+  --chip-warning-bg: rgba(120, 57, 18, 0.4);
+  --chip-danger-bg: rgba(117, 34, 34, 0.44);
+  --chip-mystic-bg: rgba(86, 48, 170, 0.38);
   --rarity-common-bg: rgba(35, 47, 70, 0.9);
   --rarity-common-border: rgba(166, 182, 205, 0.3);
   --rarity-rare-bg: linear-gradient(135deg, rgba(17, 92, 146, 0.26), rgba(20, 29, 45, 0.92));
@@ -58,10 +64,17 @@ body {
   margin: 0;
   max-width: 100%;
   overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 html {
   scrollbar-gutter: stable;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
 }
 
 body {
@@ -109,6 +122,15 @@ button:disabled {
 
 .ui-hover-surface:not(.bg-royal):hover {
   background-color: var(--surface-hover-soft) !important;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .expedition-card-hover {
@@ -233,10 +255,14 @@ button:disabled {
   border-color: var(--border-subtle);
 }
 
+/* Dark theme owns Tailwind's light utility aliases globally.
+   This prevents individual badges/cards from falling back to bright surfaces. */
 .bg-white,
 .bg-white\/90,
-.bg-white\/70 {
-  background-color: var(--surface-card);
+.bg-white\/80,
+.bg-white\/70,
+.bg-white\/65 {
+  background-color: var(--chip-neutral-bg);
 }
 
 .bg-parchment,
@@ -244,6 +270,7 @@ button:disabled {
   background-color: rgba(11, 18, 30, 0.95);
 }
 
+.bg-parchment\/60,
 .bg-parchment\/70,
 .hover\:bg-parchment:hover,
 .hover\:bg-white\/70:hover,
@@ -252,8 +279,9 @@ button:disabled {
 }
 
 .bg-stone-50,
-.bg-stone-100 {
-  background-color: var(--surface-card-elevated);
+.bg-stone-100,
+.bg-stone-100\/80 {
+  background-color: var(--chip-neutral-bg);
 }
 
 .bg-stone-200 {
@@ -267,20 +295,23 @@ button:disabled {
 }
 
 .bg-blue-50,
-.bg-blue-50\/70 {
-  background-color: rgba(40, 79, 154, 0.42);
+.bg-blue-50\/70,
+.bg-blue-50\/80 {
+  background-color: var(--chip-info-bg);
 }
 
 .bg-emerald-50,
 .bg-emerald-50\/70,
+.bg-emerald-50\/80,
 .bg-emerald-100 {
-  background-color: rgba(10, 86, 68, 0.56);
+  background-color: var(--chip-success-bg);
 }
 
 .bg-amber-50,
+.bg-amber-50\/70,
 .bg-amber-50\/80,
 .bg-amber-100 {
-  background-color: rgba(120, 57, 18, 0.52);
+  background-color: var(--chip-warning-bg);
 }
 
 .bg-amber-500 {
@@ -289,7 +320,7 @@ button:disabled {
 
 .bg-red-50,
 .bg-red-100 {
-  background-color: rgba(117, 34, 34, 0.56);
+  background-color: var(--chip-danger-bg);
 }
 
 .bg-red-700 {
@@ -297,7 +328,7 @@ button:disabled {
 }
 
 .bg-violet-50 {
-  background-color: rgba(86, 48, 170, 0.44);
+  background-color: var(--chip-mystic-bg);
 }
 
 .bg-sky-50 {

@@ -1,12 +1,15 @@
-# Relic Forge Idle - Daily Rewards Design
+# Relic Forge Idle - Contracts Rewards Design
 
-## Daily Structure
+## Contract Structure
 
-- Exactly 3 tasks active each day.
-- Daily reset at `23:00 UTC`.
+- Exactly 3 contracts active each day.
+- 1 Main contract + 2 Side contracts.
+- Reset at `23:00` local time.
 - No streak punishment in v1.0.
+- A weekly chest track advances when daily contracts are claimed.
+- Weekly chest has 3 milestones at `3`, `9`, and `15` claimed contracts.
 
-## Task Pool
+## Contract Pool
 
 - Complete 3 expeditions.
 - Win 2 expeditions.
@@ -18,12 +21,12 @@
 
 Selection rules:
 
-- Pick 3 unique tasks/day.
+- Pick 3 unique contracts/day with 1 Main + 2 Side.
 - Avoid repeating the exact same set two days in a row when possible.
 
 ## Rewards
 
-Task reward templates:
+Contract reward templates:
 
 - gold
 - ore/essence/crystals
@@ -37,20 +40,24 @@ Reward sizing:
 
 Numeric baseline:
 
-- Gold reward per task: `8%` to `12%` of best unlocked non-boss expedition gold reward.
-- Material reward per task: `8%` to `12%` of best unlocked non-boss expedition material reward.
-- Vigor reward per task: `8` to `12`.
+- Main Gold/material reward: `16%` to `20%` of best unlocked non-boss expedition reward.
+- Side Gold/material reward: `8%` to `12%` of best unlocked non-boss expedition reward.
+- Main Vigor reward: `14` to `18`.
+- Side Vigor reward: `8` to `12`.
+- Weekly milestone reward scales: `35%`, `75%`, `125%` of best unlocked non-boss expedition reward.
+- Weekly Vigor rewards: `15`, `25`, `40`.
 
 ## Vigor Integration
 
-- Dailies can grant vigor.
+- Contracts can grant vigor.
 - Vigor cap remains 100.
 - Vigor regen remains +1/5m.
 
 ## UX Requirements
 
 - Display time until reset.
-- Display per-task completion progress.
+- Display per-contract completion progress.
+- Display weekly chest progress and milestone claim state.
 - Allow immediate claim.
 - Show compact reward claim toast.
 
@@ -62,5 +69,5 @@ Numeric baseline:
 
 ## Done When
 
-- Daily system supports retention while preserving core expedition loop priority.
-- Task count, reset timing, and reward sizing are deterministic and testable.
+- Contract system supports retention while preserving core expedition loop priority.
+- Contract count, reset timing, weekly milestones, and reward sizing are deterministic and testable.
