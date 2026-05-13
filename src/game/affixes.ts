@@ -1,4 +1,4 @@
-import { EQUIPMENT_SLOTS, VIGOR_EXPEDITION_BOOST_COST } from "./constants";
+import { EQUIPMENT_SLOTS, FOCUS_EXPEDITION_BOOST_COST } from "./constants";
 import type { Affix, AffixEffects, DungeonDefinition, GameState, Item, MaterialId } from "./types";
 
 const MATERIAL_IDS: MaterialId[] = ["ore", "crystal", "rune", "relicFragment"];
@@ -51,9 +51,9 @@ export function getFailureRewardAffixBonus(state: GameState): number {
   return getAffixEffectTotal(state, "failureRewardScale");
 }
 
-export function getVigorBoostCost(state: GameState): number {
-  const reduction = clamp(getAffixEffectTotal(state, "vigorBoostCostReduction"), 0, 0.5);
-  return Math.max(5, Math.floor(VIGOR_EXPEDITION_BOOST_COST * (1 - reduction)));
+export function getFocusBoostCost(state: GameState): number {
+  const reduction = clamp(getAffixEffectTotal(state, "focusBoostCostReduction"), 0, 0.5);
+  return Math.max(5, Math.floor(FOCUS_EXPEDITION_BOOST_COST * (1 - reduction)));
 }
 
 export function getItemAffixEffectScore(item: Item | null): number {
@@ -79,7 +79,7 @@ export function getItemAffixEffectScore(item: Item | null): number {
       (effects.shortMissionSuccessChance ?? 0) * 240 +
       (effects.longMissionLootChance ?? 0) * 270 +
       (effects.craftingDiscount ?? 0) * 90 +
-      (effects.vigorBoostCostReduction ?? 0) * 75 +
+      (effects.focusBoostCostReduction ?? 0) * 75 +
       (effects.sellMultiplier ?? 0) * 55 +
       (effects.salvageMultiplier ?? 0) * 65 +
       (effects.runeMultiplier ?? 0) * 95 +

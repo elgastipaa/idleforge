@@ -4,14 +4,18 @@ import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import {
   SAVE_KEY,
+  applyDailyProgress,
   applyOfflineProgress,
   buyBuildingUpgrade,
   claimDailyTask,
+  claimDailyFocus,
+  claimWeeklyQuest,
   claimWeeklyContractMilestone,
   cancelCaravanJob,
   craftItem,
   buyRenownUpgrade,
   changeHeroClass,
+  claimMasteryTier,
   createInitialState,
   equipItem,
   ensureDailies,
@@ -24,9 +28,12 @@ import {
   salvageItem,
   sellItem,
   serializeSave,
+  selectShowcaseTitle,
   setLootFocus,
   startCaravanJob,
   startExpedition,
+  dismissAccountShowcaseDiscovery,
+  toggleShowcaseTrophy,
   upgradeItem,
   type BuildingId,
   type CaravanFocusId,
@@ -57,13 +64,19 @@ export type GameStore = {
   upgradeItem: (itemId: string) => void;
   rerollItemAffix: (itemId: string, affixIndex: number) => void;
   buyBuilding: (buildingId: BuildingId) => void;
+  claimDailyFocus: () => void;
   claimDaily: (taskId: string) => void;
+  claimWeeklyQuest: () => void;
   claimWeeklyContract: (milestoneIndex: number) => void;
+  claimMasteryTier: (dungeonId: string) => void;
   startCaravanJob: (focusId: CaravanFocusId, durationMs: number) => void;
   cancelCaravanJob: () => void;
   prestige: () => void;
   buyRenownUpgrade: (upgradeId: RenownUpgradeId) => void;
   changeClass: (classId: HeroClassId) => void;
+  selectShowcaseTitle: (titleId: string | null) => void;
+  toggleShowcaseTrophy: (trophyId: string) => void;
+  dismissAccountShowcaseDiscovery: () => void;
   setDebugBalance: (enabled: boolean) => void;
   setReducedMotion: (enabled: boolean) => void;
   dismissOnboarding: () => void;
@@ -151,10 +164,10 @@ const gamePersistStorage: PersistStorage<PersistedGameSnapshot> = {
             offline.summary.expeditionReady && hydratedState.activeExpedition
               ? `Expedition ${getDungeon(hydratedState.activeExpedition.dungeonId).name} is ready to claim.`
               : null,
-            offline.summary.vigorGained > 0 ? `+${offline.summary.vigorGained} Vigor regenerated.` : null,
+            offline.summary.focusGained > 0 ? `+${offline.summary.focusGained} Focus regenerated.` : null,
             offline.summary.caravan ? `Caravan returned with ${offline.summary.caravan.completed ? "completed" : "partial"} progress.` : null,
             Object.values(offline.summary.mineGains).some((value) => value > 0) ? "Mine generated materials." : null,
-            offline.summary.dailyReset ? "Contracts refreshed." : null
+            offline.summary.dailyReset ? "Missions refreshed." : null
           ]
             .filter(Boolean)
             .join(" ")
@@ -311,13 +324,31 @@ export const useGameStore = create<GameStore>()(
         set({ state: result.state, error: null, lastMessage: result.message ?? "Building upgraded." });
       },
 
+      claimDailyFocus: () => {
+        const result = claimDailyFocus(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Daily Focus claimed." });
+      },
+
       claimDaily: (taskId) => {
         const result = claimDailyTask(get().state, taskId, Date.now());
         if (!result.ok) {
           set({ error: result.error });
           return;
         }
-        set({ state: result.state, error: null, lastMessage: result.message ?? "Contract claimed." });
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Daily Mission claimed." });
+      },
+
+      claimWeeklyQuest: () => {
+        const result = claimWeeklyQuest(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Weekly Quest claimed." });
       },
 
       claimWeeklyContract: (milestoneIndex) => {
@@ -326,7 +357,18 @@ export const useGameStore = create<GameStore>()(
           set({ error: result.error });
           return;
         }
-        set({ state: result.state, error: null, lastMessage: result.message ?? "Weekly contract claimed." });
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Weekly milestone claimed." });
+      },
+
+      claimMasteryTier: (dungeonId) => {
+        const now = Date.now();
+        const result = claimMasteryTier(get().state, dungeonId, now);
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        const progressed = applyDailyProgress(result.state, now, { claim_mastery_milestone: 1 });
+        set({ state: progressed.state, error: null, lastMessage: result.message });
       },
 
       startCaravanJob: (focusId, durationMs) => {
@@ -368,6 +410,29 @@ export const useGameStore = create<GameStore>()(
       changeClass: (classId) => {
         const state = changeHeroClass(get().state, classId, Date.now());
         set({ state, error: null, lastMessage: "Hero class selected." });
+      },
+
+      selectShowcaseTitle: (titleId) => {
+        const result = selectShowcaseTitle(get().state, titleId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Showcase title updated." });
+      },
+
+      toggleShowcaseTrophy: (trophyId) => {
+        const result = toggleShowcaseTrophy(get().state, trophyId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Trophy shelf updated." });
+      },
+
+      dismissAccountShowcaseDiscovery: () => {
+        const state = dismissAccountShowcaseDiscovery(get().state, Date.now());
+        set({ state, error: null });
       },
 
       setDebugBalance: (enabled) => {

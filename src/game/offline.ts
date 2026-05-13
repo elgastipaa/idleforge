@@ -3,7 +3,7 @@ import { applyCaravanOfflineProgress } from "./caravan";
 import { ensureDailies } from "./dailies";
 import { cloneState } from "./state";
 import type { GameState, MaterialBundle, OfflineSummary } from "./types";
-import { regenerateVigor } from "./vigor";
+import { regenerateFocus } from "./focus";
 
 export function applyOfflineProgress(state: GameState, now: number): OfflineSummary {
   const effectiveNow = Math.min(now, state.updatedAt + OFFLINE_CAP_MS);
@@ -12,7 +12,7 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
   let next = cloneState(state);
   const dailyPrepared = ensureDailies(next, effectiveNow);
   next = dailyPrepared.state;
-  const vigorGained = regenerateVigor(next, effectiveNow).gained;
+  const focusGained = regenerateFocus(next, effectiveNow).gained;
   const caravan = applyCaravanOfflineProgress(next, effectiveNow, state.updatedAt);
   const mineGains: Partial<MaterialBundle> = {};
   let expeditionSummary = null;
@@ -21,13 +21,13 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
   next.updatedAt = now;
   const anyMineGains = Object.values(mineGains).some((value) => value > 0);
   const summary =
-    expeditionSummary || expeditionReady || caravan || dailyPrepared.reset || vigorGained > 0 || anyMineGains
+    expeditionSummary || expeditionReady || caravan || dailyPrepared.reset || focusGained > 0 || anyMineGains
       ? {
           expedition: expeditionSummary,
           expeditionReady,
           caravan,
           mineGains,
-          vigorGained,
+          focusGained,
           dailyReset: dailyPrepared.reset,
           elapsedMs
         }

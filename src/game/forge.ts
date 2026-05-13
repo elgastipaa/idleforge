@@ -8,7 +8,7 @@ import { createItem, formatItemName } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
 import type { ActionResult, Affix, EquipmentSlot, GameState, Item, ResourceState, Stats } from "./types";
-import { regenerateVigor } from "./vigor";
+import { regenerateFocus } from "./focus";
 import { isDungeonUnlocked } from "./expeditions";
 
 type ForgeCraftOptions = {
@@ -86,7 +86,7 @@ function addSalvage(state: GameState, item: Item) {
 
 export function craftItem(state: GameState, now: number, options: ForgeCraftOptions = {}): ActionResult {
   let next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   next = ensureDailies(next, now).state;
 
   const cost = getCraftCost(next);
@@ -231,7 +231,7 @@ function renameRerolledItem(item: Item, rng: ReturnType<typeof createRng>): stri
 
 export function upgradeItem(state: GameState, itemId: string, now: number): ActionResult {
   let next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   next = ensureDailies(next, now).state;
   const beforePower = getDerivedStats(next).powerScore;
 
@@ -263,7 +263,7 @@ export function upgradeItem(state: GameState, itemId: string, now: number): Acti
 
 export function rerollItemAffix(state: GameState, itemId: string, affixIndex: number, now: number): ActionResult {
   let next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   next = ensureDailies(next, now).state;
   const beforePower = getDerivedStats(next).powerScore;
 

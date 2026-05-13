@@ -49,8 +49,13 @@ import {
   REINCARNATION_GATE_BOSS_ID,
   REINCARNATION_LEVEL_REQUIREMENT,
   REINCARNATION_UPGRADE_MAX,
-  VIGOR_EXPEDITION_BOOST_MULTIPLIER,
-  VIGOR_REGEN_INTERVAL_MS,
+  FOCUS_EXPEDITION_BOOST_MULTIPLIER,
+  FOCUS_REGEN_INTERVAL_MS,
+  ACCOUNT_RANKS,
+  EXPEDITION_PROGRESS_REWARDS,
+  REGION_MATERIAL_LABELS,
+  SHOWCASE_TROPHY_SLOT_COUNT,
+  buildShowcaseCopyText,
   canAfford,
   canPrestige,
   calculatePrestigeRenown,
@@ -74,7 +79,19 @@ import {
   getSellMultiplier,
   isDungeonUnlocked,
   getUnlockText,
-  getVigorBoostCost,
+  getFocusBoostCost,
+  getMasteryProgress,
+  getNextClaimableMasteryTier,
+  getNextAccountRankDefinition,
+  getAccountRankDefinition,
+  getFeaturedBoss,
+  getFeaturedRegion,
+  getLockedTitleEntries,
+  getLockedTrophyEntries,
+  getPinnedTrophyEntries,
+  getSelectedTitleDefinition,
+  getUnlockedTitleEntries,
+  getUnlockedTrophyEntries,
   getZoneForDungeon,
   estimateCaravanRewards,
   formatCaravanRewardText,
@@ -88,6 +105,8 @@ import {
   type Item,
   type ItemRarity,
   type LootFocusId,
+  type MasteryTierDefinition,
+  type RegionMaterialId,
   type RenownUpgradeId,
   type ResolveSummary,
   type ResourceState,
@@ -95,7 +114,7 @@ import {
   type ZoneDefinition
 } from "@/game";
 
-type TabId = "expeditions" | "hero" | "inventory" | "forge" | "town" | "dailies" | "achievements" | "reincarnation" | "settings";
+type TabId = "expeditions" | "hero" | "inventory" | "forge" | "town" | "account" | "dailies" | "achievements" | "reincarnation" | "settings";
 
 const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
   { id: "expeditions", label: "Expeditions", Icon: Swords },
@@ -103,7 +122,8 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
   { id: "inventory", label: "Inventory", Icon: Backpack },
   { id: "forge", label: "Forge", Icon: Flame },
   { id: "town", label: "Town", Icon: Hammer },
-  { id: "dailies", label: "Contracts", Icon: Star },
+  { id: "account", label: "Account", Icon: Crown },
+  { id: "dailies", label: "Missions", Icon: Star },
   { id: "achievements", label: "Awards", Icon: Trophy },
   { id: "reincarnation", label: "Reincarnation", Icon: Sparkles },
   { id: "settings", label: "Save", Icon: Settings }
@@ -266,6 +286,32 @@ function formatResources(resources: Partial<ResourceState>): string {
     .join(", ");
 }
 
+function formatRegionMaterials(resources: Partial<Record<RegionMaterialId, number>>): string {
+  return (Object.keys(REGION_MATERIAL_LABELS) as RegionMaterialId[])
+    .filter((key) => (resources[key] ?? 0) > 0)
+    .map((key) => `${formatNumber(resources[key] ?? 0)} ${REGION_MATERIAL_LABELS[key]}`)
+    .join(", ");
+}
+
+function formatMissionReward(reward: {
+  accountXp?: number;
+  regionalMaterials?: Partial<Record<RegionMaterialId, number>>;
+  fragments?: number;
+  gold?: number;
+  materials?: Partial<ResourceState>;
+  focus?: number;
+}): string {
+  const parts = [
+    (reward.accountXp ?? 0) > 0 ? `${formatNumber(reward.accountXp ?? 0)} Account XP` : null,
+    reward.regionalMaterials && formatRegionMaterials(reward.regionalMaterials) ? formatRegionMaterials(reward.regionalMaterials) : null,
+    (reward.fragments ?? 0) > 0 ? `${formatNumber(reward.fragments ?? 0)} Fragments` : null,
+    (reward.gold ?? 0) > 0 ? `${formatNumber(reward.gold ?? 0)} Gold` : null,
+    reward.materials && formatResources(reward.materials) ? formatResources(reward.materials) : null,
+    (reward.focus ?? 0) > 0 ? `${formatNumber(reward.focus ?? 0)} Focus` : null
+  ].filter(Boolean);
+  return parts.join(", ") || "Reward pending";
+}
+
 function formatStats(stats: Partial<Stats>): string {
   return (Object.keys(statLabels) as (keyof Stats)[])
     .filter((key) => (stats[key] ?? 0) > 0)
@@ -336,6 +382,18 @@ function getCompactRewardParts(summary: ResolveSummary): string[] {
     const value = summary.rewards.materials[resource] ?? 0;
     if (value > 0) {
       parts.push(`${resourceLabels[resource]} +${formatNumber(value)}`);
+    }
+  });
+  if (summary.progress.accountXpGained > 0) {
+    parts.push(`Account XP +${formatNumber(summary.progress.accountXpGained)}`);
+  }
+  if (summary.progress.masteryXpGained > 0) {
+    parts.push(`Route Mastery +${formatNumber(summary.progress.masteryXpGained)}`);
+  }
+  (Object.keys(summary.progress.regionalMaterials) as RegionMaterialId[]).forEach((materialId) => {
+    const value = summary.progress.regionalMaterials[materialId] ?? 0;
+    if (value > 0) {
+      parts.push(`${REGION_MATERIAL_LABELS[materialId]} +${formatNumber(value)}`);
     }
   });
   return parts;
@@ -735,7 +793,7 @@ function CharacterStart({ store }: { store: GameStore }) {
 }
 
 function Header({ state }: { state: GameState }) {
-  type HeaderChipId = "gold" | "mats" | "renown" | "vigor";
+  type HeaderChipId = "gold" | "mats" | "renown" | "focus";
 
   const isClient = useIsClient();
   const stats = getDerivedStats(state);
@@ -747,7 +805,7 @@ function Header({ state }: { state: GameState }) {
     gold: null,
     mats: null,
     renown: null,
-    vigor: null
+    focus: null
   });
   const matsInlineValue = materialResources.map((resource) => formatCompactStackNumber(state.resources[resource])).join("/");
   const POPOVER_WIDTH = 176;
@@ -813,7 +871,7 @@ function Header({ state }: { state: GameState }) {
     gold: resourceLabels.gold,
     mats: "Materials",
     renown: resourceLabels.renown,
-    vigor: "Vigor"
+    focus: "Focus"
   };
   const popoverRowsByChip: Record<HeaderChipId, Array<{ label: string; value: string }>> = {
     gold: [{ label: resourceLabels.gold, value: formatNumber(state.resources.gold) }],
@@ -822,9 +880,9 @@ function Header({ state }: { state: GameState }) {
       value: formatNumber(state.resources[resource])
     })),
     renown: [{ label: resourceLabels.renown, value: formatNumber(state.resources.renown) }],
-    vigor: [
-      { label: "Current", value: formatNumber(state.vigor.current) },
-      { label: "Max", value: formatNumber(state.vigor.max) }
+    focus: [
+      { label: "Current", value: formatNumber(state.focus.current) },
+      { label: "Cap", value: formatNumber(state.focus.cap) }
     ]
   };
 
@@ -879,15 +937,15 @@ function Header({ state }: { state: GameState }) {
           </div>
           <div className="relative">
             <ResourceChip
-              title={`Vigor ${state.vigor.current}/${state.vigor.max}`}
-              label="Vig"
-              value={`${state.vigor.current}/${state.vigor.max}`}
+              title={`Focus ${state.focus.current}/${state.focus.cap}`}
+              label="Focus"
+              value={`${state.focus.current}/${state.focus.cap}`}
               Icon={Flame}
               showLabel={false}
-              className={`max-w-[6rem] border-royal/20 bg-blue-50 text-royal ${openChip === "vigor" ? "ring-2 ring-royal/20" : ""}`}
-              onClick={() => toggleChip("vigor")}
+              className={`max-w-[6rem] border-royal/20 bg-blue-50 text-royal ${openChip === "focus" ? "ring-2 ring-royal/20" : ""}`}
+              onClick={() => toggleChip("focus")}
               buttonRef={(node) => {
-                chipButtonRefs.current.vigor = node;
+                chipButtonRefs.current.focus = node;
               }}
             />
           </div>
@@ -896,7 +954,7 @@ function Header({ state }: { state: GameState }) {
       {openChip && popoverPosition && (
         <div
           ref={popoverCardRef}
-          className={`fixed z-50 rounded-lg border border-ink/15 bg-white p-2 shadow-card ${openChip === "vigor" ? "w-56" : "w-44"}`}
+          className={`fixed z-50 rounded-lg border border-ink/15 bg-white p-2 shadow-card ${openChip === "focus" ? "w-56" : "w-44"}`}
           style={{ left: `${popoverPosition.left}px`, top: `${popoverPosition.top}px` }}
         >
           <p className="px-1 pb-1 text-[0.65rem] font-black uppercase tracking-wide text-stone-500">{popoverTitleByChip[openChip]}</p>
@@ -908,9 +966,9 @@ function Header({ state }: { state: GameState }) {
               </div>
             ))}
           </div>
-          {openChip === "vigor" && (
+          {openChip === "focus" && (
             <p className="mt-1.5 rounded-md border border-stone-200 bg-stone-100 px-2 py-1 text-[0.65rem] font-semibold leading-snug text-stone-600">
-              Vigor regenerates +1 every {formatMs(VIGOR_REGEN_INTERVAL_MS)} up to {state.vigor.max}. Boosting doubles expedition rewards.
+              Focus regenerates +1 every {formatMs(FOCUS_REGEN_INTERVAL_MS)} up to {state.focus.cap}. Boosting doubles expedition rewards.
             </p>
           )}
         </div>
@@ -990,10 +1048,10 @@ function getMessageFeedback(message: string, isError: boolean) {
     };
   }
 
-  if (/Daily claimed|Contract claimed|Weekly contract/i.test(message)) {
+  if (/Daily Mission claimed|Daily Focus claimed|Weekly Quest claimed|Daily claimed|Contract claimed|Weekly contract/i.test(message)) {
     return {
       Icon: Star,
-      title: "Contract Reward",
+      title: "Mission Reward",
       flavor: "The notice board pays out before the reset bell.",
       className: "border-violet-400/70 text-violet-100",
       iconClassName: "text-violet-300"
@@ -1118,11 +1176,11 @@ function OfflineSummaryPanel({
             </div>
           )}
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
-            <span className="font-black text-ink">Vigor</span>
-            <span>+{summary.vigorGained}</span>
+            <span className="font-black text-ink">Focus</span>
+            <span>+{summary.focusGained}</span>
           </div>
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
-            <span className="font-black text-ink">Contracts</span>
+            <span className="font-black text-ink">Missions</span>
             <span>{summary.dailyReset ? "Reset while offline" : "No reset during offline time"}</span>
           </div>
         </div>
@@ -1136,7 +1194,7 @@ function OfflineSummaryPanel({
             </SecondaryButton>
           )}
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("dailies"))}>
-            <Star size={15} /> Open Contracts
+            <Star size={15} /> Open Missions
           </SecondaryButton>
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={dismissSummary}>
             Dismiss
@@ -1241,6 +1299,7 @@ function getNextActionCopy({
   summary,
   itemInInventory,
   nextDungeon,
+  claimableMasteryTier,
   dailyReady,
   canUseForge,
   canUseTown
@@ -1249,10 +1308,15 @@ function getNextActionCopy({
   summary: ResolveSummary;
   itemInInventory: boolean;
   nextDungeon: DungeonDefinition | null;
+  claimableMasteryTier: MasteryTierDefinition | null;
   dailyReady: boolean;
   canUseForge: boolean;
   canUseTown: boolean;
 }): string {
+  if (claimableMasteryTier) {
+    return `Claim ${claimableMasteryTier.label} for ${summary.dungeon.name}, then start again for more Account XP.`;
+  }
+
   if (summary.itemComparison?.isBetter && itemInInventory) {
     return "Equip this drop before the next run.";
   }
@@ -1308,12 +1372,16 @@ function ExpeditionResultPanel({
   const comparison = summary.itemComparison;
   const itemInInventory = item ? state.inventory.some((entry) => entry.id === item.id) : false;
   const nextDungeon = summary.unlockedDungeons[0] ?? getNextUnclearedAvailableDungeon(state);
-  const dailyReady = state.dailies.tasks.some((task) => task.progress >= task.target && !task.claimed);
+  const claimableMasteryTier = getNextClaimableMasteryTier(state, summary.dungeon.id);
+  const dailyReady =
+    (state.dailyFocus.focusChargesBanked > 0 && state.dailyFocus.focusChargeProgress >= 3) ||
+    state.dailies.tasks.some((task) => task.progress >= task.target && !task.claimed) ||
+    (!state.weeklyQuest.questClaimed && state.weeklyQuest.steps.every((step) => step.progress >= step.target));
   const upgradeCandidates = [...state.inventory, ...((Object.values(state.equipment).filter(Boolean) as Item[]) ?? [])];
   const canUpgradeItem = upgradeCandidates.some((candidate) => candidate.upgradeLevel < 10 && canAfford(state.resources, getItemUpgradeCost(state, candidate)));
   const canUseForge = canAfford(state.resources, getCraftCost(state)) || canUpgradeItem;
   const canUseTown = BUILDINGS.some((building) => state.town[building.id] < building.maxLevel && canAfford(state.resources, getBuildingCost(state, building.id as BuildingId)));
-  const nextAction = getNextActionCopy({ state, summary, itemInInventory, nextDungeon, dailyReady, canUseForge, canUseTown });
+  const nextAction = getNextActionCopy({ state, summary, itemInInventory, nextDungeon, claimableMasteryTier, dailyReady, canUseForge, canUseTown });
   const hasSpecialMoment =
     summary.firstGuaranteedWeapon ||
     summary.bossClear ||
@@ -1321,10 +1389,18 @@ function ExpeditionResultPanel({
     summary.levelUps.length > 0 ||
     summary.unlockedDungeons.length > 0 ||
     summary.unlockedZones.length > 0 ||
-    summary.achievementsUnlocked.length > 0;
+    summary.achievementsUnlocked.length > 0 ||
+    summary.progress.rankUps.length > 0 ||
+    summary.progress.newlyClaimableMasteryTiers.length > 0 ||
+    summary.progress.titlesUnlocked.length > 0 ||
+    summary.progress.trophiesUnlocked.length > 0;
   const itemSellValue = item ? getVisibleSellValue(state, item) : 0;
   const actionButtonClass = "!min-h-9 px-3 py-1 text-xs";
   const rewardParts = getCompactRewardParts(summary);
+  const masteryNext = summary.progress.nextMasteryTier;
+  const accountNext = summary.progress.nextAccountRank;
+  const masteryProgressValue = masteryNext ? Math.min(100, (summary.progress.masteryXpAfter / masteryNext.xpRequired) * 100) : 100;
+  const accountProgressValue = accountNext ? Math.min(100, (summary.progress.accountXpAfter / accountNext.xpRequired) * 100) : 100;
   const [showAllMoments, setShowAllMoments] = useState(false);
   const runResultAction = (action: () => void) => {
     action();
@@ -1416,6 +1492,46 @@ function ExpeditionResultPanel({
       )
     });
   }
+  summary.progress.rankUps.forEach((rank) => {
+    specialMoments.push({
+      key: `account-rank-${rank}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
+          <Crown size={13} /> Account Rank {rank}
+        </Pill>
+      )
+    });
+  });
+  summary.progress.newlyClaimableMasteryTiers.forEach((tier) => {
+    specialMoments.push({
+      key: `mastery-${tier.tier}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-emerald/30 bg-emerald-100 text-emerald">
+          <Sparkles size={13} /> {tier.label} ready
+        </Pill>
+      )
+    });
+  });
+  summary.progress.titlesUnlocked.forEach((title) => {
+    specialMoments.push({
+      key: title.id,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-violet-400 bg-violet-50 text-violet-950">
+          <Crown size={13} /> Title: {title.name}
+        </Pill>
+      )
+    });
+  });
+  summary.progress.trophiesUnlocked.forEach((trophy) => {
+    specialMoments.push({
+      key: trophy.id,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Trophy size={13} /> Trophy: {trophy.name}
+        </Pill>
+      )
+    });
+  });
   const visibleMomentCount = showAllMoments ? specialMoments.length : Math.min(3, specialMoments.length);
   const hiddenMomentCount = Math.max(0, specialMoments.length - visibleMomentCount);
 
@@ -1432,9 +1548,9 @@ function ExpeditionResultPanel({
               {summary.success ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
               {summary.success ? "Success" : "Retreat"}
             </Pill>
-            {summary.vigorBoostUsed && (
+            {summary.focusBoostUsed && (
               <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
-                <Flame size={13} /> Vigor x{VIGOR_EXPEDITION_BOOST_MULTIPLIER.toFixed(1)}
+                <Flame size={13} /> Focus x{FOCUS_EXPEDITION_BOOST_MULTIPLIER.toFixed(1)}
               </Pill>
             )}
           </div>
@@ -1451,6 +1567,36 @@ function ExpeditionResultPanel({
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border border-ink/10 bg-white/70 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase text-mystic">Route Mastery</p>
+              <p className="text-xs font-black text-ink">+{formatNumber(summary.progress.masteryXpGained)}</p>
+            </div>
+            <div className="mt-2">
+              <ProgressBar value={masteryProgressValue} />
+            </div>
+            <p className="mt-1 text-xs font-bold text-stone-700">
+              {masteryNext
+                ? `${formatNumber(summary.progress.masteryXpAfter)}/${formatNumber(masteryNext.xpRequired)} ${masteryNext.label}${masteryNext.claimable ? " claimable" : ""}`
+                : "Mastered"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-ink/10 bg-white/70 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase text-mystic">Account XP</p>
+              <p className="text-xs font-black text-ink">+{formatNumber(summary.progress.accountXpGained)}</p>
+            </div>
+            <div className="mt-2">
+              <ProgressBar value={accountProgressValue} />
+            </div>
+            <p className="mt-1 text-xs font-bold text-stone-700">
+              Rank {summary.progress.accountRankAfter}
+              {accountNext ? ` · ${formatNumber(summary.progress.accountXpAfter)}/${formatNumber(accountNext.xpRequired)} to Rank ${accountNext.rank}` : " · Max seed rank"}
+            </p>
           </div>
         </div>
 
@@ -1498,6 +1644,11 @@ function ExpeditionResultPanel({
         <div className="space-y-1.5">
           <p className="line-clamp-2 text-xs font-black text-ink">{nextAction}</p>
           <div className="flex flex-wrap gap-1.5">
+            {claimableMasteryTier && (
+              <PrimaryButton className={actionButtonClass} onClick={() => store.claimMasteryTier(summary.dungeon.id)}>
+                <Sparkles size={16} /> Claim {claimableMasteryTier.label}
+              </PrimaryButton>
+            )}
             {comparison?.isBetter && itemInInventory && item && (
               <PrimaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.equipItem(item.id))}>
                 <Backpack size={16} /> Equip Item
@@ -1513,14 +1664,19 @@ function ExpeditionResultPanel({
                 <Coins size={16} /> Sell {formatNumber(itemSellValue)}
               </SecondaryButton>
             )}
-            {nextDungeon && !state.activeExpedition && !state.caravan.activeJob && (
+            {!state.activeExpedition && !state.caravan.activeJob && isDungeonUnlocked(state, summary.dungeon) && (
+              <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.startExpedition(summary.dungeon.id))}>
+                <RotateCcw size={16} /> Start Again
+              </SecondaryButton>
+            )}
+            {nextDungeon && nextDungeon.id !== summary.dungeon.id && !state.activeExpedition && !state.caravan.activeJob && (
               <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => store.startExpedition(nextDungeon.id))}>
                 <Swords size={16} /> {nextDungeon.boss ? "Attempt Boss" : "Start Next"}
               </SecondaryButton>
             )}
             {dailyReady && (
               <SecondaryButton className={actionButtonClass} onClick={() => runResultAction(() => onSelectTab("dailies"))}>
-                <Star size={16} /> View Contracts
+                <Star size={16} /> View Missions
               </SecondaryButton>
             )}
             {canUseForge && !nextDungeon && (
@@ -1550,8 +1706,8 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
   const total = state.activeExpedition.endsAt - state.activeExpedition.startedAt;
   const progress = Math.min(100, Math.max(0, ((now - state.activeExpedition.startedAt) / total) * 100));
   const ready = remaining <= 0;
-  const vigorBoostCost = getVigorBoostCost(state);
-  const canUseVigorBoost = state.vigor.current >= vigorBoostCost;
+  const focusBoostCost = getFocusBoostCost(state);
+  const canUseFocusBoost = state.focus.current >= focusBoostCost;
   return (
     <Card>
       <div className="space-y-3">
@@ -1571,8 +1727,8 @@ function ActiveExpeditionPanel({ state, now, store }: { state: GameState; now: n
             <Swords size={16} /> {ready ? "Claim Expedition" : `Returns in ${formatMs(remaining)}`}
           </PrimaryButton>
           {ready && (
-            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.claimExpedition({ useVigorBoost: true })} disabled={!canUseVigorBoost}>
-              <Flame size={15} /> Claim x2 · Vig -{vigorBoostCost}
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.claimExpedition({ useFocusBoost: true })} disabled={!canUseFocusBoost}>
+              <Flame size={15} /> Claim x2 · Focus -{focusBoostCost}
             </SecondaryButton>
           )}
         </div>
@@ -1732,6 +1888,8 @@ function DungeonCard({
   store: GameStore;
 }) {
   const view = getDungeonView(state, dungeon);
+  const progressReward = EXPEDITION_PROGRESS_REWARDS[dungeon.id];
+  const mastery = getMasteryProgress(state, dungeon.id);
   return (
     <Card className={`dungeon-card-hover ${dungeon.boss ? "dungeon-card-hover--boss border-amber-400/60" : ""}`}>
       <div className="space-y-3">
@@ -1759,6 +1917,20 @@ function DungeonCard({
           Rewards: {formatNumber(dungeon.baseXp)} XP, {formatNumber(dungeon.baseGold)} Gold
           {formatResources(dungeon.materials) ? `, ${formatResources(dungeon.materials)}` : ""}
         </p>
+        {progressReward && (
+          <p className="text-xs font-bold text-stone-600">
+            Permanent: +{formatNumber(progressReward.successMasteryXp)} Mastery, +{formatNumber(progressReward.successAccountXp)} Account XP
+            {progressReward.successRegionalMaterial
+              ? `, +${formatNumber(progressReward.successRegionalMaterial.amount)} ${REGION_MATERIAL_LABELS[progressReward.successRegionalMaterial.id]}`
+              : ""}
+          </p>
+        )}
+        {mastery.nextTier && (
+          <p className="text-xs font-bold text-stone-600">
+            Mastery: {formatNumber(mastery.masteryXp)}/{formatNumber(mastery.nextTier.xpRequired)} {mastery.nextTier.label}
+            {mastery.nextTier.claimable ? " ready" : ""}
+          </p>
+        )}
         {view.unlocked ? (
           <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition) || Boolean(state.caravan.activeJob)}>
             <Swords size={16} /> Start
@@ -2607,7 +2779,9 @@ function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): stri
     }
     case "tavern": {
       const ready = state.dailies.tasks.filter((task) => !task.claimed && task.progress >= task.target).length;
-      return `${ready}/${state.dailies.tasks.length} contracts ready; rumor: ${getNextGoal(state)}`;
+      const focusReady = state.dailyFocus.focusChargesBanked > 0 && state.dailyFocus.focusChargeProgress >= 3 ? "Daily Focus ready" : "Daily Focus charging";
+      const missionText = state.accountRank.accountRank >= 2 ? `${ready}/${state.dailies.tasks.length} missions ready` : "Daily Missions at Account Rank 2";
+      return `${focusReady}; ${missionText}; rumor: ${getNextGoal(state)}`;
     }
     case "market": {
       const pressure = state.inventory.length >= INVENTORY_NEAR_FULL_THRESHOLD ? "Inventory pressure high" : "Inventory pressure stable";
@@ -2633,7 +2807,7 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Town Buildings</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, contracts, unlocks, or reincarnation.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, missions, unlocks, or reincarnation.</p>
           </div>
           <Pill className={nextAffordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
             {nextAffordable ? `${nextAffordable.name} ready` : "No upgrade ready"}
@@ -2698,39 +2872,277 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
   );
 }
 
-function DailiesScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
-  const timeLeft = Math.max(0, state.dailies.nextResetAt - now);
-  const weeklyTimeLeft = Math.max(0, state.dailies.weekly.nextResetAt - now);
-  const completed = state.dailies.tasks.filter((task) => task.progress >= task.target).length;
-  const claimed = state.dailies.tasks.filter((task) => task.claimed).length;
-  const weeklyTarget = state.dailies.weekly.milestones.at(-1)?.target ?? 15;
-  const weeklyProgress = Math.min(state.dailies.weekly.progress, weeklyTarget);
-  const weeklyPercent = Math.floor((weeklyProgress / Math.max(1, weeklyTarget)) * 100);
+function AccountShowcaseScreen({ state, store }: { state: GameState; store: GameStore }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "manual">("idle");
+  const rank = getAccountRankDefinition(state.accountRank.accountRank);
+  const nextRank = getNextAccountRankDefinition(state.accountRank.accountXp);
+  const selectedTitle = getSelectedTitleDefinition(state);
+  const unlockedTitles = getUnlockedTitleEntries(state);
+  const lockedTitles = getLockedTitleEntries(state).slice(0, 4);
+  const pinnedTrophies = getPinnedTrophyEntries(state);
+  const unlockedTrophies = getUnlockedTrophyEntries(state);
+  const lockedTrophies = getLockedTrophyEntries(state).slice(0, 4);
+  const featuredRegion = getFeaturedRegion(state);
+  const featuredBoss = getFeaturedBoss(state);
+  const trophyShelfFull = pinnedTrophies.filter(Boolean).length >= SHOWCASE_TROPHY_SLOT_COUNT;
+  const maxSeedRank = ACCOUNT_RANKS.at(-1)?.rank ?? state.accountRank.accountRank;
+  const rankProgress = nextRank
+    ? ((state.accountRank.accountXp - rank.xp) / Math.max(1, nextRank.xp - rank.xp)) * 100
+    : 100;
+  const snippet = buildShowcaseCopyText(state);
+  const highestPower = Math.max(state.accountPersonalRecords.highestPowerReached, state.lifetime.highestPowerScore);
+  const records = [
+    { label: "Rebirths", value: state.rebirth.totalRebirths },
+    { label: "Highest Power", value: highestPower },
+    { label: "Mastery Tiers", value: state.accountPersonalRecords.totalMasteryTiersClaimed },
+    { label: "Expeditions", value: state.accountPersonalRecords.lifetimeExpeditionsCompleted },
+    { label: "Bosses Defeated", value: state.accountPersonalRecords.lifetimeBossesDefeated },
+    { label: "Collections", value: state.accountPersonalRecords.totalCollectionsCompleted }
+  ];
+
+  const copyShowcase = async () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(snippet);
+        setCopyState("copied");
+        return;
+      } catch {
+        setCopyState("manual");
+        return;
+      }
+    }
+    setCopyState("manual");
+  };
+
   return (
     <div className="space-y-4">
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black">Contract Board</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-              One main contract, two side contracts. {DAILY_RESET_HOUR_LOCAL}:00 local reset.
-            </p>
-            <p className="mt-2 text-xs font-bold text-royal sm:text-sm">
-              Reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
+            <p className="text-xs font-black uppercase text-royal">Account Showcase</p>
+            <h2 className="text-2xl font-black">{selectedTitle?.name ?? "Relic Warden"}</h2>
+            <p className="mt-1 text-sm font-semibold text-stone-700">
+              Rank {state.accountRank.accountRank}/{maxSeedRank} · {rank.label}
             </p>
           </div>
           <Pill className="border-royal/20 bg-blue-50 text-royal">
-            {completed}/{state.dailies.tasks.length} done · {claimed} claimed
+            {formatNumber(state.accountRank.accountXp)} Account XP
           </Pill>
+        </div>
+        <div className="mt-4">
+          <ProgressBar value={rankProgress} />
+          <p className="mt-2 text-xs font-bold text-stone-600">
+            {nextRank
+              ? `${formatNumber(state.accountRank.accountXp)}/${formatNumber(nextRank.xp)} XP to Rank ${nextRank.rank}`
+              : "Current seed rank table complete"}
+          </p>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="space-y-4">
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-black">Selected Title</h3>
+                <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+                  {selectedTitle ? selectedTitle.unlockCondition : "Unlock a title to feature it here."}
+                </p>
+              </div>
+              <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.selectShowcaseTitle(null)} disabled={state.accountShowcase.accountSignatureMode === "auto"}>
+                Auto
+              </SecondaryButton>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {unlockedTitles.length === 0 ? (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+                  No unlocked titles yet.
+                </div>
+              ) : (
+                unlockedTitles.map((entry) => (
+                  <div key={entry.definition.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${entry.selected ? "border-royal/40 bg-blue-50" : "border-stone-200 bg-white"}`}>
+                    <div>
+                      <p className="font-black">{entry.definition.name}</p>
+                      <p className="text-xs font-semibold text-stone-600">{entry.definition.unlockCondition}</p>
+                    </div>
+                    <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.selectShowcaseTitle(entry.definition.id)} disabled={entry.selected}>
+                      {entry.selected ? "Selected" : "Select"}
+                    </PrimaryButton>
+                  </div>
+                ))
+              )}
+            </div>
+            {lockedTitles.length > 0 && (
+              <div className="mt-3 grid gap-1.5">
+                {lockedTitles.map((entry) => (
+                  <p key={entry.definition.id} className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-600">
+                    Locked: {entry.definition.name} · {entry.definition.unlockCondition}
+                  </p>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-black">Trophy Shelf</h3>
+                <p className="text-xs font-semibold text-stone-700 sm:text-sm">Three visible slots for local account milestones.</p>
+              </div>
+              <Pill className="border-amber-400 bg-amber-50 text-amber-900">
+                {pinnedTrophies.filter(Boolean).length}/{SHOWCASE_TROPHY_SLOT_COUNT}
+              </Pill>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {pinnedTrophies.map((entry, index) => (
+                <div key={entry?.definition.id ?? `empty-trophy-${index}`} className={`min-h-28 rounded-lg border px-3 py-3 text-sm ${entry ? "border-amber-300 bg-amber-50/80" : "border-dashed border-stone-300 bg-stone-50"}`}>
+                  <Trophy size={20} className={entry ? "text-amber-700" : "text-stone-400"} />
+                  <p className="mt-2 font-black">{entry?.definition.name ?? `Slot ${index + 1}`}</p>
+                  <p className="mt-1 text-xs font-semibold text-stone-600">{entry?.definition.unlockCondition ?? "Empty trophy slot"}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-2">
+              {unlockedTrophies.length === 0 ? (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+                  No unlocked trophies yet.
+                </div>
+              ) : (
+                unlockedTrophies.map((entry) => (
+                  <div key={entry.definition.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm">
+                    <div>
+                      <p className="font-black">{entry.definition.name}</p>
+                      <p className="text-xs font-semibold text-stone-600">{entry.definition.unlockCondition}</p>
+                    </div>
+                    <SecondaryButton
+                      className="!min-h-9 px-3 py-1 text-xs"
+                      onClick={() => store.toggleShowcaseTrophy(entry.definition.id)}
+                      disabled={!entry.pinned && trophyShelfFull}
+                    >
+                      {entry.pinned ? "Unpin" : trophyShelfFull ? "Shelf Full" : "Pin"}
+                    </SecondaryButton>
+                  </div>
+                ))
+              )}
+            </div>
+            {lockedTrophies.length > 0 && (
+              <div className="mt-3 grid gap-1.5">
+                {lockedTrophies.map((entry) => (
+                  <p key={entry.definition.id} className="rounded-md border border-stone-200 bg-stone-50 px-2 py-1 text-xs font-semibold text-stone-600">
+                    Locked: {entry.definition.name} · {entry.definition.unlockCondition}
+                  </p>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <Card>
+            <h3 className="font-black">Personal Records</h3>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {records.map((record) => (
+                <div key={record.label} className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+                  <p className="text-xs font-black uppercase text-stone-500">{record.label}</p>
+                  <p className="mt-1 text-lg font-black text-ink">{formatNumber(record.value)}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="font-black">Identity</h3>
+            <div className="mt-3 grid gap-2 text-sm font-semibold text-stone-700">
+              <p><span className="font-black text-ink">Featured Region:</span> {featuredRegion?.name ?? "No region featured yet"}</p>
+              <p><span className="font-black text-ink">Best Boss:</span> {featuredBoss?.name ?? "No boss defeated yet"}</p>
+              <p><span className="font-black text-ink">Current Chase:</span> {getNextGoal(state)}</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-black">Copy Showcase</h3>
+                <p className="text-xs font-semibold text-stone-700 sm:text-sm">Local text snippet from this save.</p>
+              </div>
+              <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={copyShowcase}>
+                <Save size={15} /> Copy
+              </PrimaryButton>
+            </div>
+            <textarea className="mt-3 min-h-44 w-full rounded-lg border border-ink/15 bg-white p-3 text-xs font-semibold text-stone-700" value={snippet} readOnly />
+            {copyState !== "idle" && (
+              <p className="mt-2 text-xs font-bold text-royal">
+                {copyState === "copied" ? "Showcase copied." : "Clipboard unavailable. The text is ready here."}
+              </p>
+            )}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DailiesScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
+  const timeLeft = Math.max(0, state.dailies.nextResetAt - now);
+  const weeklyTimeLeft = Math.max(0, state.weeklyQuest.nextResetAt - now);
+  const completed = state.dailies.tasks.filter((task) => task.progress >= task.target).length;
+  const claimed = state.dailies.tasks.filter((task) => task.claimed).length;
+  const dailyFocusReady = state.dailyFocus.focusChargesBanked > 0 && state.dailyFocus.focusChargeProgress >= 3;
+  const dailyFocusPercent = Math.floor((Math.min(state.dailyFocus.focusChargeProgress, 3) / 3) * 100);
+  const weeklyTarget = state.weeklyQuest.steps.reduce((total, step) => total + step.target, 0);
+  const weeklyProgress = state.weeklyQuest.steps.reduce((total, step) => total + Math.min(step.progress, step.target), 0);
+  const weeklyPercent = Math.floor((weeklyProgress / Math.max(1, weeklyTarget)) * 100);
+  const weeklyDone = state.weeklyQuest.steps.every((step) => step.progress >= step.target);
+  const dailyMissionsUnlocked = state.accountRank.accountRank >= 2;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black">Mission Board</h2>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+              Daily Focus, Daily Missions, and the weekly charter. {DAILY_RESET_HOUR_LOCAL}:00 local mission reset.
+            </p>
+            <p className="mt-2 text-xs font-bold text-royal sm:text-sm">
+              Daily Missions reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
+            </p>
+          </div>
+          <Pill className="border-royal/20 bg-blue-50 text-royal">
+            {dailyMissionsUnlocked ? `${completed}/${state.dailies.tasks.length} done · ${claimed} claimed` : "Daily Missions Rank 2"}
+          </Pill>
+        </div>
+      </Card>
+      <Card className="border-sky-300/60 bg-sky-50/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-black">Daily Focus</h3>
+              <Pill className="border-sky-300 bg-white/80 text-sky-900">
+                Charges {state.dailyFocus.focusChargesBanked}/3
+              </Pill>
+            </div>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+              Complete 3 expeditions to claim +10 Focus.
+            </p>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
+              <div className="h-full rounded-full bg-sky-600" style={{ width: `${dailyFocusPercent}%` }} />
+            </div>
+            <p className="mt-1 text-xs font-bold text-stone-700">
+              Progress: {Math.min(state.dailyFocus.focusChargeProgress, 3)}/3
+            </p>
+          </div>
+          <PrimaryButton onClick={() => store.claimDailyFocus()} disabled={!dailyFocusReady}>
+            {dailyFocusReady ? "Claim Focus" : "In Progress"}
+          </PrimaryButton>
         </div>
       </Card>
       <Card className="border-amber-400/40 bg-amber-50/70">
         <div className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="font-black">Weekly Chest</h3>
+              <h3 className="font-black">Weekly Quest</h3>
               <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-                Claim daily contracts to unlock 3 weekly payouts. Resets in {formatMs(weeklyTimeLeft)}.
+                {state.weeklyQuest.title} Resets in {formatMs(weeklyTimeLeft)}.
               </p>
             </div>
             <Pill className="border-amber-400 bg-amber-100 text-amber-900">
@@ -2740,63 +3152,75 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
           <div className="h-2 overflow-hidden rounded-full bg-stone-200">
             <div className="h-full rounded-full bg-amber-500" style={{ width: `${weeklyPercent}%` }} />
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {state.dailies.weekly.milestones.map((milestone, index) => {
-              const done = weeklyProgress >= milestone.target;
+          <div className="grid gap-2 sm:grid-cols-2">
+            {state.weeklyQuest.steps.map((step) => {
+              const done = step.progress >= step.target;
+              const stepPercent = Math.floor((Math.min(step.progress, step.target) / step.target) * 100);
               return (
-                <div key={milestone.target} className={`rounded-lg border p-2.5 text-xs font-semibold ${milestone.claimed ? "border-emerald/30 bg-emerald-50/80" : "border-amber-300 bg-parchment/70"}`}>
+                <div key={step.kind} className={`rounded-lg border p-2.5 text-xs font-semibold ${done ? "border-emerald/30 bg-emerald-50/80" : "border-amber-300 bg-parchment/70"}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-black">Milestone {index + 1}</span>
-                    <span className="font-black text-stone-600">{milestone.target}</span>
+                    <span className="font-black">{step.label}</span>
+                    <span className="font-black text-stone-600">{Math.min(step.progress, step.target)}/{step.target}</span>
                   </div>
-                  <p className="mt-1 text-stone-700">
-                    {formatNumber(milestone.reward.gold)} Gold
-                    {formatResources(milestone.reward.materials) ? `, ${formatResources(milestone.reward.materials)}` : ""}
-                    , +{milestone.reward.vigor} Vigor
-                  </p>
-                  <SecondaryButton className="mt-2 w-full" onClick={() => store.claimWeeklyContract(index)} disabled={!done || milestone.claimed}>
-                    {milestone.claimed ? "Claimed" : done ? "Claim" : "Locked"}
-                  </SecondaryButton>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200">
+                    <div className={done ? "h-full rounded-full bg-emerald" : "h-full rounded-full bg-amber-500"} style={{ width: `${stepPercent}%` }} />
+                  </div>
                 </div>
               );
             })}
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-parchment/70 px-3 py-2 text-xs font-bold text-stone-700">
+            <span>Reward: {formatMissionReward(state.weeklyQuest.reward)}</span>
+            <SecondaryButton onClick={() => store.claimWeeklyQuest()} disabled={!weeklyDone || state.weeklyQuest.questClaimed}>
+              {state.weeklyQuest.questClaimed ? "Claimed" : weeklyDone ? "Claim Weekly" : "In Progress"}
+            </SecondaryButton>
+          </div>
         </div>
       </Card>
-      <div className="grid gap-3">
-        {state.dailies.tasks.map((task) => {
-          const done = task.progress >= task.target;
-          const percent = Math.floor((Math.min(task.progress, task.target) / task.target) * 100);
-          return (
-            <Card key={task.id} className={task.claimed ? "border-emerald/30 bg-emerald-50/70" : ""}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-black">{task.label}</h3>
-                    <Pill className={task.role === "primary" ? "border-royal/20 bg-blue-50 text-royal" : "border-stone-200 bg-stone-50 text-stone-700"}>
-                      {task.role === "primary" ? "Main" : "Side"}
-                    </Pill>
+      {dailyMissionsUnlocked ? (
+        <div className="grid gap-3">
+          {state.dailies.tasks.map((task) => {
+            const done = task.progress >= task.target;
+            const percent = Math.floor((Math.min(task.progress, task.target) / task.target) * 100);
+            return (
+              <Card key={task.id} className={task.claimed ? "border-emerald/30 bg-emerald-50/70" : ""}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-black">{task.label}</h3>
+                      <Pill className={task.difficulty === "easy" ? "border-emerald/20 bg-emerald-50 text-emerald" : "border-royal/20 bg-blue-50 text-royal"}>
+                        {task.difficulty}
+                      </Pill>
+                    </div>
+                    <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+                      Progress: {Math.min(task.progress, task.target)}/{task.target}
+                    </p>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
+                      <div className={task.claimed ? "h-full rounded-full bg-emerald" : "h-full rounded-full bg-royal"} style={{ width: `${percent}%` }} />
+                    </div>
+                    <p className="text-xs font-semibold text-stone-600">
+                      Reward: {formatMissionReward(task.reward)}
+                    </p>
                   </div>
-                  <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-                    Progress: {task.progress}/{task.target}
-                  </p>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
-                    <div className={task.claimed ? "h-full rounded-full bg-emerald" : "h-full rounded-full bg-royal"} style={{ width: `${percent}%` }} />
-                  </div>
-                  <p className="text-xs font-semibold text-stone-600">
-                    Reward: {formatNumber(task.reward.gold)} Gold
-                    {formatResources(task.reward.materials) ? `, ${formatResources(task.reward.materials)}` : ""}
-                    , +{task.reward.vigor} Vigor
-                  </p>
+                  <PrimaryButton onClick={() => store.claimDaily(task.id)} disabled={!done || task.claimed}>
+                    {task.claimed ? "Claimed" : done ? "Claim" : "In Progress"}
+                  </PrimaryButton>
                 </div>
-                <PrimaryButton onClick={() => store.claimDaily(task.id)} disabled={!done || task.claimed}>
-                  {task.claimed ? "Claimed" : done ? "Claim" : "In Progress"}
-                </PrimaryButton>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black">Daily Missions</h3>
+              <p className="text-xs font-semibold text-stone-700 sm:text-sm">Unlocks at Account Rank 2.</p>
+            </div>
+            <Pill className="border-stone-200 bg-stone-50 text-stone-700">Rank {state.accountRank.accountRank}/2</Pill>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -2875,8 +3299,8 @@ function ReincarnationScreen({
   const clearedGateRoute = gateRoute.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0).length;
   const levelProgress = Math.min(100, Math.floor((state.hero.level / REINCARNATION_LEVEL_REQUIREMENT) * 100));
   const bossProgress = bossClear ? 100 : Math.min(99, Math.floor((clearedGateRoute / Math.max(1, gateRoute.length)) * 100));
-  const resetItems = ["Hero level, XP, and base stats", "Gold, materials, inventory, and equipment", "Town buildings, dungeon clears, active expedition, and contracts", "Vigor returns to 40 current"];
-  const persistItems = ["Soul Marks and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
+  const resetItems = ["Hero level, XP, and base stats", "Gold, run materials, inventory, and equipment", "Dungeon clears, active expedition, and missions"];
+  const persistItems = ["Persistent Town buildings", "Focus, Soul Marks, and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
   const reincarnationPanels: Array<{ id: ReincarnationSubviewId; content: React.ReactNode }> = [
     {
       id: "overview",
@@ -2996,8 +3420,8 @@ function ReincarnationScreen({
               <p className="text-xs font-black uppercase text-mystic">Confirm Reincarnation</p>
               <h3 className="text-base font-black">Start a New Cycle?</h3>
               <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-                This resets this run&apos;s level, resources, gear, town, dungeon clears, expedition, and contracts.
-                Soul Marks, upgrades, achievements, and lifetime stats persist.
+                This resets this run&apos;s level, resources, gear, dungeon clears, expedition, and missions.
+                Persistent Town, Focus, Soul Marks, upgrades, achievements, and lifetime stats persist.
               </p>
               <p className="text-xs font-semibold text-stone-700">
                 You gain <span className="font-black text-ink">+{gain} Soul Marks</span> from this reincarnation.
@@ -3103,7 +3527,7 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
           <p>Class: {HERO_CLASSES.find((entry) => entry.id === state.hero.classId)?.name}</p>
           <p>Level: {state.hero.level}</p>
           <p>Power: {formatNumber(stats.powerScore)}</p>
-          <p>Vigor: {state.vigor.current}/{state.vigor.max}</p>
+          <p>Focus: {state.focus.current}/{state.focus.cap}</p>
           <p>Soul Marks: {formatNumber(state.resources.renown)}</p>
         </div>
       </Card>
@@ -3118,9 +3542,9 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         )}
       </Card>
       <Card>
-        <h3 className="text-[0.94rem] font-black">Contracts</h3>
+        <h3 className="text-[0.94rem] font-black">Mission Board</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">
-          {state.dailies.tasks.filter((task) => task.claimed).length}/{state.dailies.tasks.length} claimed
+          Focus {state.dailyFocus.focusChargeProgress}/3 · Weekly {state.weeklyQuest.questClaimed ? "claimed" : "active"}
         </p>
       </Card>
       <Card>
@@ -3131,6 +3555,42 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         </div>
       </Card>
     </aside>
+  );
+}
+
+function AccountShowcaseDiscoveryModal({
+  store,
+  onOpenAccount
+}: {
+  store: GameStore;
+  onOpenAccount: () => void;
+}) {
+  const dismiss = () => store.dismissAccountShowcaseDiscovery();
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-3 sm:items-center">
+      <RewardSummary className="w-full max-w-md border-royal/40 bg-blue-50/90">
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs font-black uppercase text-royal">Account Showcase Discovered</p>
+            <h3 className="text-lg font-black">Your guild account has a profile.</h3>
+          </div>
+          <p className="text-sm font-semibold text-stone-700">
+            Rank 2 unlocked the local Account Showcase: titles, trophy shelf, personal records, current chase, and copyable profile text.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton
+              onClick={() => {
+                onOpenAccount();
+                dismiss();
+              }}
+            >
+              <Crown size={16} /> Open Account
+            </PrimaryButton>
+            <SecondaryButton onClick={dismiss}>Later</SecondaryButton>
+          </div>
+        </div>
+      </RewardSummary>
+    </div>
   );
 }
 
@@ -3156,6 +3616,10 @@ export default function Home() {
 
   const state = store.state;
   const onboardingFocused = isOnboardingFocused(state);
+  const showAccountDiscovery =
+    state.accountRank.accountRank >= 2 &&
+    state.accountShowcase.firstDiscoveryPopupShown &&
+    !state.accountShowcase.firstDiscoveryPopupDismissed;
   const hasOverlayMessage = Boolean(store.error || (!onboardingFocused && store.lastMessage));
   const overlayFocus: "result" | "offline" | "message" | "none" = store.lastExpeditionResult
     ? "result"
@@ -3225,6 +3689,9 @@ export default function Home() {
     case "town":
       screen = <TownScreen state={state} store={store} />;
       break;
+    case "account":
+      screen = <AccountShowcaseScreen state={state} store={store} />;
+      break;
     case "dailies":
       screen = <DailiesScreen state={state} now={now} store={store} />;
       break;
@@ -3280,6 +3747,7 @@ export default function Home() {
         </div>
         <DesktopSide state={state} now={now} />
       </div>
+      {showAccountDiscovery && <AccountShowcaseDiscoveryModal store={store} onOpenAccount={() => setTab("account")} />}
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-950/10 bg-parchment/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Primary navigation">
         {mobileMoreOpen && (

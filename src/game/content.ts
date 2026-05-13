@@ -640,8 +640,8 @@ export const AFFIX_POOL: Affix[] = [
     prefix: "Deep-Breath",
     suffix: "of Deep Breath",
     stats: { stamina: 18 },
-    effects: { vigorBoostCostReduction: 0.12 },
-    description: "-12% Vigor boost cost"
+    effects: { focusBoostCostReduction: 0.12 },
+    description: "-12% Focus boost cost"
   },
   {
     id: "orebound",
@@ -790,14 +790,16 @@ export const AFFIX_POOL: Affix[] = [
 ];
 
 export const DAILY_TASK_POOL: { kind: DailyTaskKind; label: string; target: number }[] = [
-  { kind: "complete_expeditions", label: "Complete 3 expeditions", target: 3 },
   { kind: "win_expeditions", label: "Win 2 expeditions", target: 2 },
-  { kind: "defeat_boss", label: "Defeat 1 boss", target: 1 },
   { kind: "salvage_items", label: "Salvage 3 items", target: 3 },
-  { kind: "sell_items", label: "Sell 3 items", target: 3 },
-  { kind: "craft_item", label: "Craft 1 item", target: 1 },
-  { kind: "upgrade_building", label: "Upgrade 1 building", target: 1 },
-  { kind: "spend_vigor", label: "Spend 20 Vigor", target: 20 }
+  { kind: "equip_item", label: "Equip a new item", target: 1 },
+  { kind: "gain_mastery_xp", label: "Gain 200 Mastery XP", target: 200 },
+  { kind: "win_region_expeditions", label: "Win 4 expeditions in one region", target: 4 },
+  { kind: "claim_mastery_milestone", label: "Claim a mastery milestone", target: 1 },
+  { kind: "collection_eligible_runs", label: "Make 5 collection-eligible runs", target: 5 },
+  { kind: "advance_collection_pity", label: "Advance collection pity 3 times", target: 3 },
+  { kind: "attempt_boss", label: "Attempt any boss", target: 1 },
+  { kind: "complete_caravan", label: "Complete a Caravan", target: 1 }
 ];
 
 export const ACHIEVEMENTS: AchievementDefinition[] = [

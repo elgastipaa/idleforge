@@ -2,6 +2,7 @@ import { FINAL_DUNGEON_ID, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUI
 import { BUILDINGS, DUNGEONS, ZONES } from "./content";
 import { getDerivedStats, getDungeon, getDurationMs, getItemScore, getSuccessChance } from "./balance";
 import { canAfford, getBuildingCost } from "./town";
+import { getFirstClaimableMasteryRoute } from "./progression";
 import type { DungeonDefinition, GameState, Item, ResourceState } from "./types";
 
 export function getZoneForDungeon(dungeon: DungeonDefinition) {
@@ -132,6 +133,11 @@ export function getNextGoal(state: GameState): string {
   const firstDungeon = DUNGEONS[0];
   if (!hasClearedDungeon(state, firstDungeon.id)) {
     return `Start ${firstDungeon.name}; first loot arrives in ${formatGoalDuration(getDurationMs(state, firstDungeon))}.`;
+  }
+
+  const claimableMastery = getFirstClaimableMasteryRoute(state);
+  if (claimableMastery) {
+    return `Claim ${claimableMastery.tier.label} for ${claimableMastery.dungeon.name}.`;
   }
 
   const betterItem = getBestBetterInventoryItem(state);

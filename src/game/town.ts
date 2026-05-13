@@ -4,7 +4,7 @@ import { getDerivedStats } from "./balance";
 import { applyDailyProgress, ensureDailies } from "./dailies";
 import { cloneState } from "./state";
 import type { ActionResult, BuildingId, GameState, ResourceState } from "./types";
-import { regenerateVigor } from "./vigor";
+import { regenerateFocus } from "./focus";
 
 export function getBuildingDefinition(buildingId: BuildingId) {
   const building = BUILDINGS.find((entry) => entry.id === buildingId);
@@ -44,7 +44,7 @@ export function buyBuildingUpgrade(state: GameState, buildingId: BuildingId, now
   }
 
   const next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const beforePower = getDerivedStats(working).powerScore;

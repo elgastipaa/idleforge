@@ -1,5 +1,39 @@
 # Decisions Log
 
+## 2026-05-12
+
+### Decision: `implementation_4_2_1.md` pasa a ser Launch Candidate baseline
+Descripción:
+Se adopta `docs/design/implementation_4_2_1.md` como baseline de Launch Candidate completo, no sólo como MVP. El juego apunta a loop local-first con expediciones, mastery, Account Rank, Showcase, Focus, construcción persistente, regiones, bosses memorables, Caravan offline y Rebirth como reset de run.
+Motivo:
+El objetivo es construir el juego completo y no una versión mínima aislada. La spec 4.2.1 consolida los sistemas de retención y aclara decisiones que el híbrido anterior dejaba abiertas.
+Impacto:
+Focus reemplaza Vigor a nivel código/UI; Focus inicia con cap 200 y regenera 1 cada 15 minutos. Town actual (`Forge`, `Mine`, `Tavern`, `Library`, `Market`, `Shrine`) pasa a ser identidad persistente y no se resetea con Rebirth. Construction timers empiezan desde nivel 1 con curva corta inicial y sólo aplican a edificios persistentes. Caravan sigue siendo job offline exclusivo: mientras está activa no se pueden iniciar expediciones. Daily Focus y Weekly Quest existen desde día 1. La migración a `Fragments` se planifica en Phase 2, no en Phase 0.
+Archivos relacionados:
+- `docs/design/implementation_4_2_1.md`
+- `src/game/types.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/game/vigor.ts`
+- `src/game/prestige.ts`
+- `src/game/town.ts`
+- `src/game/caravan.ts`
+
+### Decision: Híbrido elegido para refactor de expediciones
+Descripción:
+Se adopta el híbrido `Expedition Jobs + Mastery` + `Town/Region Economy` + `Threat Bosses` como dirección elegida para profundizar expediciones sin convertir todo el juego en tag matching.
+Motivo:
+La opción mejora el loop repetible antes de exigir más complejidad táctica: cada expedición puede avanzar mastery, colecciones, materiales regionales, preparación de boss o progreso de cuenta. Los bosses concentran build/prep/counters, mientras las expediciones normales siguen simples de iniciar.
+Impacto:
+El primer slice debe priorizar mastery/progreso por run y materiales regionales. Threat/counters se aplican primero a bosses, no a todas las expediciones. Se evita implementar daño elemental genérico hasta que exista una amenaza o sink concreto que lo justifique. El modelo de loot objetivo se simplifica hacia 1 trait explícita por item + resonancia de familia 2/3 piezas, en lugar de múltiples afijos por rareza.
+Archivos relacionados:
+- `docs/design/expedition_refactor_mvp_options_v2_social_idle.md`
+- `docs/design/chosen_hybrid_expedition_implementation.md`
+- `src/game/expeditions.ts`
+- `src/game/engine.ts`
+- `src/game/types.ts`
+- `src/game/content.ts`
+
 ## 2026-05-10
 
 ### Decision: Loot Direction Lite como control suave de drops

@@ -1,11 +1,40 @@
-import { DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT } from "./constants";
-import { DAILY_TASK_POOL, DUNGEONS } from "./content";
+import { DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT, DAY_MS } from "./constants";
+import { DUNGEONS, ZONES } from "./content";
 import { isDungeonUnlocked } from "./expeditions";
+import { applyAccountXp, getFirstClaimableMasteryRoute, unlockTitle, unlockTrophy } from "./progression";
 import { createRng } from "./rng";
-import { cloneState } from "./state";
-import type { ActionResult, DailyReward, DailyTaskKind, DailyTaskState, GameState, MaterialBundle, WeeklyContractState } from "./types";
+import { cloneState, createEmptyWeeklyQuest } from "./state";
+import type {
+  ActionResult,
+  DailyMissionDifficulty,
+  DailyReward,
+  DailyTaskKind,
+  DailyTaskRole,
+  DailyTaskState,
+  GameState,
+  MaterialBundle,
+  RegionMaterialId,
+  WeeklyQuestReward,
+  WeeklyQuestState,
+  WeeklyQuestStepKind
+} from "./types";
 
 const WEEKLY_CONTRACT_TARGETS = [3, 9, 15] as const;
+const DAILY_FOCUS_MAX_CHARGES = 3;
+const DAILY_FOCUS_TARGET_EXPEDITIONS = 3;
+const DAILY_FOCUS_REWARD = 10;
+
+type DailyMissionTemplate = {
+  kind: DailyTaskKind;
+  difficulty: DailyMissionDifficulty;
+  label: string;
+  target: number;
+  accountXp: number;
+  regionalMaterialAmount?: number;
+  fragments?: number;
+  getRegionId?: (state: GameState) => string | undefined;
+  isAvailable: (state: GameState) => boolean;
+};
 
 export function getDailyWindowStartAt(now: number): number {
   const date = new Date(now);
@@ -56,183 +85,469 @@ export function getNextWeeklyResetAt(now: number): number {
   ).getTime();
 }
 
+function getLocalDateKey(now: number): string {
+  const date = new Date(now);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDateKey(dateKey: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0).getTime();
+}
+
+function getElapsedCalendarDays(fromDateKey: string, toDateKey: string): number {
+  const from = parseLocalDateKey(fromDateKey);
+  const to = parseLocalDateKey(toDateKey);
+  if (from === null || to === null || to <= from) {
+    return 0;
+  }
+  return Math.floor((to - from) / DAY_MS);
+}
+
 function clampProgress(progress: number, target: number): number {
   return Math.max(0, Math.min(target, progress));
 }
 
 function getTaskSetKey(tasks: DailyTaskState[]): string {
-  return tasks.map((task) => task.kind).sort().join("|");
+  return tasks.map((task) => `${task.difficulty}:${task.kind}:${task.regionId ?? "any"}`).sort().join("|");
 }
 
-function getEligibleTaskDefinitions(state: GameState): { kind: DailyTaskKind; label: string; target: number }[] {
-  const bossAvailable = DUNGEONS.some((dungeon) => dungeon.boss && isDungeonUnlocked(state, dungeon));
-  const hasAnyItem = state.lifetime.totalItemsFound > 0 || state.inventory.length > 0 || Object.values(state.equipment).some(Boolean);
-  const canCraftSoon = state.hero.level >= 2 || state.lifetime.expeditionsSucceeded > 0 || state.town.forge > 0;
+function hasAnyItem(state: GameState): boolean {
+  return state.lifetime.totalItemsFound > 0 || state.inventory.length > 0 || Object.values(state.equipment).some(Boolean);
+}
 
-  const filtered = DAILY_TASK_POOL.filter((task) => {
-    switch (task.kind) {
-      case "defeat_boss":
-        return bossAvailable;
-      case "salvage_items":
-      case "sell_items":
-        return hasAnyItem;
-      case "craft_item":
-        return canCraftSoon;
-      default:
-        return true;
-    }
-  });
+function getHighestUnlockedActiveRegionId(state: GameState): string {
+  const unlockedActiveZones = ZONES.filter((zone) =>
+    DUNGEONS.some((dungeon) => dungeon.zoneId === zone.id && !dungeon.boss && isDungeonUnlocked(state, dungeon))
+  );
+  return unlockedActiveZones.at(-1)?.id ?? "sunlit-marches";
+}
 
-  if (filtered.length >= DAILY_TASK_COUNT) {
-    return filtered;
+function getActiveRegionMaterialId(state: GameState, regionId = getHighestUnlockedActiveRegionId(state)): RegionMaterialId {
+  if (regionId === "emberwood") {
+    return "emberResin";
   }
-
-  const byKind = new Map(filtered.map((task) => [task.kind, task]));
-  DAILY_TASK_POOL.forEach((task) => {
-    if (task.kind === "defeat_boss" && !bossAvailable) return;
-    if (!byKind.has(task.kind)) {
-      byKind.set(task.kind, task);
-    }
-  });
-  return [...byKind.values()];
+  return "sunlitTimber";
 }
 
-function pickUniqueKinds(seed: string, previousKey: string | null, definitions: DailyTaskKind[]): DailyTaskKind[] {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const rng = createRng(`${seed}:daily:${attempt}`);
-    const pool = [...definitions];
-    const picked: DailyTaskKind[] = [];
-    while (picked.length < DAILY_TASK_COUNT && pool.length > 0) {
-      const index = rng.int(0, pool.length - 1);
-      picked.push(pool[index]);
-      pool.splice(index, 1);
-    }
-    const key = [...picked].sort().join("|");
-    if (!previousKey || key !== previousKey || attempt === 5) {
-      return picked;
-    }
+function getRegionName(regionId: string): string {
+  return ZONES.find((zone) => zone.id === regionId)?.name ?? "active region";
+}
+
+function hasCollectionSystemsUnlocked(_state: GameState): boolean {
+  return false;
+}
+
+function hasBossAttemptAvailable(state: GameState): boolean {
+  return DUNGEONS.some((dungeon) => dungeon.boss && isDungeonUnlocked(state, dungeon));
+}
+
+function hasCaravanDailyObjectiveUnlocked(_state: GameState): boolean {
+  return false;
+}
+
+const DAILY_MISSION_TEMPLATES: DailyMissionTemplate[] = [
+  {
+    kind: "win_expeditions",
+    difficulty: "easy",
+    label: "Win 2 expeditions.",
+    target: 2,
+    accountXp: 5,
+    regionalMaterialAmount: 1,
+    isAvailable: () => true
+  },
+  {
+    kind: "salvage_items",
+    difficulty: "easy",
+    label: "Salvage 3 items.",
+    target: 3,
+    accountXp: 5,
+    fragments: 6,
+    isAvailable: hasAnyItem
+  },
+  {
+    kind: "equip_item",
+    difficulty: "easy",
+    label: "Equip a new item.",
+    target: 1,
+    accountXp: 5,
+    isAvailable: (state) => state.inventory.length > 0
+  },
+  {
+    kind: "gain_mastery_xp",
+    difficulty: "medium",
+    label: "Gain 200 Mastery XP.",
+    target: 200,
+    accountXp: 8,
+    regionalMaterialAmount: 2,
+    isAvailable: () => true
+  },
+  {
+    kind: "win_region_expeditions",
+    difficulty: "medium",
+    label: "Win 4 expeditions in one active region.",
+    target: 4,
+    accountXp: 8,
+    regionalMaterialAmount: 3,
+    getRegionId: getHighestUnlockedActiveRegionId,
+    isAvailable: () => true
+  },
+  {
+    kind: "claim_mastery_milestone",
+    difficulty: "medium",
+    label: "Claim a mastery milestone.",
+    target: 1,
+    accountXp: 10,
+    regionalMaterialAmount: 2,
+    isAvailable: (state) => getFirstClaimableMasteryRoute(state) !== null
+  },
+  {
+    kind: "collection_eligible_runs",
+    difficulty: "hard",
+    label: "Make 5 collection-eligible runs.",
+    target: 5,
+    accountXp: 12,
+    isAvailable: hasCollectionSystemsUnlocked
+  },
+  {
+    kind: "advance_collection_pity",
+    difficulty: "hard",
+    label: "Advance collection pity 3 times.",
+    target: 3,
+    accountXp: 12,
+    isAvailable: hasCollectionSystemsUnlocked
+  },
+  {
+    kind: "attempt_boss",
+    difficulty: "hard",
+    label: "Attempt any boss.",
+    target: 1,
+    accountXp: 12,
+    isAvailable: hasBossAttemptAvailable
+  },
+  {
+    kind: "complete_caravan",
+    difficulty: "hard",
+    label: "Complete a Caravan.",
+    target: 1,
+    accountXp: 12,
+    regionalMaterialAmount: 3,
+    isAvailable: hasCaravanDailyObjectiveUnlocked
   }
-  return definitions.slice(0, DAILY_TASK_COUNT);
+];
+
+function createDailyReward(state: GameState, template: DailyMissionTemplate, regionId?: string): DailyReward {
+  const regionalMaterials: Partial<Record<RegionMaterialId, number>> = {};
+  const materialAmount = template.regionalMaterialAmount ?? 0;
+  if (materialAmount > 0) {
+    regionalMaterials[getActiveRegionMaterialId(state, regionId)] = materialAmount;
+  }
+  return {
+    gold: 0,
+    materials: {},
+    focus: 0,
+    accountXp: template.accountXp,
+    regionalMaterials,
+    fragments: template.fragments ?? 0
+  };
 }
 
-function addScaledMaterials(materials: Partial<MaterialBundle>, ratio: number): Partial<MaterialBundle> {
-  const output: Partial<MaterialBundle> = {};
-  (Object.keys(materials) as (keyof MaterialBundle)[]).forEach((key) => {
-    const value = materials[key] ?? 0;
-    if (value > 0) {
-      output[key] = Math.max(1, Math.floor(value * ratio));
-    }
-  });
-  return output;
-}
-
-function getBestUnlockedNonBossDungeon(state: GameState) {
-  const candidates = DUNGEONS.filter((dungeon) => !dungeon.boss && isDungeonUnlocked(state, dungeon));
+function pickTemplate(
+  rng: ReturnType<typeof createRng>,
+  templates: DailyMissionTemplate[],
+  usedKinds: Set<DailyTaskKind>
+): DailyMissionTemplate | null {
+  const candidates = templates.filter((template) => !usedKinds.has(template.kind));
   if (candidates.length === 0) {
-    return DUNGEONS[0];
+    return null;
   }
-  return candidates.reduce((best, current) => {
-    if (current.baseGold > best.baseGold) return current;
-    return best;
-  }, candidates[0]);
+  return candidates[rng.int(0, candidates.length - 1)];
 }
 
-function createWeeklyContracts(state: GameState, now: number): WeeklyContractState {
+function getEligibleTemplates(state: GameState, difficulty: DailyMissionDifficulty): DailyMissionTemplate[] {
+  return DAILY_MISSION_TEMPLATES.filter((template) => template.difficulty === difficulty && template.isAvailable(state));
+}
+
+function createDailyTasks(state: GameState, now: number, previousKey: string | null): DailyTaskState[] {
+  if (state.accountRank.accountRank < 2) {
+    return [];
+  }
+
+  const windowStartAt = getDailyWindowStartAt(now);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const rng = createRng(`${state.seed}:daily-missions:${windowStartAt}:${attempt}`);
+    const usedKinds = new Set<DailyTaskKind>();
+    const picked: DailyMissionTemplate[] = [];
+    const easy = pickTemplate(rng, getEligibleTemplates(state, "easy"), usedKinds);
+    if (easy) {
+      picked.push(easy);
+      usedKinds.add(easy.kind);
+    }
+    const medium = pickTemplate(rng, getEligibleTemplates(state, "medium"), usedKinds);
+    if (medium) {
+      picked.push(medium);
+      usedKinds.add(medium.kind);
+    }
+    const hard = pickTemplate(rng, getEligibleTemplates(state, "hard"), usedKinds) ?? pickTemplate(rng, getEligibleTemplates(state, "medium"), usedKinds);
+    if (hard) {
+      picked.push(hard);
+      usedKinds.add(hard.kind);
+    }
+
+    const tasks = picked.slice(0, DAILY_TASK_COUNT).map((template, index) => {
+      const regionId = template.getRegionId?.(state);
+      const label =
+        template.kind === "win_region_expeditions" && regionId
+          ? `Win 4 expeditions in ${getRegionName(regionId)}.`
+          : template.label;
+      const role: DailyTaskRole = index === 0 ? "primary" : "secondary";
+      return {
+        id: `${windowStartAt}-${template.kind}-${regionId ?? "any"}-${index}`,
+        kind: template.kind,
+        role,
+        difficulty: template.difficulty,
+        label,
+        target: template.target,
+        progress: 0,
+        claimed: false,
+        reward: createDailyReward(state, template, regionId),
+        regionId
+      };
+    });
+
+    const key = getTaskSetKey(tasks);
+    if (!previousKey || key !== previousKey || attempt === 5) {
+      return tasks;
+    }
+  }
+  return [];
+}
+
+function createWeeklyContracts(now: number) {
   const windowStartAt = getWeeklyWindowStartAt(now);
-  const bestDungeon = getBestUnlockedNonBossDungeon(state);
-  const rewardScales = [0.35, 0.75, 1.25];
   return {
     windowStartAt,
     nextResetAt: getNextWeeklyResetAt(now),
     progress: 0,
-    milestones: WEEKLY_CONTRACT_TARGETS.map((target, index) => ({
+    milestones: WEEKLY_CONTRACT_TARGETS.map((target) => ({
       target,
       claimed: false,
-      reward: {
-        gold: Math.max(1, Math.floor(bestDungeon.baseGold * rewardScales[index])),
-        materials: addScaledMaterials(bestDungeon.materials, rewardScales[index]),
-        vigor: [15, 25, 40][index]
-      }
+      reward: { gold: 0, materials: {}, focus: 0, accountXp: 0, regionalMaterials: {}, fragments: 0 }
     }))
   };
 }
 
-function createDailyTasks(state: GameState, now: number, previousKey: string | null): DailyTaskState[] {
-  const windowStartAt = getDailyWindowStartAt(now);
-  const definitions = getEligibleTaskDefinitions(state);
-  const kinds = pickUniqueKinds(
-    `${state.seed}:${windowStartAt}`,
-    previousKey,
-    definitions.map((definition) => definition.kind)
-  );
-  const bestDungeon = getBestUnlockedNonBossDungeon(state);
-  const rng = createRng(`${state.seed}:daily-reward:${windowStartAt}`);
-
-  return kinds.map((kind, index) => {
-    const definition = DAILY_TASK_POOL.find((entry) => entry.kind === kind) ?? DAILY_TASK_POOL[0];
-    const role = index === 0 ? "primary" : "secondary";
-    const ratio = role === "primary" ? rng.pick([0.16, 0.18, 0.2]) : rng.pick([0.08, 0.1, 0.12]);
-    const rewardGold = Math.max(1, Math.floor(bestDungeon.baseGold * ratio));
-    const rewardMaterials = addScaledMaterials(bestDungeon.materials, ratio);
-    const rewardVigor = role === "primary" ? rng.int(14, 18) : rng.int(8, 12);
-    return {
-      id: `${windowStartAt}-${kind}-${index}`,
-      kind: definition.kind,
-      role,
-      label: definition.label,
-      target: definition.target,
-      progress: 0,
-      claimed: false,
-      reward: {
-        gold: rewardGold,
-        materials: rewardMaterials,
-        vigor: rewardVigor
-      }
-    };
-  });
+function createWeeklyQuest(state: GameState, now: number): WeeklyQuestState {
+  const weekStartAt = getWeeklyWindowStartAt(now);
+  const materialId = getActiveRegionMaterialId(state, "sunlit-marches");
+  return {
+    ...createEmptyWeeklyQuest(now),
+    weekStartDate: getLocalDateKey(weekStartAt),
+    weekStartAt,
+    nextResetAt: getNextWeeklyResetAt(now),
+    questId: "weekly-onboarding-charter",
+    title: "Complete your first weekly charter.",
+    steps: [
+      { kind: "clear_expeditions", label: "Clear 15 expeditions", target: 15, progress: 0 },
+      { kind: "claim_mastery_milestone", label: "Claim 1 mastery milestone", target: 1, progress: 0 }
+    ],
+    reward: {
+      accountXp: 25,
+      regionalMaterials: { [materialId]: 10 },
+      fragments: 0,
+      titleId: "title-steady-regular"
+    },
+    questProgress: 0,
+    questClaimed: false,
+    recapSeen: false
+  };
 }
 
-export function ensureDailies(state: GameState, now: number): { state: GameState; reset: boolean } {
-  const windowStartAt = getDailyWindowStartAt(now);
-  const weeklyWindowStartAt = getWeeklyWindowStartAt(now);
-  const needsReset = now >= state.dailies.nextResetAt || state.dailies.windowStartAt !== windowStartAt || state.dailies.tasks.length !== DAILY_TASK_COUNT;
-  const weekly = state.dailies.weekly;
-  const needsWeeklyReset =
+function ensureDailyFocus(state: GameState, now: number): { state: GameState; reset: boolean } {
+  const dateKey = getLocalDateKey(now);
+  const focus = state.dailyFocus;
+  const elapsedDays = getElapsedCalendarDays(focus.date, dateKey);
+  const invalid =
+    typeof focus.date !== "string" ||
+    !Number.isFinite(focus.focusChargesBanked) ||
+    !Number.isFinite(focus.focusChargeProgress) ||
+    focus.focusChargesBanked < 0 ||
+    focus.focusChargeProgress < 0;
+  if (!invalid && elapsedDays <= 0) {
+    return { state, reset: false };
+  }
+  const next = cloneState(state);
+  next.dailyFocus.date = dateKey;
+  next.dailyFocus.focusChargesBanked = Math.min(
+    DAILY_FOCUS_MAX_CHARGES,
+    Math.max(0, invalid ? 1 : next.dailyFocus.focusChargesBanked) + Math.max(0, elapsedDays)
+  );
+  next.dailyFocus.focusChargeProgress = clampProgress(
+    invalid ? 0 : next.dailyFocus.focusChargeProgress,
+    DAILY_FOCUS_TARGET_EXPEDITIONS
+  );
+  next.updatedAt = now;
+  return { state: next, reset: elapsedDays > 0 || invalid };
+}
+
+function ensureWeeklyQuest(state: GameState, now: number): { state: GameState; reset: boolean } {
+  const weekStartAt = getWeeklyWindowStartAt(now);
+  const weekly = state.weeklyQuest;
+  const invalid =
     !weekly ||
-    now >= weekly.nextResetAt ||
-    weekly.windowStartAt !== weeklyWindowStartAt ||
-    weekly.milestones.length !== WEEKLY_CONTRACT_TARGETS.length;
-  if (!needsReset && !needsWeeklyReset) {
+    weekly.weekStartAt !== weekStartAt ||
+    weekly.nextResetAt !== getNextWeeklyResetAt(now) ||
+    weekly.questId !== "weekly-onboarding-charter" ||
+    !Array.isArray(weekly.steps) ||
+    weekly.steps.length === 0 ||
+    !weekly.reward;
+
+  if (!invalid) {
     return { state, reset: false };
   }
 
   const next = cloneState(state);
-  if (needsWeeklyReset) {
-    next.dailies.weekly = createWeeklyContracts(next, now);
+  next.weeklyQuest = createWeeklyQuest(next, now);
+  next.updatedAt = now;
+  return { state: next, reset: true };
+}
+
+export function ensureDailies(state: GameState, now: number): { state: GameState; reset: boolean } {
+  const dailyFocus = ensureDailyFocus(state, now);
+  let next = dailyFocus.state;
+  const windowStartAt = getDailyWindowStartAt(now);
+  const weeklyWindowStartAt = getWeeklyWindowStartAt(now);
+  const missionsUnlocked = next.accountRank.accountRank >= 2;
+  const needsDailyWindowRefresh = now >= next.dailies.nextResetAt || next.dailies.windowStartAt !== windowStartAt;
+  const needsMissionReset =
+    !missionsUnlocked
+      ? next.dailies.tasks.length > 0 || needsDailyWindowRefresh
+      : needsDailyWindowRefresh || next.dailies.tasks.length !== DAILY_TASK_COUNT;
+  const legacyWeekly = next.dailies.weekly;
+  const needsLegacyWeeklyReset =
+    !legacyWeekly ||
+    now >= legacyWeekly.nextResetAt ||
+    legacyWeekly.windowStartAt !== weeklyWindowStartAt ||
+    legacyWeekly.milestones.length !== WEEKLY_CONTRACT_TARGETS.length;
+  const weeklyQuest = ensureWeeklyQuest(next, now);
+  next = weeklyQuest.state;
+
+  if (!needsMissionReset && !needsLegacyWeeklyReset) {
+    return { state: next, reset: dailyFocus.reset || weeklyQuest.reset };
   }
-  if (needsReset) {
-    const previousKey = state.dailies.tasks.length === DAILY_TASK_COUNT ? getTaskSetKey(state.dailies.tasks) : state.dailies.lastTaskSetKey;
-    const tasks = createDailyTasks(next, now, previousKey);
+
+  if (next === state || next === dailyFocus.state) {
+    next = cloneState(next);
+  }
+  if (needsLegacyWeeklyReset) {
+    next.dailies.weekly = createWeeklyContracts(now);
+  }
+  if (needsMissionReset) {
+    const previousKey = next.dailies.tasks.length === DAILY_TASK_COUNT ? getTaskSetKey(next.dailies.tasks) : next.dailies.lastTaskSetKey;
+    const tasks = missionsUnlocked ? createDailyTasks(next, now, previousKey) : [];
     next.dailies.windowStartAt = windowStartAt;
     next.dailies.nextResetAt = getNextDailyResetAt(now);
-    next.dailies.lastTaskSetKey = getTaskSetKey(tasks);
+    next.dailies.lastTaskSetKey = tasks.length > 0 ? getTaskSetKey(tasks) : null;
     next.dailies.tasks = tasks;
   }
   next.updatedAt = now;
-  return { state: next, reset: needsReset };
+  return { state: next, reset: dailyFocus.reset || weeklyQuest.reset || needsMissionReset || needsLegacyWeeklyReset };
+}
+
+function addMaterials(state: GameState, materials: Partial<MaterialBundle>) {
+  state.resources.ore += materials.ore ?? 0;
+  state.resources.crystal += materials.crystal ?? 0;
+  state.resources.rune += materials.rune ?? 0;
+  state.resources.relicFragment += materials.relicFragment ?? 0;
+}
+
+function addRegionalMaterials(state: GameState, materials: Partial<Record<RegionMaterialId, number>>) {
+  (Object.entries(materials) as [RegionMaterialId, number][]).forEach(([materialId, amount]) => {
+    if (amount > 0) {
+      state.regionProgress.materials[materialId] = (state.regionProgress.materials[materialId] ?? 0) + amount;
+    }
+  });
+}
+
+function addDailyReward(state: GameState, reward: DailyReward | WeeklyQuestReward, now: number) {
+  state.resources.gold += "gold" in reward ? reward.gold : 0;
+  addMaterials(state, "materials" in reward ? reward.materials : {});
+  state.focus.current = Math.min(state.focus.cap, state.focus.current + ("focus" in reward ? reward.focus : 0));
+  state.resources.relicFragment += reward.fragments;
+  addRegionalMaterials(state, reward.regionalMaterials);
+  if (reward.accountXp > 0) {
+    applyAccountXp(state, reward.accountXp, now);
+  }
+}
+
+function getTaskProgressDelta(task: DailyTaskState, progressByKind: Partial<Record<DailyTaskKind, number>>, regionId?: string): number {
+  if (task.kind === "win_region_expeditions") {
+    if (task.regionId && regionId && task.regionId !== regionId) {
+      return 0;
+    }
+    return progressByKind.win_region_expeditions ?? 0;
+  }
+  return progressByKind[task.kind] ?? 0;
+}
+
+function getWeeklyStepDelta(kind: WeeklyQuestStepKind, progressByKind: Partial<Record<DailyTaskKind, number>>): number {
+  switch (kind) {
+    case "clear_expeditions":
+      return progressByKind.complete_expeditions ?? 0;
+    case "claim_mastery_milestone":
+      return progressByKind.claim_mastery_milestone ?? 0;
+    case "collection_eligible_runs":
+      return progressByKind.collection_eligible_runs ?? 0;
+    case "attempt_boss":
+      return progressByKind.attempt_boss ?? 0;
+  }
+}
+
+function updateWeeklyQuestProgress(weeklyQuest: WeeklyQuestState, progressByKind: Partial<Record<DailyTaskKind, number>>): boolean {
+  let changed = false;
+  weeklyQuest.steps = weeklyQuest.steps.map((step) => {
+    const delta = getWeeklyStepDelta(step.kind, progressByKind);
+    if (delta <= 0 || step.progress >= step.target) {
+      return step;
+    }
+    changed = true;
+    return {
+      ...step,
+      progress: clampProgress(step.progress + delta, step.target)
+    };
+  });
+  weeklyQuest.questProgress = weeklyQuest.steps.reduce((total, step) => total + Math.min(step.progress, step.target), 0);
+  return changed;
 }
 
 export function applyDailyProgress(
   state: GameState,
   now: number,
-  progressByKind: Partial<Record<DailyTaskKind, number>>
+  progressByKind: Partial<Record<DailyTaskKind, number>>,
+  context: { regionId?: string } = {}
 ): { state: GameState; reset: boolean; progressed: boolean } {
   const ensured = ensureDailies(state, now);
-  let next = ensured.state;
+  const hasProgressInput = Object.values(progressByKind).some((value) => (value ?? 0) > 0);
+  if (!hasProgressInput) {
+    return { state: ensured.state, reset: ensured.reset, progressed: false };
+  }
+
+  const next = cloneState(ensured.state);
   let progressed = false;
 
+  const expeditionCompletions = progressByKind.complete_expeditions ?? 0;
+  if (expeditionCompletions > 0 && next.dailyFocus.focusChargesBanked > 0 && next.dailyFocus.focusChargeProgress < DAILY_FOCUS_TARGET_EXPEDITIONS) {
+    next.dailyFocus.focusChargeProgress = clampProgress(next.dailyFocus.focusChargeProgress + expeditionCompletions, DAILY_FOCUS_TARGET_EXPEDITIONS);
+    progressed = true;
+  }
+
   const taskUpdates = next.dailies.tasks.map((task) => {
-    const delta = progressByKind[task.kind] ?? 0;
+    const delta = getTaskProgressDelta(task, progressByKind, context.regionId);
     if (delta <= 0 || task.progress >= task.target) {
       return task;
     }
@@ -243,55 +558,85 @@ export function applyDailyProgress(
     };
   });
 
+  const weeklyProgressed = updateWeeklyQuestProgress(next.weeklyQuest, progressByKind);
+  progressed = progressed || weeklyProgressed;
+
   if (!progressed) {
-    return { state: next, reset: ensured.reset, progressed: false };
+    return { state: ensured.state, reset: ensured.reset, progressed: false };
   }
 
-  if (next === state) {
-    next = cloneState(state);
-  }
   next.dailies.tasks = taskUpdates;
   next.updatedAt = now;
   return { state: next, reset: ensured.reset, progressed: true };
 }
 
-function addMaterials(state: GameState, materials: Partial<MaterialBundle>) {
-  state.resources.ore += materials.ore ?? 0;
-  state.resources.crystal += materials.crystal ?? 0;
-  state.resources.rune += materials.rune ?? 0;
-  state.resources.relicFragment += materials.relicFragment ?? 0;
-}
+export function claimDailyFocus(state: GameState, now: number): ActionResult {
+  const ensured = ensureDailies(state, now);
+  const focus = ensured.state.dailyFocus;
+  if (focus.focusChargesBanked <= 0) {
+    return { ok: false, state: ensured.state, error: "No Daily Focus charges are banked." };
+  }
+  if (focus.focusChargeProgress < DAILY_FOCUS_TARGET_EXPEDITIONS) {
+    return { ok: false, state: ensured.state, error: "Complete 3 expeditions to claim Daily Focus." };
+  }
 
-function addDailyReward(state: GameState, reward: DailyReward) {
-  state.resources.gold += reward.gold;
-  addMaterials(state, reward.materials);
-  state.vigor.current = Math.min(state.vigor.max, state.vigor.current + reward.vigor);
+  const next = cloneState(ensured.state);
+  next.dailyFocus.focusChargesBanked -= 1;
+  next.dailyFocus.focusChargeProgress = 0;
+  next.focus.current = Math.min(next.focus.cap, next.focus.current + DAILY_FOCUS_REWARD);
+  next.updatedAt = now;
+  return { ok: true, state: next, message: `Daily Focus claimed: +${DAILY_FOCUS_REWARD} Focus.` };
 }
 
 export function claimDailyTask(state: GameState, taskId: string, now: number): ActionResult {
   const ensured = ensureDailies(state, now);
+  if (ensured.state.accountRank.accountRank < 2) {
+    return { ok: false, state: ensured.state, error: "Daily Missions unlock at Account Rank 2." };
+  }
+
   const taskIndex = ensured.state.dailies.tasks.findIndex((task) => task.id === taskId);
   if (taskIndex < 0) {
-    return { ok: false, state: ensured.state, error: "Daily task not found." };
+    return { ok: false, state: ensured.state, error: "Daily Mission not found." };
   }
 
   const task = ensured.state.dailies.tasks[taskIndex];
   if (task.claimed) {
-    return { ok: false, state: ensured.state, error: "Daily reward already claimed." };
+    return { ok: false, state: ensured.state, error: "Daily Mission reward already claimed." };
   }
 
   if (task.progress < task.target) {
-    return { ok: false, state: ensured.state, error: "Daily task is not complete yet." };
+    return { ok: false, state: ensured.state, error: "Daily Mission is not complete yet." };
   }
 
   const next = cloneState(ensured.state);
   next.dailies.tasks[taskIndex].claimed = true;
-  addDailyReward(next, task.reward);
-  const weeklyTarget = next.dailies.weekly.milestones.at(-1)?.target ?? WEEKLY_CONTRACT_TARGETS[WEEKLY_CONTRACT_TARGETS.length - 1];
-  next.dailies.weekly.progress = Math.min(weeklyTarget, next.dailies.weekly.progress + 1);
+  addDailyReward(next, task.reward, now);
   next.lifetime.totalDailyClaims += 1;
   next.updatedAt = now;
-  return { ok: true, state: next, message: `Contract claimed: ${task.label}.` };
+  return { ok: true, state: next, message: `Daily Mission claimed: ${task.label}` };
+}
+
+export function claimWeeklyQuest(state: GameState, now: number): ActionResult {
+  const ensured = ensureDailies(state, now);
+  const weeklyQuest = ensured.state.weeklyQuest;
+  if (weeklyQuest.questClaimed) {
+    return { ok: false, state: ensured.state, error: "Weekly Quest reward already claimed." };
+  }
+  if (weeklyQuest.steps.some((step) => step.progress < step.target)) {
+    return { ok: false, state: ensured.state, error: "Weekly Quest is not complete yet." };
+  }
+
+  const next = cloneState(ensured.state);
+  next.weeklyQuest.questClaimed = true;
+  addDailyReward(next, weeklyQuest.reward, now);
+  if (weeklyQuest.reward.titleId) {
+    unlockTitle(next, weeklyQuest.reward.titleId, now);
+  }
+  if (weeklyQuest.reward.trophyId) {
+    unlockTrophy(next, weeklyQuest.reward.trophyId, now);
+  }
+  next.updatedAt = now;
+  return { ok: true, state: next, message: "Weekly Quest claimed." };
 }
 
 export function claimWeeklyContractMilestone(state: GameState, milestoneIndex: number, now: number): ActionResult {
@@ -311,7 +656,7 @@ export function claimWeeklyContractMilestone(state: GameState, milestoneIndex: n
 
   const next = cloneState(ensured.state);
   next.dailies.weekly.milestones[milestoneIndex].claimed = true;
-  addDailyReward(next, milestone.reward);
+  addDailyReward(next, milestone.reward, now);
   next.updatedAt = now;
   return { ok: true, state: next, message: `Weekly contract milestone claimed: ${milestone.target}.` };
 }

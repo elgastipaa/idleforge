@@ -1,8 +1,9 @@
 import { DEBUG_REINCARNATION_MULTIPLIER, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUIREMENT, REINCARNATION_UPGRADE_MAX } from "./constants";
 import { refreshAchievements } from "./achievements";
 import { DUNGEONS } from "./content";
-import { cloneState, createEmptyCaravan, createEmptyDailies, createEmptyEquipment, createEmptyLootState, createEmptyTown } from "./state";
+import { cloneState, createEmptyDailies, createEmptyEquipment, createEmptyLootState } from "./state";
 import { getHeroClass } from "./balance";
+import { applyAccountXp } from "./progression";
 import type { ActionResult, GameState, PrestigeResult, RenownUpgrades } from "./types";
 
 export type RenownUpgradeId = keyof RenownUpgrades;
@@ -74,18 +75,22 @@ export function performPrestige(state: GameState, now: number): PrestigeResult {
     relicFragment: 0,
     renown: next.resources.renown + renownGained
   };
-  next.vigor.current = 40;
-  next.vigor.lastTickAt = now;
   next.inventory = [];
   next.equipment = createEmptyEquipment();
   next.loot = createEmptyLootState();
   next.activeExpedition = null;
   next.dungeonClears = {};
-  next.town = createEmptyTown();
-  next.caravan = createEmptyCaravan();
   next.dailies = createEmptyDailies(now);
   next.prestige.totalPrestiges += 1;
   next.prestige.renownEarned += renownGained;
+  next.rebirth.totalRebirths += 1;
+  next.rebirth.lastRebirthAt = now;
+  next.soulMarks.current += renownGained;
+  next.soulMarks.lifetimeEarned += renownGained;
+  next.soulMarks.upgradesClaimed = { ...next.prestige.upgrades };
+  next.soulMarks.discovered = true;
+  applyAccountXp(next, 100, now);
+  next.accountPersonalRecords.totalRebirths = next.rebirth.totalRebirths;
   next.updatedAt = now;
   const achievements = refreshAchievements(next, now);
   next = achievements.state;
@@ -110,6 +115,9 @@ export function buyRenownUpgrade(state: GameState, upgradeId: RenownUpgradeId, n
   const next = cloneState(state);
   next.resources.renown -= cost;
   next.prestige.upgrades[upgradeId] += 1;
+  next.soulMarks.current = Math.max(0, next.soulMarks.current - cost);
+  next.soulMarks.upgradesClaimed[upgradeId] = next.prestige.upgrades[upgradeId];
+  next.soulMarks.discovered = true;
   next.updatedAt = now;
   return { ok: true, state: next, message: "Soul Mark upgrade purchased." };
 }

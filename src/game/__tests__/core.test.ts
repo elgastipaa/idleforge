@@ -1,9 +1,11 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AFFIX_POOL,
+  ACCOUNT_RANKS,
   BUILDINGS,
   DAILY_RESET_HOUR_LOCAL,
-  DAILY_TASK_COUNT,
   DUNGEONS,
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
@@ -12,20 +14,28 @@ import {
   REINCARNATION_GATE_BOSS_ID,
   REINCARNATION_LEVEL_REQUIREMENT,
   RENOWN_UPGRADES,
-  VIGOR_EXPEDITION_BOOST_COST,
-  VIGOR_REGEN_INTERVAL_MS,
+  FOCUS_EXPEDITION_BOOST_COST,
+  FOCUS_MAX,
+  FOCUS_REGEN_INTERVAL_MS,
+  SAVE_GAME_NAME,
+  SAVE_VERSION,
   ZONES,
+  applyAccountXp,
   applyDailyProgress,
   applyOfflineProgress,
+  buildShowcaseCopyText,
   buyBuildingUpgrade,
   canAfford,
   canPrestige,
   cancelCaravanJob,
+  claimDailyFocus,
   claimDailyTask,
-  claimWeeklyContractMilestone,
+  claimMasteryTier,
+  claimWeeklyQuest,
   createInitialState,
   createRng,
   craftItem,
+  dismissAccountShowcaseDiscovery,
   ensureDailies,
   estimateCaravanRewards,
   equipItem,
@@ -44,28 +54,42 @@ import {
   getNextDailyResetAt,
   getNextWeeklyResetAt,
   getNextGoal,
+  getNextClaimableMasteryTier,
+  getPinnedTrophyEntries,
+  getSelectedTitleDefinition,
   getSellMultiplier,
   getSuccessChance,
-  getVigorBoostCost,
+  getFocusBoostCost,
   getWeeklyWindowStartAt,
   getXpMultiplier,
   importSave,
   loadSave,
   performPrestige,
-  regenerateVigor,
+  regenerateFocus,
   rerollItemAffix,
   resolveExpedition,
   salvageItem,
   sellItem,
   serializeSave,
+  selectShowcaseTitle,
   setLootFocus,
   startCaravanJob,
   startExpedition,
+  toggleShowcaseTrophy,
   upgradeItem,
   xpToNextLevel
 } from "@/game";
 
 const NOW = 1_700_000_000_000;
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) return sourceFiles(path);
+    return path.endsWith(".ts") || path.endsWith(".tsx") ? [path] : [];
+  });
+}
 
 function makeReadyState(seed = "seed") {
   const state = createInitialState(seed, NOW);
@@ -101,11 +125,45 @@ describe("state and RNG determinism", () => {
     const a = createInitialState("same", NOW, "mage");
     const b = createInitialState("same", NOW, "mage");
     expect(a).toEqual(b);
-    expect(a.vigor.max).toBe(100);
-    expect(a.dailies.tasks).toHaveLength(DAILY_TASK_COUNT);
+    expect(a.focus.current).toBe(FOCUS_MAX);
+    expect(a.focus.cap).toBe(FOCUS_MAX);
+    expect(a.focus.lastRegenAt).toBe(NOW);
+    expect(a.dailies.tasks).toHaveLength(0);
     expect(a.loot.focusSlot).toBe("any");
     expect(a.loot.missesSinceDrop).toBe(0);
+    expect(a.dungeonMastery).toEqual({});
+    expect(a.accountRank).toMatchObject({ accountXp: 0, accountRank: 1, claimedRankRewards: [] });
+    expect(a.rebirth).toMatchObject({ totalRebirths: 0, lastRebirthAt: null, classChangesUsedFreeSlot: false });
+    expect(a.soulMarks).toMatchObject({ current: 0, lifetimeEarned: 0, discovered: false });
+    expect(a.accountShowcase).toMatchObject({
+      selectedTitleId: null,
+      pinnedTrophyIds: [],
+      accountSignatureMode: "auto",
+      firstDiscoveryPopupShown: false,
+      firstDiscoveryPopupDismissed: false
+    });
+    expect(a.dailyFocus).toMatchObject({ focusChargesBanked: 1, focusChargeProgress: 0 });
+    expect(a.weeklyQuest).toMatchObject({ questId: "weekly-onboarding-charter", questClaimed: false });
+    expect(a.weeklyQuest.steps.map((step) => [step.kind, step.target])).toEqual([
+      ["clear_expeditions", 15],
+      ["claim_mastery_milestone", 1]
+    ]);
+    expect(a.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(Object.keys(a.regionProgress.materials)).toEqual(["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"]);
+    expect(a.construction.activeBuildingId).toBeNull();
+    expect(a.classChange).toMatchObject({ freeChangeUsed: false, lastChangedAt: null });
+    expect(a.traitCodex).toEqual({});
+    expect(a.familyCodex).toEqual({});
+    expect(a.titles).toEqual({});
+    expect(a.trophies).toEqual({});
     expect(a.settings.heroCreated).toBe(false);
+  });
+
+  it("has no remaining legacy action-resource naming in source", () => {
+    const legacy = ["vi", "gor"].join("");
+    const legacyPattern = new RegExp(legacy, "i");
+    const offenders = sourceFiles(join(process.cwd(), "src")).filter((path) => legacyPattern.test(readFileSync(path, "utf8")));
+    expect(offenders).toEqual([]);
   });
 
   it("uses deterministic rng sequences", () => {
@@ -115,7 +173,7 @@ describe("state and RNG determinism", () => {
   });
 });
 
-describe("expeditions, vigor, and loot", () => {
+describe("expeditions, focus, and loot", () => {
   it("only starts unlocked dungeons and resolves first run deterministically", () => {
     const initial = makeReadyState("expedition");
     expect(getAvailableDungeons(initial).map((dungeon) => dungeon.id)).toContain("tollroad-of-trinkets");
@@ -132,17 +190,139 @@ describe("expeditions, vigor, and loot", () => {
     expect(first.summary.unlockedDungeons.map((dungeon) => dungeon.id)).toContain("mossbright-cellar");
   });
 
-  it("spends vigor on boosted claims and applies bounds for success chance", () => {
-    const initial = makeReadyState("vigor");
-    initial.vigor.current = 100;
+  it("applies Phase 1 permanent progress from the numeric content table", () => {
+    const initial = makeReadyState("phase-1-first-progress");
+    const started = startExpedition(initial, "tollroad-of-trinkets", NOW);
+    expect(started.ok).toBe(true);
+    if (!started.ok) throw new Error("phase 1 start failed");
+    expect(started.state.titles["title-first-charter"]?.unlockedAt).toBe(NOW);
+
+    const resolved = resolveExpedition(started.state, NOW + 60_000);
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) throw new Error("phase 1 resolve failed");
+    expect(resolved.summary.success).toBe(true);
+    expect(resolved.summary.progress.masteryXpGained).toBe(100);
+    expect(resolved.summary.progress.accountXpGained).toBe(15);
+    expect(resolved.summary.progress.regionalMaterials.sunlitTimber).toBe(1);
+    expect(resolved.state.regionProgress.materials.sunlitTimber).toBe(1);
+    expect(resolved.state.dungeonMastery["tollroad-of-trinkets"]).toMatchObject({ masteryXp: 100, claimedTiers: [] });
+    expect(getNextClaimableMasteryTier(resolved.state, "tollroad-of-trinkets")?.tier).toBe(1);
+    expect(resolved.summary.progress.newlyClaimableMasteryTiers.map((tier) => tier.tier)).toEqual([1]);
+    expect(resolved.state.trophies["trophy-first-clear-token"]?.unlockedAt).toBe(NOW + 60_000);
+  });
+
+  it("claims mastery tiers once and grants Phase 1 title and trophy unlocks", () => {
+    const first = completeFirstExpedition();
+    const claimed = claimMasteryTier(first.state, "tollroad-of-trinkets", NOW + 61_000);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("mastery claim failed");
+    expect(claimed.summary.tier.tier).toBe(1);
+    expect(claimed.summary.accountXpGained).toBe(5);
+    expect(claimed.summary.regionalMaterials.sunlitTimber).toBe(2);
+    expect(claimed.state.dungeonMastery["tollroad-of-trinkets"].claimedTiers).toEqual([1]);
+    expect(claimed.state.trophies["trophy-mapped-route-medal"]?.unlockedAt).toBe(NOW + 61_000);
+
+    const duplicate = claimMasteryTier(claimed.state, "tollroad-of-trinkets", NOW + 62_000);
+    expect(duplicate.ok).toBe(false);
+
+    const readyForTier3 = structuredClone(claimed.state);
+    readyForTier3.dungeonMastery["tollroad-of-trinkets"].masteryXp = 1500;
+    const tier2 = claimMasteryTier(readyForTier3, "tollroad-of-trinkets", NOW + 63_000);
+    expect(tier2.ok).toBe(true);
+    if (!tier2.ok) throw new Error("tier 2 claim failed");
+    expect(tier2.state.titles["title-known-route"]?.unlockedAt).toBe(NOW + 63_000);
+    const tier3 = claimMasteryTier(tier2.state, "tollroad-of-trinkets", NOW + 64_000);
+    expect(tier3.ok).toBe(true);
+    if (!tier3.ok) throw new Error("tier 3 claim failed");
+    expect(tier3.state.titles["title-tollroad-mapper"]?.unlockedAt).toBe(NOW + 64_000);
+  });
+
+  it("derives Account Rank 1-3 from Account XP and records the Rank 2 showcase discovery", () => {
+    expect(ACCOUNT_RANKS.slice(0, 3).map((rank) => [rank.rank, rank.xp])).toEqual([
+      [1, 0],
+      [2, 100],
+      [3, 260]
+    ]);
+    let state = makeReadyState("phase-1-account-rank");
+    state.hero.baseStats = { power: 500, defense: 500, speed: 500, luck: 500, stamina: 500 };
+
+    for (let run = 0; run < 7; run += 1) {
+      const started = startExpedition(state, "tollroad-of-trinkets", NOW + run * 100_000);
+      expect(started.ok).toBe(true);
+      if (!started.ok) throw new Error("rank start failed");
+      const resolved = resolveExpedition(started.state, NOW + run * 100_000 + 60_000);
+      expect(resolved.ok).toBe(true);
+      if (!resolved.ok) throw new Error("rank resolve failed");
+      state = resolved.state;
+    }
+
+    expect(state.accountRank.accountXp).toBe(105);
+    expect(state.accountRank.accountRank).toBe(2);
+    expect(state.accountShowcase.firstDiscoveryPopupShown).toBe(true);
+    expect(state.accountShowcase.firstDiscoveryPopupDismissed).toBe(false);
+    expect(state.accountPersonalRecords.highestAccountRankReached).toBe(2);
+  });
+
+  it("selects Showcase titles, pins trophies, and builds a local copy snippet", () => {
+    const first = completeFirstExpedition();
+    const claimed = claimMasteryTier(first.state, "tollroad-of-trinkets", NOW + 61_000);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("showcase mastery claim failed");
+
+    const selected = selectShowcaseTitle(claimed.state, "title-first-charter", NOW + 62_000);
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) throw new Error("showcase title selection failed");
+    expect(selected.state.accountShowcase.selectedTitleId).toBe("title-first-charter");
+    expect(selected.state.accountShowcase.accountSignatureMode).toBe("manual");
+    expect(getSelectedTitleDefinition(selected.state)?.name).toBe("First Charter");
+
+    const lockedTitle = selectShowcaseTitle(selected.state, "title-cindermaw-breaker", NOW + 63_000);
+    expect(lockedTitle.ok).toBe(false);
+
+    const pinnedFirst = toggleShowcaseTrophy(selected.state, "trophy-first-clear-token", NOW + 64_000);
+    expect(pinnedFirst.ok).toBe(true);
+    if (!pinnedFirst.ok) throw new Error("first trophy pin failed");
+    const pinnedSecond = toggleShowcaseTrophy(pinnedFirst.state, "trophy-mapped-route-medal", NOW + 65_000);
+    expect(pinnedSecond.ok).toBe(true);
+    if (!pinnedSecond.ok) throw new Error("second trophy pin failed");
+    expect(getPinnedTrophyEntries(pinnedSecond.state).filter(Boolean).map((entry) => entry?.definition.id)).toEqual([
+      "trophy-first-clear-token",
+      "trophy-mapped-route-medal"
+    ]);
+
+    const snippet = buildShowcaseCopyText(pinnedSecond.state);
+    expect(snippet).toContain("Account Rank 1");
+    expect(snippet).toContain("Title: First Charter");
+    expect(snippet).toContain("Trophy Shelf: First Clear Token, Mapped Route Medal");
+    expect(snippet).toContain("Rebirths: 0");
+    expect(snippet).toContain("Highest Power:");
+    expect(snippet).toContain("Expeditions Completed: 1");
+    expect(snippet).toContain("Mastery Tiers Claimed: 1");
+    expect(snippet).not.toMatch(/leaderboard|global|server/i);
+  });
+
+  it("dismisses the one-time Rank 2 Account Showcase discovery moment", () => {
+    const state = makeReadyState("showcase-discovery-dismiss");
+    applyAccountXp(state, 100, NOW + 1);
+    expect(state.accountRank.accountRank).toBe(2);
+    expect(state.accountShowcase.firstDiscoveryPopupShown).toBe(true);
+    expect(state.accountShowcase.firstDiscoveryPopupDismissed).toBe(false);
+
+    const dismissed = dismissAccountShowcaseDiscovery(state, NOW + 2);
+    expect(dismissed.accountShowcase.firstDiscoveryPopupDismissed).toBe(true);
+  });
+
+  it("spends focus on boosted claims and applies bounds for success chance", () => {
+    const initial = makeReadyState("focus");
+    initial.focus.current = 100;
     const boosted = startExpedition(initial, "tollroad-of-trinkets", NOW);
     expect(boosted.ok).toBe(true);
     if (!boosted.ok) throw new Error("boosted start failed");
-    const boostedResolved = resolveExpedition(boosted.state, NOW + 60_000, { useVigorBoost: true });
+    const boostedResolved = resolveExpedition(boosted.state, NOW + 60_000, { useFocusBoost: true });
     expect(boostedResolved.ok).toBe(true);
     if (!boostedResolved.ok) throw new Error("boosted resolve failed");
-    expect(boostedResolved.state.vigor.current).toBe(100 - VIGOR_EXPEDITION_BOOST_COST);
-    expect(boostedResolved.summary.vigorBoostUsed).toBe(true);
+    expect(boostedResolved.state.focus.current).toBe(100 - FOCUS_EXPEDITION_BOOST_COST);
+    expect(boostedResolved.summary.focusBoostUsed).toBe(true);
 
     const easy = getSuccessChance(initial, DUNGEONS[0]);
     const hard = getSuccessChance(initial, DUNGEONS[DUNGEONS.length - 1]);
@@ -152,17 +332,21 @@ describe("expeditions, vigor, and loot", () => {
     expect(hard).toBeLessThanOrEqual(0.96);
   });
 
-  it("regenerates vigor to cap and doubles selected expedition rewards", () => {
-    const regen = makeReadyState("vigor-regen");
-    regen.vigor.current = regen.vigor.max - 2;
-    regen.vigor.lastTickAt = NOW;
-    const gained = regenerateVigor(regen, NOW + VIGOR_REGEN_INTERVAL_MS * 10);
-    expect(gained.gained).toBe(2);
-    expect(regen.vigor.current).toBe(regen.vigor.max);
+  it("regenerates focus to cap and doubles selected expedition rewards", () => {
+    expect(FOCUS_REGEN_INTERVAL_MS).toBe(15 * 60 * 1000);
+    const regen = makeReadyState("focus-regen");
+    regen.focus.current = regen.focus.cap - 2;
+    regen.focus.lastRegenAt = NOW;
+    const oneTick = regenerateFocus(regen, NOW + FOCUS_REGEN_INTERVAL_MS);
+    expect(oneTick.gained).toBe(1);
+    expect(regen.focus.current).toBe(regen.focus.cap - 1);
+    const gained = regenerateFocus(regen, NOW + FOCUS_REGEN_INTERVAL_MS * 10);
+    expect(gained.gained).toBe(1);
+    expect(regen.focus.current).toBe(regen.focus.cap);
 
-    const normalState = makeReadyState("vigor-reward");
-    const boostedState = makeReadyState("vigor-reward");
-    boostedState.vigor.current = 100;
+    const normalState = makeReadyState("focus-reward");
+    const boostedState = makeReadyState("focus-reward");
+    boostedState.focus.current = 100;
     const normalStarted = startExpedition(normalState, "tollroad-of-trinkets", NOW);
     const boostedStarted = startExpedition(boostedState, "tollroad-of-trinkets", NOW);
     expect(normalStarted.ok).toBe(true);
@@ -170,13 +354,16 @@ describe("expeditions, vigor, and loot", () => {
     if (!normalStarted.ok || !boostedStarted.ok) throw new Error("start failed");
 
     const normalResolved = resolveExpedition(normalStarted.state, NOW + 60_000);
-    const boostedResolved = resolveExpedition(boostedStarted.state, NOW + 60_000, { useVigorBoost: true });
+    const boostedResolved = resolveExpedition(boostedStarted.state, NOW + 60_000, { useFocusBoost: true });
     expect(normalResolved.ok).toBe(true);
     expect(boostedResolved.ok).toBe(true);
     if (!normalResolved.ok || !boostedResolved.ok) throw new Error("resolve failed");
-    expect(boostedResolved.summary.vigorBoostUsed).toBe(true);
+    expect(boostedResolved.summary.focusBoostUsed).toBe(true);
     expect(boostedResolved.summary.rewards.xp).toBe(normalResolved.summary.rewards.xp * 2);
     expect(boostedResolved.summary.rewards.gold).toBe(normalResolved.summary.rewards.gold * 2);
+    expect(boostedResolved.summary.progress.masteryXpGained).toBe(normalResolved.summary.progress.masteryXpGained);
+    expect(boostedResolved.summary.progress.accountXpGained).toBe(normalResolved.summary.progress.accountXpGained);
+    expect(boostedResolved.summary.progress.regionalMaterials).toEqual(normalResolved.summary.progress.regionalMaterials);
   });
 
   it("keeps first-session milestones fast, affordable, and goal-driven", () => {
@@ -193,7 +380,11 @@ describe("expeditions, vigor, and loot", () => {
 
     const first = completeFirstExpedition();
     const firstItem = first.state.inventory[0];
-    expect(getNextGoal(first.state)).toContain("Equip");
+    expect(getNextGoal(first.state)).toContain("Claim Mapped");
+    const firstClaim = claimMasteryTier(first.state, "tollroad-of-trinkets", NOW + 61_000);
+    expect(firstClaim.ok).toBe(true);
+    if (!firstClaim.ok) throw new Error("first-session mastery claim failed");
+    expect(getNextGoal(firstClaim.state)).toContain("Equip");
 
     const firstThree = DUNGEONS.slice(0, 3);
     const firstTwo = DUNGEONS.slice(0, 2);
@@ -331,7 +522,7 @@ describe("expeditions, vigor, and loot", () => {
     expect(AFFIX_POOL.some((affix) => affix.effects?.rareDropChance)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.bossRewardMultiplier)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.craftingDiscount)).toBe(true);
-    expect(AFFIX_POOL.some((affix) => affix.effects?.vigorBoostCostReduction)).toBe(true);
+    expect(AFFIX_POOL.some((affix) => affix.effects?.focusBoostCostReduction)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.materialResourceMultiplier?.ore)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.shortMissionSuccessChance)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.longMissionLootChance)).toBe(true);
@@ -344,7 +535,7 @@ describe("expeditions, vigor, and loot", () => {
     const baseLoot = getLootChance(state, longDungeon);
     const baseSuccess = getSuccessChance(state, DUNGEONS[0]);
     const baseCraftCost = getCraftCost(state);
-    const baseVigorCost = getVigorBoostCost(state);
+    const baseFocusCost = getFocusBoostCost(state);
 
     state.equipment.weapon = {
       id: "affix-test-weapon",
@@ -374,7 +565,7 @@ describe("expeditions, vigor, and loot", () => {
     expect(getLootChance(state, longDungeon)).toBeGreaterThan(baseLoot);
     expect(getSuccessChance(state, DUNGEONS[0])).toBeGreaterThan(baseSuccess);
     expect(getCraftCost(state).ore ?? 0).toBeLessThan(baseCraftCost.ore ?? 0);
-    expect(getVigorBoostCost(state)).toBeLessThan(baseVigorCost);
+    expect(getFocusBoostCost(state)).toBeLessThan(baseFocusCost);
   });
 });
 
@@ -515,60 +706,72 @@ describe("town, dailies, offline, and saves", () => {
     expect(boostedCrystal).toBeGreaterThan(baseCrystal);
   });
 
-  it("tracks and claims dailies once", () => {
-    const state = makeReadyState("daily");
-    const progressed = applyDailyProgress(state, NOW + 1, {
-      complete_expeditions: 10,
-      win_expeditions: 10,
-      defeat_boss: 10,
-      salvage_items: 10,
-      sell_items: 10,
-      craft_item: 10,
-      upgrade_building: 10,
-      spend_vigor: 100
-    }).state;
-    const claimable = progressed.dailies.tasks.find((task) => task.progress >= task.target);
-    expect(claimable).toBeDefined();
-    if (!claimable) throw new Error("no claimable daily");
+  it("banks and claims Daily Focus through expedition completions", () => {
+    const state = makeReadyState("daily-focus");
+    expect(state.dailyFocus.focusChargesBanked).toBe(1);
+    const progressed = applyDailyProgress(state, NOW + 1, { complete_expeditions: 3 }).state;
+    expect(progressed.dailyFocus.focusChargeProgress).toBe(3);
 
-    progressed.vigor.current = progressed.vigor.max - 1;
-    const claimed = claimDailyTask(progressed, claimable.id, NOW + 2);
+    progressed.focus.current = progressed.focus.cap - 5;
+    const claimed = claimDailyFocus(progressed, NOW + 2);
     expect(claimed.ok).toBe(true);
-    if (!claimed.ok) throw new Error("claim failed");
-    expect(claimed.state.vigor.current).toBe(claimed.state.vigor.max);
-    expect(claimed.state.dailies.weekly.progress).toBe(1);
-    const claimedAgain = claimDailyTask(claimed.state, claimable.id, NOW + 3);
-    expect(claimedAgain.ok).toBe(false);
+    if (!claimed.ok) throw new Error("daily focus claim failed");
+    expect(claimed.state.dailyFocus.focusChargesBanked).toBe(0);
+    expect(claimed.state.dailyFocus.focusChargeProgress).toBe(0);
+    expect(claimed.state.focus.current).toBe(claimed.state.focus.cap);
   });
 
-  it("tracks weekly contract milestones from daily claims", () => {
-    let state = makeReadyState("weekly-contracts");
-    state.dailies.weekly.progress = 2;
-    const progressed = applyDailyProgress(state, NOW + 1, {
-      complete_expeditions: 10,
-      win_expeditions: 10,
-      defeat_boss: 10,
-      salvage_items: 10,
-      sell_items: 10,
-      craft_item: 10,
-      upgrade_building: 10,
-      spend_vigor: 100
-    }).state;
+  it("unlocks Rank 2 Daily Missions with Account XP rewards and no Focus reward", () => {
+    let state = makeReadyState("daily-missions");
+    expect(state.dailies.tasks).toHaveLength(0);
+    applyAccountXp(state, 100, NOW + 1);
+    state = ensureDailies(state, NOW + 2).state;
+    expect(state.accountRank.accountRank).toBe(2);
+    expect(state.dailies.tasks).toHaveLength(3);
+    expect(state.dailies.tasks.some((task) => task.difficulty === "hard")).toBe(false);
+
+    const progressed = applyDailyProgress(
+      state,
+      NOW + 3,
+      {
+        win_expeditions: 4,
+        win_region_expeditions: 4,
+        gain_mastery_xp: 250,
+        claim_mastery_milestone: 1
+      },
+      { regionId: "sunlit-marches" }
+    ).state;
     const claimable = progressed.dailies.tasks.find((task) => task.progress >= task.target);
     expect(claimable).toBeDefined();
-    if (!claimable) throw new Error("no claimable contract");
+    if (!claimable) throw new Error("no claimable daily mission");
 
-    const claimedDaily = claimDailyTask(progressed, claimable.id, NOW + 2);
-    expect(claimedDaily.ok).toBe(true);
-    if (!claimedDaily.ok) throw new Error("daily contract claim failed");
-    expect(claimedDaily.state.dailies.weekly.progress).toBe(3);
+    const beforeFocus = progressed.focus.current;
+    const beforeAccountXp = progressed.accountRank.accountXp;
+    const claimed = claimDailyTask(progressed, claimable.id, NOW + 4);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("daily mission claim failed");
+    expect(claimed.state.focus.current).toBe(beforeFocus);
+    expect(claimed.state.accountRank.accountXp).toBeGreaterThan(beforeAccountXp);
+    expect(claimDailyTask(claimed.state, claimable.id, NOW + 5).ok).toBe(false);
+  });
 
-    const milestone = claimWeeklyContractMilestone(claimedDaily.state, 0, NOW + 3);
-    expect(milestone.ok).toBe(true);
-    if (!milestone.ok) throw new Error("weekly milestone claim failed");
-    expect(milestone.state.dailies.weekly.milestones[0].claimed).toBe(true);
-    const sameMilestone = claimWeeklyContractMilestone(milestone.state, 0, NOW + 4);
-    expect(sameMilestone.ok).toBe(false);
+  it("tracks and claims the day-one Weekly Quest fallback", () => {
+    const state = makeReadyState("weekly-quest");
+    const progressed = applyDailyProgress(state, NOW + 1, {
+      complete_expeditions: 15,
+      claim_mastery_milestone: 1
+    }).state;
+    expect(progressed.weeklyQuest.steps.map((step) => step.progress)).toEqual([15, 1]);
+
+    const beforeAccountXp = progressed.accountRank.accountXp;
+    const beforeTimber = progressed.regionProgress.materials.sunlitTimber;
+    const claimed = claimWeeklyQuest(progressed, NOW + 2);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("weekly quest claim failed");
+    expect(claimed.state.accountRank.accountXp).toBe(beforeAccountXp + 25);
+    expect(claimed.state.regionProgress.materials.sunlitTimber).toBe(beforeTimber + 10);
+    expect(claimed.state.titles["title-steady-regular"]?.unlockedAt).toBe(NOW + 2);
+    expect(claimWeeklyQuest(claimed.state, NOW + 3).ok).toBe(false);
   });
 
   it("resets dailies at the local daily reset boundary", () => {
@@ -578,16 +781,21 @@ describe("town, dailies, offline, and saves", () => {
     const expectedNextReset = new Date(2026, 0, 2, DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
     const state = createInitialState("boundary", beforeReset);
     state.settings.heroCreated = true;
+    applyAccountXp(state, 100, beforeReset);
     const seeded = ensureDailies(state, beforeReset).state;
-    const beforeKey = seeded.dailies.lastTaskSetKey;
+    seeded.dailies.tasks.forEach((task) => {
+      task.progress = task.target;
+      task.claimed = true;
+    });
     const after = ensureDailies(seeded, afterReset).state;
     expect(getDailyWindowStartAt(afterReset)).toBe(expectedWindowStart);
     expect(getNextDailyResetAt(afterReset)).toBe(expectedNextReset);
     expect(after.dailies.windowStartAt).toBe(expectedWindowStart);
-    expect(after.dailies.lastTaskSetKey).not.toBe(beforeKey);
+    expect(after.dailies.tasks).toHaveLength(3);
+    expect(after.dailies.tasks.every((task) => task.progress === 0 && !task.claimed)).toBe(true);
   });
 
-  it("resets weekly contracts at the weekly reset boundary", () => {
+  it("resets the Weekly Quest at the weekly reset boundary", () => {
     const beforeReset = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, -1, 0).getTime();
     const afterReset = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, 1, 0).getTime();
     const expectedWindowStart = new Date(2026, 0, 5, DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
@@ -595,20 +803,22 @@ describe("town, dailies, offline, and saves", () => {
     const state = createInitialState("weekly-boundary", beforeReset);
     state.settings.heroCreated = true;
     const seeded = ensureDailies(state, beforeReset).state;
-    seeded.dailies.weekly.progress = 9;
-    seeded.dailies.weekly.milestones[0].claimed = true;
+    seeded.weeklyQuest.steps[0].progress = 15;
+    seeded.weeklyQuest.steps[1].progress = 1;
+    seeded.weeklyQuest.questClaimed = true;
     const after = ensureDailies(seeded, afterReset).state;
     expect(getWeeklyWindowStartAt(afterReset)).toBe(expectedWindowStart);
     expect(getNextWeeklyResetAt(afterReset)).toBe(expectedNextReset);
-    expect(after.dailies.weekly.windowStartAt).toBe(expectedWindowStart);
-    expect(after.dailies.weekly.progress).toBe(0);
-    expect(after.dailies.weekly.milestones.some((milestone) => milestone.claimed)).toBe(false);
+    expect(after.weeklyQuest.weekStartAt).toBe(expectedWindowStart);
+    expect(after.weeklyQuest.nextResetAt).toBe(expectedNextReset);
+    expect(after.weeklyQuest.steps.map((step) => step.progress)).toEqual([0, 0]);
+    expect(after.weeklyQuest.questClaimed).toBe(false);
   });
 
-  it("applies offline expedition, vigor, and cap behavior", () => {
+  it("applies offline expedition, focus, and cap behavior", () => {
     const state = makeReadyState("offline");
     state.town.mine = 6;
-    state.vigor.current = 0;
+    state.focus.current = 0;
     const started = startExpedition(state, "tollroad-of-trinkets", NOW);
     expect(started.ok).toBe(true);
     if (!started.ok) throw new Error("start failed");
@@ -618,7 +828,7 @@ describe("town, dailies, offline, and saves", () => {
     expect(offline.summary?.expedition).toBeNull();
     expect(offline.summary?.expeditionReady).toBe(true);
     expect(offline.state.activeExpedition).not.toBeNull();
-    expect(offline.state.vigor.current).toBeGreaterThan(0);
+    expect(offline.state.focus.current).toBeGreaterThan(0);
     expect(offline.state.resources.ore).toBeGreaterThanOrEqual(0);
   });
 
@@ -704,6 +914,78 @@ describe("town, dailies, offline, and saves", () => {
     expect(importSave(raw, NOW + 2).ok).toBe(true);
     expect(importSave("{bad", NOW + 3).ok).toBe(false);
   });
+
+  it("normalizes legacy local saves into Focus and Phase 0 state", () => {
+    const legacyActionResourceField = ["vi", "gor"].join("");
+    const state = makeReadyState("legacy-save");
+    const started = startExpedition(state, "tollroad-of-trinkets", NOW);
+    expect(started.ok).toBe(true);
+    if (!started.ok) throw new Error("legacy expedition start failed");
+
+    const legacyState = structuredClone(started.state) as Record<string, unknown>;
+    legacyState[legacyActionResourceField] = { current: 77, max: 100, lastTickAt: NOW - FOCUS_REGEN_INTERVAL_MS };
+    delete legacyState.focus;
+
+    const activeExpedition = legacyState.activeExpedition as Record<string, unknown>;
+    activeExpedition[`${legacyActionResourceField}Boost`] = true;
+    delete activeExpedition.focusBoost;
+
+    const dailies = legacyState.dailies as { tasks: Array<Record<string, unknown>> };
+    dailies.tasks = [
+      {
+        id: "legacy-1",
+        kind: "complete_expeditions",
+        role: "primary",
+        label: "Complete 3 expeditions",
+        target: 3,
+        progress: 0,
+        claimed: false,
+        reward: { gold: 0, materials: {}, focus: 0 }
+      },
+      {
+        id: "legacy-2",
+        kind: "win_expeditions",
+        role: "secondary",
+        label: "Win 2 expeditions",
+        target: 2,
+        progress: 0,
+        claimed: false,
+        reward: { gold: 0, materials: {}, focus: 0 }
+      },
+      {
+        id: "legacy-3",
+        kind: "salvage_items",
+        role: "secondary",
+        label: "Salvage 3 items",
+        target: 3,
+        progress: 0,
+        claimed: false,
+        reward: { gold: 0, materials: {}, focus: 0 }
+      }
+    ];
+    dailies.tasks[0].kind = `spend_${legacyActionResourceField}`;
+    dailies.tasks[0].label = "Spend 20 Focus";
+    dailies.tasks[0].reward = { gold: 1, materials: {}, [legacyActionResourceField]: 9 };
+
+    const raw = JSON.stringify({
+      game: SAVE_GAME_NAME,
+      saveVersion: SAVE_VERSION,
+      exportedAt: NOW,
+      state: legacyState
+    });
+    const loaded = loadSave(raw);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) throw new Error("legacy save did not load");
+    expect(loaded.state.focus).toMatchObject({ current: 77, cap: FOCUS_MAX, lastRegenAt: NOW - FOCUS_REGEN_INTERVAL_MS });
+    expect(loaded.state.activeExpedition?.focusBoost).toBe(true);
+    expect(loaded.state.dailies.tasks[0].kind).toBe("spend_focus");
+    expect(loaded.state.dailies.tasks[0].reward.focus).toBe(9);
+    expect(loaded.state.accountRank.accountRank).toBe(1);
+    expect(loaded.state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(loaded.state.construction.activeBuildingId).toBeNull();
+    expect(loaded.state.titles["title-first-charter"]?.unlockedAt).toBe(NOW);
+    expect(loaded.state.soulMarks.current).toBe(loaded.state.resources.renown);
+  });
 });
 
 describe("reincarnation gate and pacing checks", () => {
@@ -718,6 +1000,94 @@ describe("reincarnation gate and pacing checks", () => {
     if (!result.ok) throw new Error("reincarnation failed");
     expect(result.state.hero.level).toBe(1);
     expect(result.state.resources.renown).toBeGreaterThanOrEqual(1);
+  });
+
+  it("resets the hero run while preserving account, region, mastery, town, construction, and Focus state", () => {
+    let state = makeReadyState("rebirth-persistence");
+    state.hero.level = REINCARNATION_LEVEL_REQUIREMENT;
+    state.hero.xp = 123;
+    state.resources.gold = 999;
+    state.resources.ore = 888;
+    state.focus.current = 123;
+    state.town = {
+      forge: 3,
+      mine: 2,
+      tavern: 4,
+      library: 1,
+      market: 5,
+      shrine: 2
+    };
+    state.construction = {
+      activeBuildingId: "forge",
+      startedAt: NOW - 10_000,
+      targetLevel: 4,
+      baseDurationMs: 120_000,
+      focusSpentMs: 0,
+      completedAt: null
+    };
+    state.dungeonMastery["tollroad-of-trinkets"] = { masteryXp: 450, claimedTiers: [1], failures: 2 };
+    state.accountRank = { accountXp: 75, accountRank: 2, claimedRankRewards: [1] };
+    state.regionProgress.materials.sunlitTimber = 12;
+    state.regionProgress.collections.sunlit = { foundPieceIds: ["sunlit-a"], missesSincePiece: 3, completedAt: null };
+    state.regionProgress.outposts["sunlit-marches"] = { selectedBonusId: "watchtower", level: 1 };
+    state.regionProgress.diaries["sunlit-marches"] = { completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"] };
+    state.accountShowcase.selectedTitleId = "sunlit-scout";
+    state.traitCodex["ward-bound"] = { traitId: "ward-bound", discovered: true, bestValueSeen: 1, timesFound: 2 };
+    state.familyCodex.sunlitCharter = { familyId: "sunlitCharter", discoveredSlots: ["weapon"], highestResonanceReached: 1 };
+    state.titles["title-first-charter"] = { unlockedAt: NOW, progress: 1, target: 1 };
+    state.trophies["first-rebirth-seal"] = { unlockedAt: NOW };
+    state.dungeonClears[REINCARNATION_GATE_BOSS_ID] = 1;
+    state.inventory.push({
+      id: "run-item",
+      name: "Run Item",
+      slot: "weapon",
+      rarity: "common",
+      itemLevel: 1,
+      upgradeLevel: 0,
+      stats: { power: 1 },
+      affixes: [],
+      sellValue: 1,
+      salvageValue: { ore: 1 },
+      sourceDungeonId: "tollroad-of-trinkets",
+      createdAtRunId: 1
+    });
+    state.equipment.weapon = state.inventory[0];
+    const caravan = startCaravanJob(state, "xp", 60 * 60 * 1000, NOW);
+    expect(caravan.ok).toBe(true);
+    if (!caravan.ok) throw new Error("caravan start failed");
+    state = caravan.state;
+
+    const result = performPrestige(state, NOW + 1);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("reincarnation failed");
+
+    expect(result.state.hero.level).toBe(1);
+    expect(result.state.hero.xp).toBe(0);
+    expect(result.state.resources.gold).toBe(0);
+    expect(result.state.resources.ore).toBe(0);
+    expect(result.state.inventory).toEqual([]);
+    expect(result.state.equipment.weapon).toBeNull();
+    expect(result.state.activeExpedition).toBeNull();
+    expect(result.state.dungeonClears).toEqual({});
+    expect(result.state.town).toEqual(state.town);
+    expect(result.state.construction).toEqual(state.construction);
+    expect(result.state.focus.current).toBe(123);
+    expect(result.state.caravan.activeJob).toEqual(state.caravan.activeJob);
+    expect(result.state.dungeonMastery["tollroad-of-trinkets"]).toEqual({ masteryXp: 450, claimedTiers: [1], failures: 2 });
+    expect(result.state.accountRank.accountXp).toBe(175);
+    expect(result.state.accountRank.accountRank).toBe(2);
+    expect(result.state.regionProgress.materials.sunlitTimber).toBe(12);
+    expect(result.state.regionProgress.collections.sunlit?.foundPieceIds).toEqual(["sunlit-a"]);
+    expect(result.state.regionProgress.outposts["sunlit-marches"]).toEqual({ selectedBonusId: "watchtower", level: 1 });
+    expect(result.state.regionProgress.diaries["sunlit-marches"]).toEqual({ completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"] });
+    expect(result.state.accountShowcase.selectedTitleId).toBe("sunlit-scout");
+    expect(result.state.traitCodex["ward-bound"]?.timesFound).toBe(2);
+    expect(result.state.familyCodex.sunlitCharter?.highestResonanceReached).toBe(1);
+    expect(result.state.titles["title-first-charter"]?.unlockedAt).toBe(NOW);
+    expect(result.state.trophies["first-rebirth-seal"]?.unlockedAt).toBe(NOW);
+    expect(result.state.rebirth.totalRebirths).toBe(1);
+    expect(result.state.soulMarks.current).toBe(result.state.resources.renown);
+    expect(result.state.soulMarks.lifetimeEarned).toBe(result.state.prestige.renownEarned);
   });
 
   it("describes permanent upgrades with clear current and next-run effects", () => {

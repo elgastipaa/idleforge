@@ -10,6 +10,12 @@ export type GameMode = "standard" | "debug";
 
 export type MaterialId = "ore" | "crystal" | "rune" | "relicFragment";
 
+export type RegionMaterialId = "sunlitTimber" | "emberResin" | "archiveGlyph" | "stormglassShard" | "oathEmber";
+
+export type ExpeditionThreatId = "armored" | "cursed" | "venom" | "elusive" | "regenerating" | "brutal";
+
+export type ItemFamilyId = "sunlitCharter" | "emberboundKit" | "azureLedger" | "stormglassSurvey" | "firstForgeOath";
+
 export type Stats = {
   power: number;
   defense: number;
@@ -60,7 +66,7 @@ export type AffixEffects = {
   shortMissionSuccessChance?: number;
   longMissionLootChance?: number;
   craftingDiscount?: number;
-  vigorBoostCostReduction?: number;
+  focusBoostCostReduction?: number;
   sellMultiplier?: number;
   salvageMultiplier?: number;
   runeMultiplier?: number;
@@ -153,7 +159,7 @@ export type ActiveExpedition = {
   runId: number;
   startedAt: number;
   endsAt: number;
-  vigorBoost: boolean;
+  focusBoost: boolean;
 };
 
 export type AchievementState = {
@@ -179,10 +185,194 @@ export type PrestigeState = {
   upgrades: RenownUpgrades;
 };
 
-export type VigorState = {
+export type FocusState = {
   current: number;
-  max: number;
-  lastTickAt: number;
+  cap: number;
+  lastRegenAt: number;
+};
+
+export type DungeonMasteryState = {
+  masteryXp: number;
+  claimedTiers: number[];
+  failures: number;
+};
+
+export type MasteryTierNumber = 1 | 2 | 3;
+
+export type MasteryTierDefinition = {
+  tier: MasteryTierNumber;
+  xp: number;
+  label: string;
+};
+
+export type AccountRankState = {
+  accountXp: number;
+  accountRank: number;
+  claimedRankRewards: number[];
+};
+
+export type AccountRankDefinition = {
+  rank: number;
+  xp: number;
+  focusCap: number;
+  label: string;
+};
+
+export type RebirthState = {
+  totalRebirths: number;
+  lastRebirthAt: number | null;
+  classChangesUsedFreeSlot: boolean;
+};
+
+export type SoulMarksState = {
+  current: number;
+  lifetimeEarned: number;
+  upgradesClaimed: RenownUpgrades;
+  discovered: boolean;
+};
+
+export type AccountShowcaseState = {
+  selectedTitleId: string | null;
+  pinnedTrophyIds: string[];
+  favoriteRegionId: string | null;
+  featuredBossId: string | null;
+  featuredFamilyId: ItemFamilyId | null;
+  accountSignatureMode: "auto" | "manual";
+  firstDiscoveryPopupShown: boolean;
+  firstDiscoveryPopupDismissed: boolean;
+};
+
+export type AccountPersonalRecords = {
+  lifetimeExpeditionsCompleted: number;
+  lifetimeBossesDefeated: number;
+  highestPowerReached: number;
+  highestAccountRankReached: number;
+  totalRebirths: number;
+  totalMasteryTiersClaimed: number;
+  totalCollectionsCompleted: number;
+  legendaryTraitsDiscovered: number;
+};
+
+export type TitleState = {
+  unlockedAt: number | null;
+  progress: number;
+  target: number;
+};
+
+export type TitleDefinition = {
+  id: string;
+  name: string;
+  unlockCondition: string;
+  target: number;
+  showcasePriority: number;
+  phase: number;
+};
+
+export type DailyFocusState = {
+  date: string;
+  focusChargesBanked: number;
+  focusChargeProgress: number;
+};
+
+export type WeeklyQuestStepKind = "clear_expeditions" | "claim_mastery_milestone" | "collection_eligible_runs" | "attempt_boss";
+
+export type WeeklyQuestStepState = {
+  kind: WeeklyQuestStepKind;
+  label: string;
+  target: number;
+  progress: number;
+};
+
+export type WeeklyQuestReward = {
+  accountXp: number;
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+  fragments: number;
+  titleId?: string;
+  trophyId?: string;
+};
+
+export type WeeklyQuestState = {
+  weekStartDate: string;
+  weekStartAt: number;
+  nextResetAt: number;
+  questId: string;
+  title: string;
+  steps: WeeklyQuestStepState[];
+  reward: WeeklyQuestReward;
+  questProgress: number;
+  questClaimed: boolean;
+  recapSeen: boolean;
+};
+
+export type RegionCollectionState = {
+  foundPieceIds: string[];
+  missesSincePiece: number;
+  completedAt: number | null;
+};
+
+export type RegionOutpostState = {
+  selectedBonusId: string | null;
+  level: number;
+};
+
+export type RegionDiaryState = {
+  completedTaskIds: string[];
+  claimedRewardIds: string[];
+};
+
+export type RegionProgressState = {
+  activeMaterialIds: RegionMaterialId[];
+  materials: Record<RegionMaterialId, number>;
+  collections: Record<string, RegionCollectionState>;
+  outposts: Record<string, RegionOutpostState>;
+  diaries: Record<string, RegionDiaryState>;
+};
+
+export type BossPrepState = {
+  revealedThreats: ExpeditionThreatId[];
+  prepCharges: Partial<Record<ExpeditionThreatId, number>>;
+  attempts: number;
+  intel: number;
+};
+
+export type ConstructionState = {
+  activeBuildingId: BuildingId | null;
+  startedAt: number | null;
+  targetLevel: number | null;
+  baseDurationMs: number;
+  focusSpentMs: number;
+  completedAt: number | null;
+};
+
+export type ClassChangeState = {
+  freeChangeUsed: boolean;
+  lastChangedAt: number | null;
+};
+
+export type TraitDiscoveryState = {
+  traitId: string;
+  discovered: boolean;
+  bestValueSeen: number;
+  timesFound: number;
+};
+
+export type FamilyDiscoveryState = {
+  familyId: ItemFamilyId;
+  discoveredSlots: EquipmentSlot[];
+  highestResonanceReached: 0 | 1 | 2;
+};
+
+export type TrophyState = {
+  unlockedAt: number | null;
+};
+
+export type TrophyDefinition = {
+  id: string;
+  name: string;
+  unlockCondition: string;
+  target: number;
+  showcasePriority: number;
+  phase: number;
 };
 
 export type CaravanFocusId = "xp" | "gold" | "ore" | "crystal" | "rune";
@@ -217,27 +407,41 @@ export type DailyTaskKind =
   | "defeat_boss"
   | "salvage_items"
   | "sell_items"
+  | "equip_item"
   | "craft_item"
   | "upgrade_building"
-  | "spend_vigor";
+  | "spend_focus"
+  | "gain_mastery_xp"
+  | "win_region_expeditions"
+  | "claim_mastery_milestone"
+  | "collection_eligible_runs"
+  | "advance_collection_pity"
+  | "attempt_boss"
+  | "complete_caravan";
 
 export type DailyReward = {
   gold: number;
   materials: Partial<MaterialBundle>;
-  vigor: number;
+  focus: number;
+  accountXp: number;
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+  fragments: number;
 };
 
 export type DailyTaskRole = "primary" | "secondary";
+export type DailyMissionDifficulty = "easy" | "medium" | "hard";
 
 export type DailyTaskState = {
   id: string;
   kind: DailyTaskKind;
   role: DailyTaskRole;
+  difficulty: DailyMissionDifficulty;
   label: string;
   target: number;
   progress: number;
   claimed: boolean;
   reward: DailyReward;
+  regionId?: string;
 };
 
 export type WeeklyContractMilestone = {
@@ -294,7 +498,7 @@ export type GameState = {
   nextRunId: number;
   hero: HeroState;
   resources: ResourceState;
-  vigor: VigorState;
+  focus: FocusState;
   inventory: Item[];
   equipment: EquipmentState;
   loot: LootState;
@@ -305,6 +509,23 @@ export type GameState = {
   dailies: DailyState;
   achievements: Record<string, AchievementState>;
   prestige: PrestigeState;
+  dungeonMastery: Record<string, DungeonMasteryState>;
+  accountRank: AccountRankState;
+  rebirth: RebirthState;
+  soulMarks: SoulMarksState;
+  accountShowcase: AccountShowcaseState;
+  accountPersonalRecords: AccountPersonalRecords;
+  dailyFocus: DailyFocusState;
+  weeklyQuest: WeeklyQuestState;
+  eventProgress: Record<string, unknown>;
+  regionProgress: RegionProgressState;
+  bossPrep: Record<string, BossPrepState>;
+  construction: ConstructionState;
+  classChange: ClassChangeState;
+  traitCodex: Record<string, TraitDiscoveryState>;
+  familyCodex: Record<string, FamilyDiscoveryState>;
+  titles: Record<string, TitleState>;
+  trophies: Record<string, TrophyState>;
   lifetime: LifetimeStats;
   settings: SettingsState;
 };
@@ -317,6 +538,49 @@ export type RewardSummary = {
   xp: number;
   gold: number;
   materials: Partial<MaterialBundle>;
+};
+
+export type MasteryTierProgressSummary = {
+  tier: MasteryTierNumber;
+  label: string;
+  xpRequired: number;
+  claimable: boolean;
+};
+
+export type AccountRankProgressSummary = {
+  rank: number;
+  xpRequired: number;
+};
+
+export type ExpeditionProgressSummary = {
+  masteryXpGained: number;
+  masteryXpBefore: number;
+  masteryXpAfter: number;
+  nextMasteryTier: MasteryTierProgressSummary | null;
+  newlyClaimableMasteryTiers: MasteryTierProgressSummary[];
+  accountXpGained: number;
+  accountXpBefore: number;
+  accountXpAfter: number;
+  accountRankBefore: number;
+  accountRankAfter: number;
+  nextAccountRank: AccountRankProgressSummary | null;
+  rankUps: number[];
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+  titlesUnlocked: TitleDefinition[];
+  trophiesUnlocked: TrophyDefinition[];
+};
+
+export type ClaimMasteryTierSummary = {
+  dungeonId: string;
+  tier: MasteryTierDefinition;
+  accountXpGained: number;
+  accountRankBefore: number;
+  accountRankAfter: number;
+  rankUps: number[];
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+  relicFragmentsGained: number;
+  titlesUnlocked: TitleDefinition[];
+  trophiesUnlocked: TrophyDefinition[];
 };
 
 export type ItemComparisonSummary = {
@@ -337,7 +601,8 @@ export type ResolveSummary = {
   item: Item | null;
   autoSalvagedItem: Item | null;
   itemComparison: ItemComparisonSummary | null;
-  vigorBoostUsed: boolean;
+  progress: ExpeditionProgressSummary;
+  focusBoostUsed: boolean;
   levelUps: number[];
   bossClear: boolean;
   bossFirstClear: boolean;
@@ -359,7 +624,7 @@ export type OfflineDeltaSummary = {
     levelUps: number[];
   } | null;
   mineGains: Partial<MaterialBundle>;
-  vigorGained: number;
+  focusGained: number;
   dailyReset: boolean;
   elapsedMs: number;
 };
@@ -374,8 +639,12 @@ export type ActionResult<T = GameState> =
   | { ok: true; state: T; message?: string }
   | { ok: false; state: GameState; error: string };
 
+export type ClaimMasteryTierResult =
+  | { ok: true; state: GameState; summary: ClaimMasteryTierSummary; message: string }
+  | { ok: false; state: GameState; error: string };
+
 export type ResolveExpeditionOptions = {
-  useVigorBoost?: boolean;
+  useFocusBoost?: boolean;
 };
 
 export type ResolveResult =

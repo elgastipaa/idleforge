@@ -6,7 +6,7 @@ import { applyDailyProgress, ensureDailies } from "./dailies";
 import { getRuneGainPassiveMultiplier } from "./heroes";
 import { cloneState } from "./state";
 import type { ActionResult, EquipmentSlot, GameState, Item, MaterialBundle } from "./types";
-import { regenerateVigor } from "./vigor";
+import { regenerateFocus } from "./focus";
 
 function findInventoryItem(state: GameState, itemId: string): { item: Item; index: number } | null {
   const index = state.inventory.findIndex((item) => item.id === itemId);
@@ -36,7 +36,7 @@ export function equipItem(state: GameState, itemId: string, now: number): Action
   }
 
   const next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const beforePower = getDerivedStats(working).powerScore;
@@ -50,7 +50,10 @@ export function equipItem(state: GameState, itemId: string, now: number): Action
   const afterPower = getDerivedStats(working).powerScore;
   const powerDelta = afterPower - beforePower;
   const powerText = powerDelta === 0 ? " Power unchanged." : ` Power ${powerDelta > 0 ? "+" : ""}${powerDelta}.`;
-  const achievements = refreshAchievements(working, now);
+  const progressed = applyDailyProgress(working, now, { equip_item: 1 });
+  const progressedState = progressed.state;
+  progressedState.updatedAt = now;
+  const achievements = refreshAchievements(progressedState, now);
   return { ok: true, state: achievements.state, message: `${item.name} equipped.${powerText}` };
 }
 
@@ -61,7 +64,7 @@ export function sellItem(state: GameState, itemId: string, now: number): ActionR
   }
 
   const next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const [item] = working.inventory.splice(found.index, 1);
@@ -83,7 +86,7 @@ export function salvageItem(state: GameState, itemId: string, now: number): Acti
   }
 
   const next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const [item] = working.inventory.splice(found.index, 1);

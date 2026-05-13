@@ -1,12 +1,12 @@
 import { INVENTORY_LIMIT } from "./constants";
-import { VIGOR_EXPEDITION_BOOST_MULTIPLIER } from "./constants";
+import { FOCUS_EXPEDITION_BOOST_MULTIPLIER } from "./constants";
 import {
   getBossRewardAffixMultiplier,
   getFailureRewardAffixBonus,
   getItemAffixEffectScore,
   getRuneAffixMultiplier,
   getSalvageAffixMultiplier,
-  getVigorBoostCost
+  getFocusBoostCost
 } from "./affixes";
 import { DUNGEONS, ZONES } from "./content";
 import { refreshAchievements } from "./achievements";
@@ -28,10 +28,11 @@ import { isDungeonUnlocked } from "./expeditions";
 import { addXp } from "./heroes";
 import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getRuneGainPassiveMultiplier } from "./heroes";
 import { inventoryHasSpace, maybeGenerateLoot, recordLootDrop, recordLootMiss } from "./loot";
+import { applyExpeditionProgress, unlockTitle } from "./progression";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
 import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveExpeditionOptions, ResolveResult, RewardSummary } from "./types";
-import { regenerateVigor } from "./vigor";
+import { regenerateFocus } from "./focus";
 
 export function startExpedition(state: GameState, dungeonId: string, now: number): ActionResult {
   const dungeon = DUNGEONS.find((entry) => entry.id === dungeonId);
@@ -56,7 +57,7 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
   }
 
   let next = cloneState(state);
-  regenerateVigor(next, now);
+  regenerateFocus(next, now);
   next = ensureDailies(next, now).state;
 
   const runId = next.nextRunId;
@@ -66,9 +67,12 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
     runId,
     startedAt: now,
     endsAt: now + getDurationMs(next, dungeon),
-    vigorBoost: false
+    focusBoost: false
   };
   next.lifetime.expeditionsStarted += 1;
+  if (state.lifetime.expeditionsStarted === 0) {
+    unlockTitle(next, "title-first-charter", now);
+  }
   next.updatedAt = now;
   const achievements = refreshAchievements(next, now);
   return { ok: true, state: achievements.state, message: `${dungeon.name} expedition started.` };
@@ -78,16 +82,16 @@ export function canResolveExpedition(state: GameState, now: number): boolean {
   return Boolean(state.activeExpedition && now >= state.activeExpedition.endsAt);
 }
 
-function calculateRewards(state: GameState, success: boolean, dungeonId: string, vigorBoostUsed: boolean): RewardSummary {
+function calculateRewards(state: GameState, success: boolean, dungeonId: string, focusBoostUsed: boolean): RewardSummary {
   const dungeon = getDungeon(dungeonId);
-  const vigorMultiplier = vigorBoostUsed ? VIGOR_EXPEDITION_BOOST_MULTIPLIER : 1;
+  const focusMultiplier = focusBoostUsed ? FOCUS_EXPEDITION_BOOST_MULTIPLIER : 1;
   const baseFailureScale = 0.35;
   const failureScale = clamp(baseFailureScale + getFailureRewardScaleBonus(state) + getFailureRewardAffixBonus(state), baseFailureScale, 0.75);
   const successScale = success ? 1 : failureScale;
-  const xpMultiplier = getXpMultiplier(state) * vigorMultiplier;
+  const xpMultiplier = getXpMultiplier(state) * focusMultiplier;
   const bossXpMultiplier = success && dungeon.boss ? getBossXpPassiveMultiplier(state) : 1;
-  const goldMultiplier = getGoldMultiplier(state, dungeon) * vigorMultiplier;
-  const materialsMultiplier = getMaterialMultiplier(state) * vigorMultiplier;
+  const goldMultiplier = getGoldMultiplier(state, dungeon) * focusMultiplier;
+  const materialsMultiplier = getMaterialMultiplier(state) * focusMultiplier;
   const bossRewardMultiplier = success && dungeon.boss ? getBossRewardAffixMultiplier(state) : 1;
   const scaledMaterials = success
     ? scaleMaterials(dungeon.materials, materialsMultiplier * bossRewardMultiplier, getEquippedMaterialResourceMultipliers(state))
@@ -164,7 +168,7 @@ function summarizeItemComparison(state: GameState, item: Item | null): ItemCompa
 
 export function resolveExpedition(state: GameState, now: number, options: ResolveExpeditionOptions = {}): ResolveResult {
   let prepared = cloneState(state);
-  regenerateVigor(prepared, now);
+  regenerateFocus(prepared, now);
   prepared = ensureDailies(prepared, now).state;
 
   if (!prepared.activeExpedition) {
@@ -176,23 +180,24 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
   }
 
   const active = prepared.activeExpedition;
-  const useVigorBoost = Boolean(options.useVigorBoost);
-  const vigorBoostCost = getVigorBoostCost(prepared);
-  if (useVigorBoost && prepared.vigor.current < vigorBoostCost) {
-    return { ok: false, state: prepared, error: "Not enough Vigor for a boost." };
+  const useFocusBoost = Boolean(options.useFocusBoost);
+  const focusBoostCost = getFocusBoostCost(prepared);
+  if (useFocusBoost && prepared.focus.current < focusBoostCost) {
+    return { ok: false, state: prepared, error: "Not enough Focus for a boost." };
   }
   const dungeon = getDungeon(active.dungeonId);
   const rng = createRng(`${prepared.seed}:${active.dungeonId}:${active.runId}`);
   const successChance = getSuccessChance(prepared, dungeon);
   const success = rng.next() <= successChance;
-  const rewards = calculateRewards(prepared, success, active.dungeonId, useVigorBoost);
+  const rewards = calculateRewards(prepared, success, active.dungeonId, useFocusBoost);
   const bossFirstClear = success && dungeon.boss && (prepared.dungeonClears[dungeon.id] ?? 0) === 0;
+  const firstClear = success && (prepared.dungeonClears[dungeon.id] ?? 0) === 0;
   let next = cloneState(prepared);
   let item = null;
   let autoSalvagedItem = null;
 
-  if (useVigorBoost) {
-    next.vigor.current -= vigorBoostCost;
+  if (useFocusBoost) {
+    next.focus.current -= focusBoostCost;
   }
 
   next.activeExpedition = null;
@@ -201,12 +206,17 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
   addMaterials(next, rewards.materials);
 
   const { levelUps } = addXp(next, rewards.xp);
+  const progress = applyExpeditionProgress(next, dungeon, success, firstClear, now);
 
   if (success) {
     next.dungeonClears[dungeon.id] = (next.dungeonClears[dungeon.id] ?? 0) + 1;
     next.lifetime.expeditionsSucceeded += 1;
     if (dungeon.boss) {
       next.lifetime.bossesDefeated += 1;
+      next.accountPersonalRecords.lifetimeBossesDefeated = Math.max(
+        next.accountPersonalRecords.lifetimeBossesDefeated,
+        next.lifetime.bossesDefeated
+      );
     }
     if (dungeon.id === "crown-of-the-first-forge") {
       next.lifetime.finalBossClears += 1;
@@ -236,14 +246,20 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
   if (powerScore > next.lifetime.highestPowerScore) {
     next.lifetime.highestPowerScore = powerScore;
   }
+  if (powerScore > next.accountPersonalRecords.highestPowerReached) {
+    next.accountPersonalRecords.highestPowerReached = powerScore;
+  }
 
   next.updatedAt = now;
   const dailyProgress = applyDailyProgress(next, now, {
     complete_expeditions: 1,
     win_expeditions: success ? 1 : 0,
+    win_region_expeditions: success ? 1 : 0,
     defeat_boss: success && dungeon.boss ? 1 : 0,
-    spend_vigor: useVigorBoost ? vigorBoostCost : 0
-  });
+    attempt_boss: dungeon.boss ? 1 : 0,
+    spend_focus: useFocusBoost ? focusBoostCost : 0,
+    gain_mastery_xp: progress.masteryXpGained
+  }, { regionId: dungeon.zoneId });
   next = dailyProgress.state;
   const achievementResult = refreshAchievements(next, now);
   next = achievementResult.state;
@@ -264,7 +280,8 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
       item,
       autoSalvagedItem,
       itemComparison: summarizeItemComparison(prepared, item),
-      vigorBoostUsed: useVigorBoost,
+      progress,
+      focusBoostUsed: useFocusBoost,
       levelUps,
       bossClear: success && dungeon.boss,
       bossFirstClear,
