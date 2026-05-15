@@ -48,7 +48,7 @@ function makeItem({ id, name, slot, rarity, itemLevel, upgradeLevel, stats, affi
     stats,
     affixes,
     sellValue: 240 + itemLevel * 18,
-    salvageValue: { ore: 18 + itemLevel, crystal: rarity === "common" ? 0 : 4, rune: rarity === "legendary" ? 2 : 0, relicFragment: rarity === "legendary" ? 3 : 0 },
+    salvageValue: { fragments: 18 + itemLevel + (rarity === "common" ? 0 : 8) + (rarity === "legendary" ? 32 : 0) },
     sourceDungeonId: "copper-crown-champion",
     createdAtRunId: 4
   };
@@ -78,7 +78,7 @@ function makeScenarioSave(now) {
       affixes: [
         { id: "emberheart", name: "Emberheart", stats: { power: 5, luck: 4 }, description: "+Power, +Luck, +8% Gold in Emberwood" },
         { id: "crown-hunger", name: "Crown Hunger", stats: { power: 4 }, description: "+10% boss rewards" },
-        { id: "deep-breath", name: "Deep Breath", stats: { stamina: 18 }, description: "-12% Vigor boost cost" }
+        { id: "deep-breath", name: "Deep Breath", stats: { stamina: 18 }, description: "-12% Focus boost cost" }
       ]
     }),
     makeItem({
@@ -131,11 +131,11 @@ function makeScenarioSave(now) {
         xp: 1420,
         baseStats: { power: 43, defense: 42, speed: 15, luck: 14, stamina: 247 }
       },
-      resources: { gold: 1250000, ore: 98765, crystal: 4321, rune: 222, relicFragment: 150, renown: 18 },
-      vigor: { current: 37, max: 40, lastTickAt: now },
+      resources: { gold: 1250000, fragments: 98765, renown: 18 },
+      focus: { current: 37, cap: 200, lastRegenAt: now },
       inventory,
       equipment: { weapon: equippedWeapon, helm: null, armor: null, boots: null, relic: null },
-      activeExpedition: { dungeonId: "tollroad-of-trinkets", runId: 5, startedAt: now - 20000, endsAt: now + 1000, vigorBoost: true },
+      activeExpedition: { dungeonId: "tollroad-of-trinkets", runId: 5, startedAt: now - 20000, endsAt: now + 1000, focusBoost: true },
       dungeonClears: {
         "tollroad-of-trinkets": 3,
         "mossbright-cellar": 2,
@@ -150,9 +150,9 @@ function makeScenarioSave(now) {
         nextResetAt: now + 3600000,
         lastTaskSetKey: "visual-qa",
         tasks: [
-          { id: "qa-daily-1", kind: "complete_expeditions", label: "Complete expeditions", target: 3, progress: 3, claimed: false, reward: { gold: 250, materials: { ore: 20 }, vigor: 2 } },
-          { id: "qa-daily-2", kind: "salvage_items", label: "Salvage items", target: 2, progress: 1, claimed: false, reward: { gold: 150, materials: { crystal: 4 }, vigor: 1 } },
-          { id: "qa-daily-3", kind: "upgrade_building", label: "Upgrade a building", target: 1, progress: 1, claimed: true, reward: { gold: 200, materials: {}, vigor: 1 } }
+          { id: "qa-daily-1", kind: "complete_expeditions", label: "Complete expeditions", target: 3, progress: 3, claimed: false, reward: { gold: 250, materials: { fragments: 20 }, focus: 2, accountXp: 0, regionalMaterials: {}, fragments: 0 } },
+          { id: "qa-daily-2", kind: "salvage_items", label: "Salvage items", target: 2, progress: 1, claimed: false, reward: { gold: 150, materials: { fragments: 8 }, focus: 1, accountXp: 0, regionalMaterials: {}, fragments: 0 } },
+          { id: "qa-daily-3", kind: "upgrade_building", label: "Upgrade a building", target: 1, progress: 1, claimed: true, reward: { gold: 200, materials: {}, focus: 1, accountXp: 0, regionalMaterials: {}, fragments: 0 } }
         ]
       },
       achievements: {},

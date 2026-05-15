@@ -35,10 +35,7 @@ export const EMPTY_STATS: Stats = {
 
 export const EMPTY_RESOURCES: ResourceState = {
   gold: 0,
-  ore: 0,
-  crystal: 0,
-  rune: 0,
-  relicFragment: 0,
+  fragments: 0,
   renown: 0
 };
 

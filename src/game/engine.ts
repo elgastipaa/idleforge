@@ -3,8 +3,8 @@ import { FOCUS_EXPEDITION_BOOST_MULTIPLIER } from "./constants";
 import {
   getBossRewardAffixMultiplier,
   getFailureRewardAffixBonus,
+  getFragmentsAffixMultiplier,
   getItemAffixEffectScore,
-  getRuneAffixMultiplier,
   getSalvageAffixMultiplier,
   getFocusBoostCost
 } from "./affixes";
@@ -26,9 +26,11 @@ import {
 import { applyDailyProgress, ensureDailies } from "./dailies";
 import { isDungeonUnlocked } from "./expeditions";
 import { addXp } from "./heroes";
-import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getRuneGainPassiveMultiplier } from "./heroes";
+import { getBossXpPassiveMultiplier, getFailureRewardScaleBonus, getFragmentGainPassiveMultiplier } from "./heroes";
 import { inventoryHasSpace, maybeGenerateLoot, recordLootDrop, recordLootMiss } from "./loot";
-import { applyExpeditionProgress, unlockTitle } from "./progression";
+import { applyExpeditionProgress, getNextAccountRankDefinition, unlockTitle } from "./progression";
+import { applyCollectionProgress } from "./collections";
+import { consumeBossPrepForAttempt, recordBossAttemptResult } from "./bosses";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
 import type { ActionResult, DungeonDefinition, GameState, Item, ItemComparisonSummary, ResolveExpeditionOptions, ResolveResult, RewardSummary } from "./types";
@@ -62,12 +64,14 @@ export function startExpedition(state: GameState, dungeonId: string, now: number
 
   const runId = next.nextRunId;
   next.nextRunId += 1;
+  const bossPrepCoverage = consumeBossPrepForAttempt(next, dungeon);
   next.activeExpedition = {
     dungeonId,
     runId,
     startedAt: now,
     endsAt: now + getDurationMs(next, dungeon),
-    focusBoost: false
+    focusBoost: false,
+    bossPrepCoverage
   };
   next.lifetime.expeditionsStarted += 1;
   if (state.lifetime.expeditionsStarted === 0) {
@@ -96,7 +100,7 @@ function calculateRewards(state: GameState, success: boolean, dungeonId: string,
   const scaledMaterials = success
     ? scaleMaterials(dungeon.materials, materialsMultiplier * bossRewardMultiplier, getEquippedMaterialResourceMultipliers(state))
     : {
-        ore: Math.max(1, Math.floor((dungeon.materials.ore ?? 0) * 0.25))
+        fragments: Math.max(1, Math.floor((dungeon.materials.fragments ?? 0) * 0.25))
       };
 
   return {
@@ -107,20 +111,14 @@ function calculateRewards(state: GameState, success: boolean, dungeonId: string,
 }
 
 function addMaterials(state: GameState, materials: RewardSummary["materials"]) {
-  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
-  state.resources.ore += materials.ore ?? 0;
-  state.resources.crystal += materials.crystal ?? 0;
-  state.resources.rune += Math.floor((materials.rune ?? 0) * runeMultiplier);
-  state.resources.relicFragment += materials.relicFragment ?? 0;
+  const fragmentsMultiplier = getFragmentGainPassiveMultiplier(state) * getFragmentsAffixMultiplier(state);
+  state.resources.fragments += Math.floor((materials.fragments ?? 0) * fragmentsMultiplier);
 }
 
 function addSalvagedItemResources(state: GameState, item: Item) {
   const salvageMultiplier = getSalvageAffixMultiplier(state);
-  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
-  state.resources.ore += Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier);
-  state.resources.crystal += Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier);
-  state.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier);
-  state.resources.relicFragment += Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier);
+  const fragmentsMultiplier = getFragmentGainPassiveMultiplier(state) * getFragmentsAffixMultiplier(state);
+  state.resources.fragments += Math.floor((item.salvageValue.fragments ?? 0) * salvageMultiplier * fragmentsMultiplier);
 }
 
 function getUnlockedDungeonIds(state: GameState): Set<string> {
@@ -187,7 +185,7 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
   }
   const dungeon = getDungeon(active.dungeonId);
   const rng = createRng(`${prepared.seed}:${active.dungeonId}:${active.runId}`);
-  const successChance = getSuccessChance(prepared, dungeon);
+  const successChance = getSuccessChance(prepared, dungeon, { bossPrepCoverage: active.bossPrepCoverage });
   const success = rng.next() <= successChance;
   const rewards = calculateRewards(prepared, success, active.dungeonId, useFocusBoost);
   const bossFirstClear = success && dungeon.boss && (prepared.dungeonClears[dungeon.id] ?? 0) === 0;
@@ -242,6 +240,23 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
     next.lifetime.expeditionsFailed += 1;
   }
 
+  const bossProgress = recordBossAttemptResult(next, dungeon, success, now);
+
+  const collectionProgress = applyCollectionProgress(next, dungeon, success, firstClear, rng, now);
+  if (collectionProgress) {
+    progress.collection = collectionProgress;
+    if (collectionProgress.accountXpGained > 0) {
+      progress.accountXpGained += collectionProgress.accountXpGained;
+      progress.accountXpAfter = collectionProgress.accountXpAfter;
+      progress.accountRankAfter = collectionProgress.accountRankAfter;
+      progress.rankUps = Array.from(new Set([...progress.rankUps, ...collectionProgress.rankUps])).sort((a, b) => a - b);
+      const nextAccountRank = getNextAccountRankDefinition(collectionProgress.accountXpAfter);
+      progress.nextAccountRank = nextAccountRank ? { rank: nextAccountRank.rank, xpRequired: nextAccountRank.xp } : null;
+    }
+    progress.titlesUnlocked.push(...collectionProgress.titlesUnlocked);
+    progress.trophiesUnlocked.push(...collectionProgress.trophiesUnlocked);
+  }
+
   const powerScore = getDerivedStats(next).powerScore;
   if (powerScore > next.lifetime.highestPowerScore) {
     next.lifetime.highestPowerScore = powerScore;
@@ -258,7 +273,9 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
     defeat_boss: success && dungeon.boss ? 1 : 0,
     attempt_boss: dungeon.boss ? 1 : 0,
     spend_focus: useFocusBoost ? focusBoostCost : 0,
-    gain_mastery_xp: progress.masteryXpGained
+    gain_mastery_xp: progress.masteryXpGained,
+    collection_eligible_runs: collectionProgress?.eligible ? 1 : 0,
+    advance_collection_pity: collectionProgress?.pityAdvanced ? 1 : 0
   }, { regionId: dungeon.zoneId });
   next = dailyProgress.state;
   const achievementResult = refreshAchievements(next, now);
@@ -285,6 +302,7 @@ export function resolveExpedition(state: GameState, now: number, options: Resolv
       levelUps,
       bossClear: success && dungeon.boss,
       bossFirstClear,
+      boss: bossProgress,
       firstGuaranteedWeapon: success && prepared.lifetime.totalItemsFound === 0 && dungeon.id === "tollroad-of-trinkets" && item?.slot === "weapon",
       unlockedDungeons,
       unlockedZones,

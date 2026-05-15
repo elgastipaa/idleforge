@@ -86,7 +86,7 @@ export function getCraftMaterialDiscount(state: GameState): number {
   return 0;
 }
 
-export function getRuneGainPassiveMultiplier(state: GameState): number {
+export function getFragmentGainPassiveMultiplier(state: GameState): number {
   if (state.hero.classId === "mage" && hasLevelPassive(state, 15)) {
     return 1.1;
   }

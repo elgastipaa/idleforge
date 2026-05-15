@@ -5,6 +5,7 @@ import {
   getMaterialResourceAffixMultipliers,
   getZoneGoldAffixBonus
 } from "./affixes";
+import { applyBossThreatsToSuccessChance } from "./bosses";
 import { BUILDINGS, DUNGEONS, HERO_CLASSES } from "./content";
 import {
   getBossSuccessPassiveBonus,
@@ -13,7 +14,7 @@ import {
   getLootPassiveBonus,
   getNonBossSuccessPassiveBonus
 } from "./heroes";
-import type { DerivedStats, DungeonDefinition, GameState, HeroClassId, Item, ItemRarity, MaterialBundle, Stats } from "./types";
+import type { DerivedStats, DungeonDefinition, ExpeditionThreatId, GameState, HeroClassId, Item, ItemRarity, MaterialBundle, Stats } from "./types";
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -122,7 +123,11 @@ export function getSellMultiplier(state: GameState): number {
   return 1 + state.town.market * 0.1 + getAffixEffectTotal(state, "sellMultiplier");
 }
 
-export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): number {
+export function getSuccessChance(
+  state: GameState,
+  dungeon: DungeonDefinition,
+  options: { bossPrepCoverage?: Partial<Record<ExpeditionThreatId, number>> } = {}
+): number {
   const stats = getDerivedStats(state);
   const classModifier = dungeon.classModifiers[state.hero.classId] ?? 0;
   const libraryBonus = Math.min(0.048, state.town.library * 0.004);
@@ -130,7 +135,7 @@ export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): 
   const bossAttunementBonus = dungeon.boss ? state.prestige.upgrades.bossAttunement * 0.02 : 0;
   const bossAffixBonus = dungeon.boss ? getAffixEffectTotal(state, "bossSuccessChance") : 0;
   const shortMissionAffixBonus = dungeon.durationMs <= 5 * 60 * 1000 ? getAffixEffectTotal(state, "shortMissionSuccessChance") : 0;
-  return clamp(
+  const baseChance = clamp(
     0.5 +
       ((stats.powerScore - dungeon.power) / dungeon.power) * 0.25 +
       stats.luck * 0.002 +
@@ -144,6 +149,7 @@ export function getSuccessChance(state: GameState, dungeon: DungeonDefinition): 
     0.15,
     0.96
   );
+  return applyBossThreatsToSuccessChance(state, dungeon, baseChance, options.bossPrepCoverage);
 }
 
 export function getLootChance(state: GameState, dungeon: DungeonDefinition): number {

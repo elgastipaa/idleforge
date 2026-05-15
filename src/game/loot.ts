@@ -10,6 +10,7 @@ import {
 import { getAffixEffectTotal } from "./affixes";
 import { AFFIX_POOL, RARITY_PREFIX, SLOT_BASE_NAMES } from "./content";
 import { getLootChance, getRarityMultiplier } from "./balance";
+import { getItemTraitDefinition, isLegacyTraitAffixId, recordItemIdentityDiscovery, rollItemFamily, rollItemTrait } from "./traits";
 import { cloneState } from "./state";
 import type { ActionResult, Affix, DungeonDefinition, EquipmentSlot, GameState, Item, ItemRarity, LootFocusId, MaterialBundle, Stats } from "./types";
 import type { Rng } from "./rng";
@@ -121,9 +122,9 @@ export function recordLootMiss(state: GameState) {
 }
 
 function affixCountForRarity(rarity: ItemRarity): number {
-  if (rarity === "legendary") return 5;
-  if (rarity === "epic") return 3;
-  if (rarity === "rare") return 2;
+  if (rarity === "legendary") return 3;
+  if (rarity === "epic") return 2;
+  if (rarity === "rare") return 1;
   return 1;
 }
 
@@ -164,7 +165,7 @@ function compactStats(stats: Partial<Stats>): Partial<Stats> {
 }
 
 function pickAffixes(rng: Rng, count: number, slot: EquipmentSlot): Affix[] {
-  const pool = AFFIX_POOL.filter((affix) => !affix.slots || affix.slots.includes(slot));
+  const pool = AFFIX_POOL.filter((affix) => !isLegacyTraitAffixId(affix.id) && (!affix.slots || affix.slots.includes(slot)));
   const affixes: Affix[] = [];
   while (affixes.length < count && pool.length > 0) {
     const index = rng.int(0, pool.length - 1);
@@ -193,6 +194,9 @@ export function createItem(
   const baseName = rng.pick(SLOT_BASE_NAMES[slot]);
   const prefix = rng.pick(RARITY_PREFIX[rarity]);
   const affixes = pickAffixes(rng, affixCountForRarity(rarity), slot);
+  const traitId = rollItemTrait(state, slot, rarity, dungeon.zoneId, rng);
+  const trait = getItemTraitDefinition(traitId);
+  const familyId = rollItemFamily(dungeon.zoneId, rarity, rng);
   const itemLevel = dungeon.lootLevel;
   const rarityMultiplier = getRarityMultiplier(rarity);
   const budget = Math.floor((itemLevel * 3 + dungeon.zoneIndex * 5 + state.town.forge * 2) * rarityMultiplier);
@@ -200,18 +204,18 @@ export function createItem(
   affixes.forEach((affix) => {
     stats = mergeStats(stats, affix.stats, Math.max(1, itemLevel / 8) * (rarity === "legendary" ? 1.25 : 1));
   });
+  if (trait) {
+    stats = mergeStats(stats, trait.stats, Math.max(1, itemLevel / 10) * (rarity === "legendary" ? 1.2 : 1));
+  }
   stats = compactStats(stats);
 
   const name = formatItemName(prefix, baseName, affixes);
   const sellValue = Math.floor((12 + itemLevel * 7) * RARITY_MULTIPLIER[rarity]);
   const salvageValue: Partial<MaterialBundle> = {
-    ore: Math.max(1, Math.floor(itemLevel * rarityMultiplier * (1 + state.town.mine * 0.05))),
-    crystal: rarity === "common" ? 0 : Math.floor(itemLevel * 0.45 * rarityMultiplier),
-    rune: rarity === "epic" || rarity === "legendary" ? Math.max(1, Math.floor(itemLevel * 0.16 * rarityMultiplier)) : 0,
-    relicFragment: rarity === "legendary" ? Math.max(1, Math.floor(itemLevel / 12)) : 0
+    fragments: Math.max(1, Math.floor(itemLevel * rarityMultiplier * (1 + state.town.mine * 0.05)))
   };
 
-  return {
+  const item: Item = {
     id: `item-${runId}-${dungeon.id}-${Math.floor(rng.next() * 1_000_000)}`,
     name,
     slot,
@@ -220,11 +224,16 @@ export function createItem(
     upgradeLevel: 0,
     stats,
     affixes,
+    traitId,
+    familyId,
+    locked: false,
     sellValue,
     salvageValue,
     sourceDungeonId: dungeon.id,
     createdAtRunId: runId
   };
+  recordItemIdentityDiscovery(state, item);
+  return item;
 }
 
 export function maybeGenerateLoot(

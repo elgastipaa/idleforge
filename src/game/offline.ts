@@ -4,6 +4,7 @@ import { ensureDailies } from "./dailies";
 import { cloneState } from "./state";
 import type { GameState, MaterialBundle, OfflineSummary } from "./types";
 import { regenerateFocus } from "./focus";
+import { applyConstructionOfflineProgress } from "./town";
 
 export function applyOfflineProgress(state: GameState, now: number): OfflineSummary {
   const effectiveNow = Math.min(now, state.updatedAt + OFFLINE_CAP_MS);
@@ -14,6 +15,7 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
   next = dailyPrepared.state;
   const focusGained = regenerateFocus(next, effectiveNow).gained;
   const caravan = applyCaravanOfflineProgress(next, effectiveNow, state.updatedAt);
+  const construction = applyConstructionOfflineProgress(next, effectiveNow);
   const mineGains: Partial<MaterialBundle> = {};
   let expeditionSummary = null;
   const expeditionReady = Boolean(next.activeExpedition && effectiveNow >= next.activeExpedition.endsAt);
@@ -21,11 +23,12 @@ export function applyOfflineProgress(state: GameState, now: number): OfflineSumm
   next.updatedAt = now;
   const anyMineGains = Object.values(mineGains).some((value) => value > 0);
   const summary =
-    expeditionSummary || expeditionReady || caravan || dailyPrepared.reset || focusGained > 0 || anyMineGains
+    expeditionSummary || expeditionReady || caravan || construction || dailyPrepared.reset || focusGained > 0 || anyMineGains
       ? {
           expedition: expeditionSummary,
           expeditionReady,
           caravan,
+          construction,
           mineGains,
           focusGained,
           dailyReset: dailyPrepared.reset,

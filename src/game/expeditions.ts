@@ -84,8 +84,7 @@ function canAffordLocal(resources: GameState["resources"], cost: Partial<Resourc
 function getStarterUpgradeCost(item: Item): Partial<ResourceState> {
   return {
     gold: Math.floor(40 * Math.pow(1.45, item.upgradeLevel) + item.itemLevel * 12),
-    ore: Math.floor(4 * Math.pow(1.4, item.upgradeLevel) + item.itemLevel * 0.6),
-    crystal: Math.max(0, Math.floor(item.itemLevel * 0.2 + item.upgradeLevel))
+    fragments: Math.floor(4 * Math.pow(1.4, item.upgradeLevel) + item.itemLevel * 0.8)
   };
 }
 
@@ -107,8 +106,7 @@ function canAffordStarterCraft(state: GameState): boolean {
   const level = getBestUnlockedDungeon(state).lootLevel;
   return canAffordLocal(state.resources, {
     gold: Math.floor(45 + level * 12),
-    ore: Math.floor(3 + level * 0.7),
-    crystal: Math.max(0, Math.floor((level - 8) * 0.45))
+    fragments: Math.floor(3 + level * 0.9 + Math.max(0, level - 8) * 0.9)
   });
 }
 
@@ -152,7 +150,7 @@ export function getNextGoal(state: GameState): string {
 
   const nextUncleared = getAvailableDungeons(state).find((dungeon) => !hasClearedDungeon(state, dungeon.id));
   if (!hasAnyItemUpgrade(state) && getAllItems(state).length > 0 && nextUncleared) {
-    return `Clear ${nextUncleared.name} for ore to upgrade your gear.`;
+    return `Clear ${nextUncleared.name} for Fragments to upgrade your gear.`;
   }
 
   const affordableBuilding = getAffordableTownBuilding(state);
@@ -176,7 +174,7 @@ export function getNextGoal(state: GameState): string {
     if (canAffordStarterCraft(state)) {
       return "Craft a new item in the Forge with your boss rewards.";
     }
-    return "Run the latest dungeon for the gold and ore needed to craft.";
+    return "Run the latest dungeon for the Gold and Fragments needed to craft.";
   }
 
   if ((state.dungeonClears[FINAL_DUNGEON_ID] ?? 0) > 0) {

@@ -1,5 +1,13 @@
 import { FOCUS_MAX } from "./constants";
 import { DUNGEONS } from "./content";
+import { getRegionalMaterialYieldMultiplier } from "./outposts";
+import {
+  getEquippedTraitAccountXpBonus,
+  getEquippedTraitMasteryBonus,
+  getEquippedTraitRegionalMaterialBonus,
+  getFamilyMasteryBonus,
+  getFamilyRegionalMaterialBonus
+} from "./traits";
 import { cloneState } from "./state";
 import type {
   AccountRankDefinition,
@@ -61,7 +69,7 @@ type ExpeditionProgressReward = {
   failureAccountXp: number;
   successRegionalMaterial?: { id: RegionMaterialId; amount: number };
   failureRegionalMaterial?: { id: RegionMaterialId; amount: number };
-  fragmentSeedPhase2: number;
+  fragmentSeed: number;
   firstClearAccountXp?: number;
   firstClearTitleId?: string;
   firstClearTrophyId?: string;
@@ -70,7 +78,7 @@ type ExpeditionProgressReward = {
 type MasteryTierReward = {
   accountXp?: number;
   regionalMaterials?: Partial<Record<RegionMaterialId, number>>;
-  relicFragments?: number;
+  fragments?: number;
   titleId?: string;
   trophyId?: string;
 };
@@ -83,7 +91,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     successAccountXp: 15,
     failureAccountXp: 5,
     successRegionalMaterial: { id: "sunlitTimber", amount: 1 },
-    fragmentSeedPhase2: 0
+    fragmentSeed: 0
   },
   "mossbright-cellar": {
     phase: 1,
@@ -92,7 +100,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     successAccountXp: 18,
     failureAccountXp: 6,
     successRegionalMaterial: { id: "sunlitTimber", amount: 2 },
-    fragmentSeedPhase2: 2
+    fragmentSeed: 2
   },
   "relic-bandit-cache": {
     phase: 1,
@@ -102,7 +110,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     failureAccountXp: 8,
     successRegionalMaterial: { id: "sunlitTimber", amount: 4 },
     failureRegionalMaterial: { id: "sunlitTimber", amount: 1 },
-    fragmentSeedPhase2: 5
+    fragmentSeed: 5
   },
   "lanternroot-path": {
     phase: 3,
@@ -111,7 +119,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     successAccountXp: 26,
     failureAccountXp: 9,
     successRegionalMaterial: { id: "emberResin", amount: 2 },
-    fragmentSeedPhase2: 2
+    fragmentSeed: 2
   },
   "saffron-sigil-grove": {
     phase: 3,
@@ -120,7 +128,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     successAccountXp: 30,
     failureAccountXp: 10,
     successRegionalMaterial: { id: "emberResin", amount: 3 },
-    fragmentSeedPhase2: 4
+    fragmentSeed: 4
   },
   "cinderleaf-crossing": {
     phase: 3,
@@ -130,7 +138,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     failureAccountXp: 12,
     successRegionalMaterial: { id: "emberResin", amount: 5 },
     failureRegionalMaterial: { id: "emberResin", amount: 1 },
-    fragmentSeedPhase2: 8
+    fragmentSeed: 8
   },
   "copper-crown-champion": {
     phase: 4,
@@ -140,7 +148,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     failureAccountXp: 12,
     successRegionalMaterial: { id: "sunlitTimber", amount: 6 },
     failureRegionalMaterial: { id: "sunlitTimber", amount: 2 },
-    fragmentSeedPhase2: 12,
+    fragmentSeed: 12,
     firstClearAccountXp: 25,
     firstClearTitleId: "title-copper-crowned",
     firstClearTrophyId: "trophy-copper-crown"
@@ -153,7 +161,7 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     failureAccountXp: 16,
     successRegionalMaterial: { id: "emberResin", amount: 8 },
     failureRegionalMaterial: { id: "emberResin", amount: 2 },
-    fragmentSeedPhase2: 20,
+    fragmentSeed: 20,
     firstClearAccountXp: 40,
     firstClearTitleId: "title-cindermaw-breaker",
     firstClearTrophyId: "trophy-cindermaw-fang"
@@ -172,7 +180,7 @@ const MASTERY_TIER_REWARDS: Record<string, Partial<Record<MasteryTierNumber, Mas
     3: { accountXp: 20, regionalMaterials: { sunlitTimber: 8 }, titleId: "title-cellar-lantern" }
   },
   "relic-bandit-cache": {
-    1: { accountXp: 6, regionalMaterials: { sunlitTimber: 3 }, relicFragments: 5 },
+    1: { accountXp: 6, regionalMaterials: { sunlitTimber: 3 }, fragments: 5 },
     2: { accountXp: 12, regionalMaterials: { sunlitTimber: 5 }, titleId: "title-known-route" },
     3: { accountXp: 24, regionalMaterials: { sunlitTimber: 10 }, trophyId: "trophy-bandit-cache-ledger" }
   },
@@ -219,6 +227,36 @@ export const TROPHY_DEFINITIONS: TrophyDefinition[] = [
   { id: "trophy-copper-crown", name: "Copper Crown", unlockCondition: "Defeat Bramblecrown.", target: 1, showcasePriority: 2, phase: 4 },
   { id: "trophy-cindermaw-fang", name: "Cindermaw Fang", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 }
 ];
+
+const COLLECTION_COMPLETION_BONUSES: Partial<
+  Record<
+    RegionMaterialId,
+    {
+      collectionId: string;
+      regionId: string;
+      materialYieldMultiplier: number;
+      masteryXpMultiplier: number;
+    }
+  >
+> = {
+  sunlitTimber: {
+    collectionId: "sunlit-road-relics",
+    regionId: "sunlit-marches",
+    materialYieldMultiplier: 1.02,
+    masteryXpMultiplier: 1.02
+  },
+  emberResin: {
+    collectionId: "emberwood-heartwood-relics",
+    regionId: "emberwood",
+    materialYieldMultiplier: 1.02,
+    masteryXpMultiplier: 1
+  }
+};
+
+const COLLECTION_REGION_MATERIAL_BY_REGION_ID: Partial<Record<string, RegionMaterialId>> = {
+  "sunlit-marches": "sunlitTimber",
+  emberwood: "emberResin"
+};
 
 function getTitleDefinition(titleId: string): TitleDefinition | null {
   return TITLE_DEFINITIONS.find((title) => title.id === titleId) ?? null;
@@ -378,6 +416,28 @@ function mergeRegionalMaterials(
   return target;
 }
 
+function isCollectionCompleted(state: GameState, collectionId: string): boolean {
+  return Boolean(state.regionProgress.collections[collectionId]?.completedAt);
+}
+
+function getMasteryXpWithCollectionBonus(state: GameState, dungeon: DungeonDefinition, baseMasteryXp: number): number {
+  const materialId = COLLECTION_REGION_MATERIAL_BY_REGION_ID[dungeon.zoneId] ?? null;
+  const bonus = materialId ? COLLECTION_COMPLETION_BONUSES[materialId] : null;
+  const collectionMultiplier = bonus && bonus.regionId === dungeon.zoneId && isCollectionCompleted(state, bonus.collectionId) ? bonus.masteryXpMultiplier : 1;
+  const multiplier = collectionMultiplier + getEquippedTraitMasteryBonus(state, dungeon.zoneId) + getFamilyMasteryBonus(state, dungeon.zoneId);
+  return Math.floor(baseMasteryXp * multiplier);
+}
+
+function getRegionalMaterialAmountWithCollectionBonus(state: GameState, regionId: string, materialId: RegionMaterialId, baseAmount: number, includeOutpostBonus: boolean): number {
+  const bonus = COLLECTION_COMPLETION_BONUSES[materialId];
+  const collectionMultiplier = bonus && isCollectionCompleted(state, bonus.collectionId) ? bonus.materialYieldMultiplier : 1;
+  const multiplier =
+    collectionMultiplier *
+    (includeOutpostBonus ? getRegionalMaterialYieldMultiplier(state, regionId) : 1) *
+    (1 + getEquippedTraitRegionalMaterialBonus(state, materialId) + getFamilyRegionalMaterialBonus(state, regionId, materialId));
+  return Math.floor(baseAmount * multiplier);
+}
+
 export function applyExpeditionProgress(
   state: GameState,
   dungeon: DungeonDefinition,
@@ -393,10 +453,11 @@ export function applyExpeditionProgress(
   const titlesUnlocked: TitleDefinition[] = [];
   const trophiesUnlocked: TrophyDefinition[] = [];
 
-  const masteryXpGained = reward ? (success ? reward.successMasteryXp : reward.failureMasteryXp) : 0;
+  const baseMasteryXpGained = reward ? (success ? reward.successMasteryXp : reward.failureMasteryXp) : 0;
+  const masteryXpGained = getMasteryXpWithCollectionBonus(state, dungeon, baseMasteryXpGained);
   const baseAccountXpGained = reward ? (success ? reward.successAccountXp : reward.failureAccountXp) : 0;
   const firstClearAccountXp = success && firstClear ? (reward?.firstClearAccountXp ?? 0) : 0;
-  const accountXpGained = baseAccountXpGained + firstClearAccountXp;
+  const accountXpGained = Math.floor((baseAccountXpGained + firstClearAccountXp) * (1 + getEquippedTraitAccountXpBonus(state)));
 
   mastery.masteryXp += masteryXpGained;
   if (!success) {
@@ -405,7 +466,8 @@ export function applyExpeditionProgress(
 
   const regionalReward = reward ? (success ? reward.successRegionalMaterial : reward.failureRegionalMaterial) : undefined;
   if (regionalReward) {
-    mergeRegionalMaterials(regionalMaterials, addRegionalMaterials(state, { [regionalReward.id]: regionalReward.amount }));
+    const amount = getRegionalMaterialAmountWithCollectionBonus(state, dungeon.zoneId, regionalReward.id, regionalReward.amount, success);
+    mergeRegionalMaterials(regionalMaterials, addRegionalMaterials(state, { [regionalReward.id]: amount }));
   }
 
   if (success && firstClear) {
@@ -443,7 +505,8 @@ export function applyExpeditionProgress(
     rankUps: account.rankUps,
     regionalMaterials,
     titlesUnlocked,
-    trophiesUnlocked
+    trophiesUnlocked,
+    collection: null
   };
 }
 
@@ -478,9 +541,9 @@ export function claimMasteryTier(state: GameState, dungeonId: string, now: numbe
     if (unlocked) trophiesUnlocked.push(unlocked);
   }
 
-  const relicFragmentsGained = Math.max(0, reward.relicFragments ?? 0);
-  if (relicFragmentsGained > 0) {
-    next.resources.relicFragment += relicFragmentsGained;
+  const fragmentsGained = Math.max(0, reward.fragments ?? 0);
+  if (fragmentsGained > 0) {
+    next.resources.fragments += fragmentsGained;
   }
 
   mastery.claimedTiers = Array.from(new Set([...mastery.claimedTiers, tier.tier])).sort((a, b) => a - b);
@@ -495,7 +558,7 @@ export function claimMasteryTier(state: GameState, dungeonId: string, now: numbe
     accountRankAfter: account.afterRank,
     rankUps: account.rankUps,
     regionalMaterials,
-    relicFragmentsGained,
+    fragmentsGained,
     titlesUnlocked,
     trophiesUnlocked
   };

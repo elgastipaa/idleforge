@@ -1,9 +1,9 @@
 import { FORGE_AFFIX_REROLL_REQUIRED_LEVEL, INVENTORY_LIMIT, RARITY_MULTIPLIER } from "./constants";
-import { getCraftingAffixDiscount, getRuneAffixMultiplier, getSalvageAffixMultiplier } from "./affixes";
+import { getCraftingAffixDiscount, getFragmentsAffixMultiplier, getSalvageAffixMultiplier } from "./affixes";
 import { AFFIX_POOL, DUNGEONS, RARITY_PREFIX, SLOT_BASE_NAMES } from "./content";
 import { applyDailyProgress, ensureDailies } from "./dailies";
 import { getDerivedStats } from "./balance";
-import { getCraftMaterialDiscount, getRuneGainPassiveMultiplier } from "./heroes";
+import { getCraftMaterialDiscount, getFragmentGainPassiveMultiplier } from "./heroes";
 import { createItem, formatItemName } from "./loot";
 import { createRng } from "./rng";
 import { cloneState } from "./state";
@@ -43,7 +43,7 @@ function applyMaterialDiscount(state: GameState, cost: Partial<ResourceState>): 
     return cost;
   }
   const discounted = { ...cost };
-  (["ore", "crystal", "rune", "relicFragment"] as const).forEach((resource) => {
+  (["fragments"] as const).forEach((resource) => {
     const value = discounted[resource] ?? 0;
     if (value > 0) {
       discounted[resource] = Math.max(1, Math.floor(value * (1 - discount)));
@@ -67,21 +67,21 @@ export function getCraftCost(state: GameState): Partial<ResourceState> {
   const level = dungeon.lootLevel;
   const base: Partial<ResourceState> = {
     gold: Math.floor(45 + level * 12),
-    ore: Math.floor(3 + level * 0.7),
-    crystal: Math.max(0, Math.floor((level - 8) * 0.45)),
-    rune: Math.max(0, Math.floor((level - 18) * 0.22)),
-    relicFragment: level >= 45 ? Math.max(1, Math.floor((level - 40) * 0.12)) : 0
+    fragments: Math.floor(
+      3 +
+        level * 0.9 +
+        Math.max(0, level - 8) * 0.9 +
+        Math.max(0, level - 18) * 1.1 +
+        Math.max(0, level - 40) * 1.2
+    )
   };
   return applyMaterialDiscount(state, base);
 }
 
 function addSalvage(state: GameState, item: Item) {
   const salvageMultiplier = getSalvageAffixMultiplier(state);
-  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
-  state.resources.ore += Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier);
-  state.resources.crystal += Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier);
-  state.resources.rune += Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier);
-  state.resources.relicFragment += Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier);
+  const fragmentsMultiplier = getFragmentGainPassiveMultiplier(state) * getFragmentsAffixMultiplier(state);
+  state.resources.fragments += Math.floor((item.salvageValue.fragments ?? 0) * salvageMultiplier * fragmentsMultiplier);
 }
 
 export function craftItem(state: GameState, now: number, options: ForgeCraftOptions = {}): ActionResult {
@@ -136,10 +136,7 @@ function scaleItemStats(item: Item): Item {
   });
   next.sellValue = Math.max(1, Math.floor(next.sellValue * 1.12));
   next.salvageValue = {
-    ore: Math.max(1, Math.floor((next.salvageValue.ore ?? 0) * 1.12)),
-    crystal: Math.floor((next.salvageValue.crystal ?? 0) * 1.12),
-    rune: Math.floor((next.salvageValue.rune ?? 0) * 1.12),
-    relicFragment: Math.floor((next.salvageValue.relicFragment ?? 0) * 1.06)
+    fragments: Math.max(1, Math.floor((next.salvageValue.fragments ?? 0) * 1.12))
   };
   return next;
 }
@@ -161,10 +158,10 @@ export function getItemUpgradeCost(state: GameState, item: Item): Partial<Resour
   const level = item.upgradeLevel;
   const base: Partial<ResourceState> = {
     gold: Math.floor(40 * Math.pow(1.45, level) + item.itemLevel * 12),
-    ore: Math.floor(4 * Math.pow(1.4, level) + item.itemLevel * 0.6),
-    crystal: Math.max(0, Math.floor(item.itemLevel * 0.2 + level)),
-    rune: item.rarity === "epic" || item.rarity === "legendary" ? Math.max(1, Math.floor(item.itemLevel * 0.08 + level * 0.5)) : 0,
-    relicFragment: item.rarity === "legendary" ? Math.max(1, Math.floor(level / 3)) : 0
+    fragments:
+      Math.floor(4 * Math.pow(1.4, level) + item.itemLevel * 0.8) +
+      (item.rarity === "epic" || item.rarity === "legendary" ? Math.max(1, Math.floor(item.itemLevel * 0.25 + level)) : 0) +
+      (item.rarity === "legendary" ? Math.max(1, Math.floor(level / 2)) : 0)
   };
   return applyMaterialDiscount(state, base);
 }
@@ -173,10 +170,10 @@ export function getAffixRerollCost(state: GameState, item: Item): Partial<Resour
   const rarityMultiplier = RARITY_MULTIPLIER[item.rarity];
   const base: Partial<ResourceState> = {
     gold: Math.floor((30 + item.itemLevel * 9 + item.upgradeLevel * 18) * rarityMultiplier),
-    ore: Math.max(1, Math.floor((2 + item.itemLevel * 0.45 + item.upgradeLevel) * rarityMultiplier)),
-    crystal: item.rarity === "common" ? 0 : Math.max(1, Math.floor((item.itemLevel * 0.18 + item.upgradeLevel * 0.5) * rarityMultiplier)),
-    rune: item.rarity === "epic" || item.rarity === "legendary" ? Math.max(1, Math.floor(item.itemLevel * 0.04 + item.upgradeLevel * 0.35)) : 0,
-    relicFragment: item.rarity === "legendary" ? Math.max(1, Math.floor(item.upgradeLevel / 4)) : 0
+    fragments:
+      Math.max(1, Math.floor((2 + item.itemLevel * 0.55 + item.upgradeLevel) * rarityMultiplier)) +
+      (item.rarity === "epic" || item.rarity === "legendary" ? Math.max(1, Math.floor(item.itemLevel * 0.2 + item.upgradeLevel * 0.7)) : 0) +
+      (item.rarity === "legendary" ? Math.max(1, Math.floor(item.upgradeLevel / 3)) : 0)
   };
   return applyMaterialDiscount(state, base);
 }

@@ -14,6 +14,7 @@ import {
   Flame,
   Gem,
   Hammer,
+  Lock,
   Pickaxe,
   RotateCcw,
   Save,
@@ -22,6 +23,7 @@ import {
   Star,
   Swords,
   Trophy,
+  Unlock,
   Upload,
   XCircle
 } from "lucide-react";
@@ -55,25 +57,33 @@ import {
   EXPEDITION_PROGRESS_REWARDS,
   REGION_MATERIAL_LABELS,
   SHOWCASE_TROPHY_SLOT_COUNT,
+  CONSTRUCTION_FOCUS_PER_HOUR,
+  CLASS_CHANGE_COOLDOWN_MS,
+  CLASS_CHANGE_SOUL_MARK_COST,
+  OUTPOST_BONUSES,
   buildShowcaseCopyText,
   canAfford,
+  canAffordConstructionCost,
   canPrestige,
   calculatePrestigeRenown,
   getAvailableDungeons,
   getAffixRerollCost,
   getAchievementProgress,
-  getBuildingCost,
+  getBuildingConstructionCost,
+  getBuildingConstructionDurationMs,
   getBuildingLevelTotal,
+  getActiveConstructionProgress,
+  getConstructionFocusCostToComplete,
   getCraftCost,
   getDerivedStats,
   getDungeon,
   getDungeonView,
+  getFragmentsAffixMultiplier,
   getItemScore,
   getItemUpgradeCost,
   getNextGoal,
   getNextLockedDungeon,
-  getRuneAffixMultiplier,
-  getRuneGainPassiveMultiplier,
+  getFragmentGainPassiveMultiplier,
   getSalvageAffixMultiplier,
   getRenownUpgradeCost,
   getSellMultiplier,
@@ -85,19 +95,33 @@ import {
   getNextAccountRankDefinition,
   getAccountRankDefinition,
   getFeaturedBoss,
+  getBossViewSummary,
+  getBossScoutCost,
+  getBossPrepMaterialCost,
   getFeaturedRegion,
+  getFamilyResonanceSummaries,
+  getItemFamilyDefinition,
+  getItemTraitDefinition,
+  getActiveRegionIds,
   getLockedTitleEntries,
   getLockedTrophyEntries,
   getPinnedTrophyEntries,
+  getRegionCompletionSummary,
+  getRegionMaterialId,
+  getRegionalMaterialSinks,
+  getOutpostBonusDefinition,
+  getVisibleRegionCollectionSummaries,
+  getUnlockedCaravanRegions,
   getSelectedTitleDefinition,
   getUnlockedTitleEntries,
   getUnlockedTrophyEntries,
   getZoneForDungeon,
-  estimateCaravanRewards,
+  estimateCaravanRewardsForRegion,
   formatCaravanRewardText,
   isCaravanFocusUnlocked,
   xpToNextLevel,
   type BuildingId,
+  type BuildPresetId,
   type CaravanFocusId,
   type DungeonDefinition,
   type EquipmentSlot,
@@ -107,6 +131,7 @@ import {
   type LootFocusId,
   type MasteryTierDefinition,
   type RegionMaterialId,
+  type RegionOutpostBonusId,
   type RenownUpgradeId,
   type ResolveSummary,
   type ResourceState,
@@ -166,35 +191,21 @@ function getTabMeta(tabId: TabId) {
 
 const resourceLabels: Record<keyof ResourceState, string> = {
   gold: "Gold",
-  ore: "Ore",
-  crystal: "Crystal",
-  rune: "Rune",
-  relicFragment: "Fragments",
+  fragments: "Fragments",
   renown: "Soul Marks"
 };
 
 const compactResourceLabels: Record<keyof ResourceState, string> = {
   gold: "Gold",
-  ore: "Ore",
-  crystal: "Cry",
-  rune: "Run",
-  relicFragment: "Frag",
+  fragments: "Frag",
   renown: "Soul"
 };
-
-const materialResources = ["ore", "crystal", "rune", "relicFragment"] as const;
 
 function getResourceIcon(resource: keyof ResourceState): typeof Swords {
   switch (resource) {
     case "gold":
       return Coins;
-    case "ore":
-      return Pickaxe;
-    case "crystal":
-      return Gem;
-    case "rune":
-      return Star;
-    case "relicFragment":
+    case "fragments":
       return Sparkles;
     case "renown":
       return Crown;
@@ -209,12 +220,8 @@ function getCaravanFocusIcon(focusId: CaravanFocusId): typeof Swords {
       return Crown;
     case "gold":
       return Coins;
-    case "ore":
-      return Pickaxe;
-    case "crystal":
-      return Gem;
-    case "rune":
-      return Star;
+    case "fragments":
+      return Sparkles;
     default:
       return Swords;
   }
@@ -251,12 +258,6 @@ function formatNumber(value: number): string {
   return Math.floor(value).toLocaleString();
 }
 
-function formatCompactStackNumber(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return `${Math.floor(value)}`;
-}
-
 function formatMs(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const hours = Math.floor(total / 3600);
@@ -291,6 +292,10 @@ function formatRegionMaterials(resources: Partial<Record<RegionMaterialId, numbe
     .filter((key) => (resources[key] ?? 0) > 0)
     .map((key) => `${formatNumber(resources[key] ?? 0)} ${REGION_MATERIAL_LABELS[key]}`)
     .join(", ");
+}
+
+function formatConstructionCost(cost: { resources: Partial<ResourceState>; regionalMaterials: Partial<Record<RegionMaterialId, number>> }): string {
+  return [formatResources(cost.resources), formatRegionMaterials(cost.regionalMaterials)].filter(Boolean).join(", ") || "Free";
 }
 
 function formatMissionReward(reward: {
@@ -337,6 +342,14 @@ function formatAffixNamePreview(item: Item, limit = 2): string {
   return visible.join(", ");
 }
 
+function formatItemTraitName(item: Item): string | null {
+  return getItemTraitDefinition(item.traitId)?.name ?? null;
+}
+
+function formatItemFamilyName(item: Item): string | null {
+  return getItemFamilyDefinition(item.familyId)?.name ?? null;
+}
+
 function formatSignedNumber(value: number): string {
   return `${value > 0 ? "+" : ""}${formatNumber(value)}`;
 }
@@ -367,23 +380,18 @@ function getVisibleSellValue(state: GameState, item: Item): number {
 
 function getVisibleSalvageValue(state: GameState, item: Item): Partial<ResourceState> {
   const salvageMultiplier = getSalvageAffixMultiplier(state);
-  const runeMultiplier = getRuneGainPassiveMultiplier(state) * getRuneAffixMultiplier(state);
+  const fragmentsMultiplier = getFragmentGainPassiveMultiplier(state) * getFragmentsAffixMultiplier(state);
   return {
-    ore: Math.floor((item.salvageValue.ore ?? 0) * salvageMultiplier),
-    crystal: Math.floor((item.salvageValue.crystal ?? 0) * salvageMultiplier),
-    rune: Math.floor((item.salvageValue.rune ?? 0) * salvageMultiplier * runeMultiplier),
-    relicFragment: Math.floor((item.salvageValue.relicFragment ?? 0) * salvageMultiplier)
+    fragments: Math.floor((item.salvageValue.fragments ?? 0) * salvageMultiplier * fragmentsMultiplier)
   };
 }
 
 function getCompactRewardParts(summary: ResolveSummary): string[] {
   const parts = [`XP +${formatNumber(summary.rewards.xp)}`, `Gold +${formatNumber(summary.rewards.gold)}`];
-  (["ore", "crystal", "rune", "relicFragment"] as const).forEach((resource) => {
-    const value = summary.rewards.materials[resource] ?? 0;
-    if (value > 0) {
-      parts.push(`${resourceLabels[resource]} +${formatNumber(value)}`);
-    }
-  });
+  const fragments = summary.rewards.materials.fragments ?? 0;
+  if (fragments > 0) {
+    parts.push(`${resourceLabels.fragments} +${formatNumber(fragments)}`);
+  }
   if (summary.progress.accountXpGained > 0) {
     parts.push(`Account XP +${formatNumber(summary.progress.accountXpGained)}`);
   }
@@ -396,6 +404,11 @@ function getCompactRewardParts(summary: ResolveSummary): string[] {
       parts.push(`${REGION_MATERIAL_LABELS[materialId]} +${formatNumber(value)}`);
     }
   });
+  if (summary.progress.collection?.pieceName) {
+    parts.push(`${summary.progress.collection.collectionName}: ${summary.progress.collection.pieceName}`);
+  } else if (summary.progress.collection?.pityAdvanced) {
+    parts.push(`${summary.progress.collection.collectionName} pity +1`);
+  }
   return parts;
 }
 
@@ -793,21 +806,20 @@ function CharacterStart({ store }: { store: GameStore }) {
 }
 
 function Header({ state }: { state: GameState }) {
-  type HeaderChipId = "gold" | "mats" | "renown" | "focus";
+  type HeaderChipId = "gold" | "renown" | "focus";
 
   const isClient = useIsClient();
   const stats = getDerivedStats(state);
+  const soulMarksVisible = state.soulMarks.discovered;
   const [openChip, setOpenChip] = useState<HeaderChipId | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(null);
   const chipPopoverRef = useRef<HTMLDivElement | null>(null);
   const popoverCardRef = useRef<HTMLDivElement | null>(null);
   const chipButtonRefs = useRef<Record<HeaderChipId, HTMLButtonElement | null>>({
     gold: null,
-    mats: null,
     renown: null,
     focus: null
   });
-  const matsInlineValue = materialResources.map((resource) => formatCompactStackNumber(state.resources[resource])).join("/");
   const POPOVER_WIDTH = 176;
   const updatePopoverPosition = (chip: HeaderChipId) => {
     const button = chipButtonRefs.current[chip];
@@ -869,16 +881,11 @@ function Header({ state }: { state: GameState }) {
 
   const popoverTitleByChip: Record<HeaderChipId, string> = {
     gold: resourceLabels.gold,
-    mats: "Materials",
     renown: resourceLabels.renown,
     focus: "Focus"
   };
   const popoverRowsByChip: Record<HeaderChipId, Array<{ label: string; value: string }>> = {
     gold: [{ label: resourceLabels.gold, value: formatNumber(state.resources.gold) }],
-    mats: materialResources.map((resource) => ({
-      label: resourceLabels[resource],
-      value: formatNumber(state.resources[resource])
-    })),
     renown: [{ label: resourceLabels.renown, value: formatNumber(state.resources.renown) }],
     focus: [
       { label: "Current", value: formatNumber(state.focus.current) },
@@ -907,34 +914,22 @@ function Header({ state }: { state: GameState }) {
               }}
             />
           </div>
-          <div className="relative">
-            <ResourceChip
-              title={`Materials Ore/Crystal/Rune/Fragments: ${matsInlineValue} (tap for detail)`}
-              label="Mats"
-              value={matsInlineValue}
-              Icon={Gem}
-              showLabel={false}
-              className={`max-w-[9.4rem] border-stone-200 bg-white text-stone-700 ${openChip === "mats" ? "ring-2 ring-royal/20" : ""}`}
-              onClick={() => toggleChip("mats")}
-              buttonRef={(node) => {
-                chipButtonRefs.current.mats = node;
-              }}
-            />
-          </div>
-          <div className="relative">
-            <ResourceChip
-              title={`${resourceLabels.renown} ${formatNumber(state.resources.renown)}`}
-              label={compactResourceLabels.renown}
-              value={formatNumber(state.resources.renown)}
-              Icon={getResourceIcon("renown")}
-              showLabel={false}
-              className={`max-w-[5rem] border-stone-200 bg-white text-stone-700 ${openChip === "renown" ? "ring-2 ring-royal/20" : ""}`}
-              onClick={() => toggleChip("renown")}
-              buttonRef={(node) => {
-                chipButtonRefs.current.renown = node;
-              }}
-            />
-          </div>
+          {soulMarksVisible && (
+            <div className="relative">
+              <ResourceChip
+                title={`${resourceLabels.renown} ${formatNumber(state.resources.renown)}`}
+                label={compactResourceLabels.renown}
+                value={formatNumber(state.resources.renown)}
+                Icon={getResourceIcon("renown")}
+                showLabel={false}
+                className={`max-w-[5rem] border-stone-200 bg-white text-stone-700 ${openChip === "renown" ? "ring-2 ring-royal/20" : ""}`}
+                onClick={() => toggleChip("renown")}
+                buttonRef={(node) => {
+                  chipButtonRefs.current.renown = node;
+                }}
+              />
+            </div>
+          )}
           <div className="relative">
             <ResourceChip
               title={`Focus ${state.focus.current}/${state.focus.cap}`}
@@ -1121,7 +1116,7 @@ function OfflineSummaryPanel({
 
   if (!summary) return null;
 
-  const hasMineGains = (["ore", "crystal", "rune", "relicFragment"] as const).some((resource) => (summary.mineGains[resource] ?? 0) > 0);
+  const hasMineGains = (summary.mineGains.fragments ?? 0) > 0;
   const caravanFocus = summary.caravan ? CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === summary.caravan?.focusId) : null;
   const offlineActiveDungeon = store.state.activeExpedition ? getDungeon(store.state.activeExpedition.dungeonId) : null;
   const expeditionStatusText = summary.expedition
@@ -1163,6 +1158,12 @@ function OfflineSummaryPanel({
                 : "No active job"}
             </span>
           </div>
+          {summary.construction && (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
+              <span className="font-black text-ink">Construction</span>
+              <span className="truncate">Level {summary.construction.targetLevel} ready to claim</span>
+            </div>
+          )}
           {hasMineGains && (
             <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-t border-ink/10 px-2.5 py-1.5">
               <span className="font-black text-ink">Mine gains</span>
@@ -1196,6 +1197,11 @@ function OfflineSummaryPanel({
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("dailies"))}>
             <Star size={15} /> Open Missions
           </SecondaryButton>
+          {summary.construction && (
+            <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => runSummaryAction(() => onSelectTab("town"))}>
+              <Hammer size={15} /> Open Town
+            </SecondaryButton>
+          )}
           <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={dismissSummary}>
             Dismiss
           </SecondaryButton>
@@ -1380,7 +1386,9 @@ function ExpeditionResultPanel({
   const upgradeCandidates = [...state.inventory, ...((Object.values(state.equipment).filter(Boolean) as Item[]) ?? [])];
   const canUpgradeItem = upgradeCandidates.some((candidate) => candidate.upgradeLevel < 10 && canAfford(state.resources, getItemUpgradeCost(state, candidate)));
   const canUseForge = canAfford(state.resources, getCraftCost(state)) || canUpgradeItem;
-  const canUseTown = BUILDINGS.some((building) => state.town[building.id] < building.maxLevel && canAfford(state.resources, getBuildingCost(state, building.id as BuildingId)));
+  const canUseTown = BUILDINGS.some(
+    (building) => state.town[building.id] < building.maxLevel && canAffordConstructionCost(state, getBuildingConstructionCost(state, building.id as BuildingId))
+  );
   const nextAction = getNextActionCopy({ state, summary, itemInInventory, nextDungeon, claimableMasteryTier, dailyReady, canUseForge, canUseTown });
   const hasSpecialMoment =
     summary.firstGuaranteedWeapon ||
@@ -1393,7 +1401,11 @@ function ExpeditionResultPanel({
     summary.progress.rankUps.length > 0 ||
     summary.progress.newlyClaimableMasteryTiers.length > 0 ||
     summary.progress.titlesUnlocked.length > 0 ||
-    summary.progress.trophiesUnlocked.length > 0;
+    summary.progress.trophiesUnlocked.length > 0 ||
+    Boolean(summary.progress.collection?.pieceName) ||
+    Boolean(summary.progress.collection?.completed) ||
+    Boolean(summary.boss?.intelGained) ||
+    Boolean(summary.boss?.newlyRevealedThreats.length);
   const itemSellValue = item ? getVisibleSellValue(state, item) : 0;
   const actionButtonClass = "!min-h-9 px-3 py-1 text-xs";
   const rewardParts = getCompactRewardParts(summary);
@@ -1448,6 +1460,46 @@ function ExpeditionResultPanel({
       node: (
         <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
           <Gem size={13} /> Boss loot
+        </Pill>
+      )
+    });
+  }
+  if (summary.boss?.intelGained) {
+    specialMoments.push({
+      key: `boss-intel-${summary.boss.bossId}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
+          <Sparkles size={13} /> Boss intel +{summary.boss.intelGained}
+        </Pill>
+      )
+    });
+  }
+  summary.boss?.newlyRevealedThreats.forEach((threat) => {
+    specialMoments.push({
+      key: `boss-threat-${threat.id}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Crown size={13} /> Revealed: {threat.name}
+        </Pill>
+      )
+    });
+  });
+  if (summary.progress.collection?.pieceName) {
+    specialMoments.push({
+      key: `collection-piece-${summary.progress.collection.pieceId}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">
+          <Gem size={13} /> Relic: {summary.progress.collection.pieceName}
+        </Pill>
+      )
+    });
+  }
+  if (summary.progress.collection?.completed) {
+    specialMoments.push({
+      key: `collection-complete-${summary.progress.collection.collectionId}`,
+      node: (
+        <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">
+          <Trophy size={13} /> Set complete: {summary.progress.collection.collectionName}
         </Pill>
       )
     });
@@ -1569,6 +1621,24 @@ function ExpeditionResultPanel({
             </div>
           </div>
         </div>
+
+        {summary.boss && (
+          <div className="rounded-lg border border-amber-400/30 bg-parchment/70 px-3 py-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase text-mystic">{summary.boss.title}</p>
+                <p className="text-sm font-black">{summary.boss.name}</p>
+              </div>
+              {summary.boss.intelGained > 0 && <Pill className="border-royal/20 bg-blue-50 text-royal">Intel +{summary.boss.intelGained}</Pill>}
+            </div>
+            {summary.boss.failureIntelText && <p className="mt-1 text-xs font-semibold text-stone-700">{summary.boss.failureIntelText}</p>}
+            {summary.boss.newlyRevealedThreats.length > 0 && (
+              <p className="mt-1 text-xs font-bold text-stone-600">
+                Revealed: {summary.boss.newlyRevealedThreats.map((threat) => threat.name).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg border border-ink/10 bg-white/70 px-3 py-2">
@@ -1744,14 +1814,20 @@ type RegionSummary = {
   completedCount: number;
   unlocked: boolean;
   unlockHint: string | null;
+  materialId: RegionMaterialId | null;
+  materialAmount: number;
+  completionPercent: number;
 };
 
 function getRegionSummaries(state: GameState, availableDungeons: DungeonDefinition[]): RegionSummary[] {
+  const activeRegionIds = new Set(getActiveRegionIds(state));
   return ZONES
+    .filter((zone) => activeRegionIds.has(zone.id))
     .slice()
     .sort((a, b) => a.index - b.index)
     .map((zone) => {
       const dungeons = DUNGEONS.filter((dungeon) => dungeon.zoneId === zone.id);
+      const completion = getRegionCompletionSummary(state, zone.id);
       const entryDungeon = dungeons.reduce<DungeonDefinition | null>((first, dungeon) => {
         if (!first) return dungeon;
         return dungeon.indexInZone < first.indexInZone ? dungeon : first;
@@ -1763,9 +1839,21 @@ function getRegionSummaries(state: GameState, availableDungeons: DungeonDefiniti
         availableDungeons: availableDungeons.filter((dungeon) => dungeon.zoneId === zone.id),
         completedCount: dungeons.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0).length,
         unlocked,
-        unlockHint: !unlocked && entryDungeon ? getUnlockText(state, entryDungeon) : null
+        unlockHint: !unlocked && entryDungeon ? getUnlockText(state, entryDungeon) : null,
+        materialId: completion.materialId,
+        materialAmount: completion.materialAmount,
+        completionPercent: completion.completionPercent
       };
     });
+}
+
+function formatRegionalSinkReward(reward: { gold?: number; fragments?: number }): string {
+  return [
+    (reward.gold ?? 0) > 0 ? `${formatNumber(reward.gold ?? 0)} Gold` : null,
+    (reward.fragments ?? 0) > 0 ? `${formatNumber(reward.fragments ?? 0)} Fragments` : null
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function RegionCard({
@@ -1798,6 +1886,12 @@ function RegionCard({
       <p className="mt-2 text-xs font-semibold text-stone-700">
         Progress: {region.completedCount}/{region.dungeons.length} cleared
       </p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[0.68rem] font-black uppercase text-stone-600">
+        <span className="rounded-md border border-stone-200 bg-parchment/70 px-2 py-1">{region.completionPercent}% complete</span>
+        <span className="rounded-md border border-stone-200 bg-parchment/70 px-2 py-1">
+          {region.materialId ? `${formatNumber(region.materialAmount)} ${REGION_MATERIAL_LABELS[region.materialId]}` : "No stockpile"}
+        </span>
+      </div>
       {!region.unlocked && region.unlockHint && <p className="mt-1 text-xs font-semibold text-amber-900">{region.unlockHint}</p>}
     </button>
   );
@@ -1831,6 +1925,229 @@ function RegionCarousel({
   );
 }
 
+const REGION_COMPLETION_LAYOUT = "sectioned" as "compact" | "sectioned";
+
+function RegionCompletionPanel({ state, store, region }: { state: GameState; store: GameStore; region: RegionSummary }) {
+  const completion = getRegionCompletionSummary(state, region.zone.id);
+  const materialName = completion.materialId ? REGION_MATERIAL_LABELS[completion.materialId] : "Regional Material";
+  const sinks = getRegionalMaterialSinks(region.zone.id);
+  const collections = getVisibleRegionCollectionSummaries(state, region.zone.id);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useState<"relics" | "projects" | "outpost" | null>(null);
+  const outpost = completion.outpost;
+  const outpostBonus = getOutpostBonusDefinition(outpost?.selectedBonusId ?? null);
+  const primaryCollection = collections[0] ?? null;
+  const chaseText = primaryCollection
+    ? `${primaryCollection.name} · ${primaryCollection.piecesFound}/${primaryCollection.piecesTotal} relics${
+        primaryCollection.completedAt ? " · Complete" : ` · Pity ${primaryCollection.missesSincePiece}/${primaryCollection.pityThreshold}`
+      }`
+    : "Regional relic set reveals after the first clear.";
+  const readyProjectCount = sinks.filter((sink) => (state.regionProgress.materials[sink.materialId] ?? 0) >= sink.cost).length;
+  const projectSummaryText = sinks.length === 0 ? "No regional projects" : readyProjectCount > 0 ? `${readyProjectCount}/${sinks.length} ready` : `${sinks.length} projects`;
+  const relicSummaryText = primaryCollection
+    ? `${primaryCollection.piecesFound}/${primaryCollection.piecesTotal} relics${
+        primaryCollection.completedAt ? " complete" : ` · pity ${primaryCollection.missesSincePiece}/${primaryCollection.pityThreshold}`
+      }`
+    : "Hidden";
+  const toggleDrawer = (drawer: "relics" | "projects" | "outpost") => {
+    setActiveDrawer((active) => (active === drawer ? null : drawer));
+  };
+  const renderCollectionDetails = () =>
+    collections.length > 0 ? (
+      <div className="space-y-2">
+        {collections.map((collection) => {
+          const pityPercent = Math.floor((Math.min(collection.missesSincePiece, collection.pityThreshold) / collection.pityThreshold) * 100);
+          return (
+            <div key={collection.collectionId} className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black">{collection.name}</p>
+                  <p className="text-xs font-semibold text-stone-600">
+                    {collection.piecesFound}/{collection.piecesTotal} relics
+                  </p>
+                </div>
+                <Pill className={collection.completedAt ? "border-amber-400 bg-amber-50 text-amber-900" : "border-royal/20 bg-blue-50 text-royal"}>
+                  {collection.completedAt ? "Complete" : `Pity ${collection.missesSincePiece}/${collection.pityThreshold}`}
+                </Pill>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {collection.pieces.map((piece) => (
+                  <span
+                    key={piece.id}
+                    className={`rounded-md border px-2 py-1 text-[0.68rem] font-black uppercase ${
+                      piece.found ? "border-royal/20 bg-blue-50 text-royal" : "border-stone-300 bg-stone-100 text-stone-600"
+                    }`}
+                  >
+                    {piece.found ? piece.name : "Unknown relic"}
+                  </span>
+                ))}
+              </div>
+              {!collection.completedAt && (
+                <div className="mt-2">
+                  <ProgressBar value={pityPercent} className="bg-royal" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="rounded-md border border-ink/10 bg-parchment/70 p-2 text-xs font-semibold text-stone-600">
+        Regional relic set reveals after the first clear.
+      </div>
+    );
+  const renderProjectDetails = () =>
+    sinks.length > 0 ? (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sinks.map((sink) => {
+          const available = state.regionProgress.materials[sink.materialId] ?? 0;
+          const affordable = available >= sink.cost;
+          return (
+            <div key={sink.id} className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black">{sink.name}</p>
+                  <p className="text-xs font-semibold text-stone-700">{sink.description}</p>
+                </div>
+                <Pill
+                  className={
+                    affordable
+                      ? "border-royal/20 bg-blue-50 text-royal"
+                      : "border-stone-300 bg-parchment/70 text-stone-600"
+                  }
+                >
+                  {formatNumber(sink.cost)} {REGION_MATERIAL_LABELS[sink.materialId]}
+                </Pill>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-stone-600">Gain {formatRegionalSinkReward(sink.reward)}</span>
+                <SecondaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.fundRegionalProject(sink.id)} disabled={!affordable}>
+                  <Sparkles size={14} /> Fund
+                </SecondaryButton>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : null;
+  const renderOutpostDetails = () =>
+    outpost ? (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {OUTPOST_BONUSES.map((bonus) => {
+          const selected = outpost.selectedBonusId === bonus.id && outpost.level > 0;
+          return (
+            <div key={bonus.id} className={`rounded-md border p-2 ${selected ? "border-amber-400 bg-amber-50/80" : "border-ink/10 bg-parchment/70"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-black">{bonus.name}</p>
+                  <p className="text-xs font-semibold text-stone-700">{bonus.effectText}</p>
+                </div>
+                <SecondaryButton
+                  className="!min-h-8 shrink-0 px-2.5 py-1 text-xs"
+                  onClick={() => store.selectOutpostBonus(region.zone.id, bonus.id as RegionOutpostBonusId)}
+                  disabled={selected}
+                >
+                  <Hammer size={14} /> {selected ? "Active" : "Assign"}
+                </SecondaryButton>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="rounded-md border border-ink/10 bg-parchment/70 p-2 text-xs font-semibold text-stone-600">
+        Defeat this region's boss to establish an Outpost.
+      </div>
+    );
+
+  return (
+    <Card className="surface-card-elevated border-royal/20">
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase text-mystic">Region Completion</p>
+            <h3 className="truncate text-base font-black">{region.zone.name}</h3>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Pill className="border-royal/20 bg-blue-50 text-royal">{completion.completionPercent}%</Pill>
+            {REGION_COMPLETION_LAYOUT === "compact" && (
+              <SecondaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => setDetailsOpen((open) => !open)}>
+                <MoreHorizontal size={14} /> {detailsOpen ? "Hide" : "Details"}
+              </SecondaryButton>
+            )}
+          </div>
+        </div>
+        <ProgressBar value={completion.completionPercent} className="bg-emerald" />
+        <div className="flex flex-wrap gap-1.5 text-[0.68rem] font-black uppercase text-stone-600">
+          <span className="rounded-md border border-ink/10 bg-parchment/70 px-2 py-1">
+            Routes {completion.routesCleared}/{completion.routesTotal}
+          </span>
+          <span className="rounded-md border border-ink/10 bg-parchment/70 px-2 py-1">
+            Mastery {completion.masteryTiersClaimed}/{completion.masteryTiersTotal}
+          </span>
+          <span className="rounded-md border border-ink/10 bg-parchment/70 px-2 py-1">
+            {materialName} {formatNumber(completion.materialAmount)}
+          </span>
+        </div>
+        {REGION_COMPLETION_LAYOUT === "compact" && (
+          <div className="rounded-md border border-ink/10 bg-parchment/70 px-2 py-1.5">
+            <p className="text-[0.68rem] font-black uppercase text-mystic">Current chase</p>
+            <p className="truncate text-xs font-semibold text-stone-700">{chaseText}</p>
+          </div>
+        )}
+        {REGION_COMPLETION_LAYOUT === "compact" && detailsOpen && (
+          <div className="space-y-2">
+            {renderCollectionDetails()}
+            {renderProjectDetails()}
+          </div>
+        )}
+        {REGION_COMPLETION_LAYOUT === "sectioned" && (
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black">Relics</p>
+                    <p className="truncate text-xs font-semibold text-stone-600">{relicSummaryText}</p>
+                  </div>
+                  <SecondaryButton className="!min-h-8 shrink-0 px-2.5 py-1 text-xs" onClick={() => toggleDrawer("relics")}>
+                    <Gem size={14} /> {activeDrawer === "relics" ? "Hide" : "Open"}
+                  </SecondaryButton>
+                </div>
+              </div>
+              <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black">Projects</p>
+                    <p className="truncate text-xs font-semibold text-stone-600">{projectSummaryText}</p>
+                  </div>
+                  <SecondaryButton className="!min-h-8 shrink-0 px-2.5 py-1 text-xs" onClick={() => toggleDrawer("projects")} disabled={sinks.length === 0}>
+                    <Hammer size={14} /> {activeDrawer === "projects" ? "Hide" : "Open"}
+                  </SecondaryButton>
+                </div>
+              </div>
+              <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black">Outpost</p>
+                    <p className="truncate text-xs font-semibold text-stone-600">{outpostBonus ? outpostBonus.name : outpost ? "Choose bonus" : "Locked"}</p>
+                  </div>
+                  <SecondaryButton className="!min-h-8 shrink-0 px-2.5 py-1 text-xs" onClick={() => toggleDrawer("outpost")} disabled={!outpost}>
+                    <Crown size={14} /> {activeDrawer === "outpost" ? "Hide" : "Open"}
+                  </SecondaryButton>
+                </div>
+              </div>
+            </div>
+            {activeDrawer === "relics" && renderCollectionDetails()}
+            {activeDrawer === "projects" && renderProjectDetails()}
+            {activeDrawer === "outpost" && renderOutpostDetails()}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function RegionExpeditionsView({
   state,
   store,
@@ -1858,6 +2175,8 @@ function RegionExpeditionsView({
         </div>
       </Card>
 
+      <RegionCompletionPanel state={state} store={store} region={region} />
+
       {region.availableDungeons.length > 0 ? (
         <div className="no-scrollbar -mx-4 overflow-x-auto snap-x snap-mandatory scroll-smooth px-4 pb-1">
           <div className="flex min-w-max gap-3 px-[max(0.75rem,calc(50%-9rem))] pb-1">
@@ -1878,6 +2197,90 @@ function RegionExpeditionsView({
   );
 }
 
+function BossPrepPanel({
+  state,
+  dungeon,
+  store,
+  bossView
+}: {
+  state: GameState;
+  dungeon: DungeonDefinition;
+  store: GameStore;
+  bossView: NonNullable<ReturnType<typeof getBossViewSummary>>;
+}) {
+  const revealedCount = bossView.statuses.filter((status) => status.revealed).length;
+  const allRevealed = revealedCount >= bossView.statuses.length;
+  const materialId = getRegionMaterialId(bossView.boss.regionId);
+  const materialName = materialId ? REGION_MATERIAL_LABELS[materialId] : "Material";
+  const materialAmount = materialId ? state.regionProgress.materials[materialId] ?? 0 : 0;
+  const scoutCost = getBossScoutCost(state, bossView.boss);
+
+  return (
+    <div className="rounded-md border border-amber-400/40 bg-parchment/70 p-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-black uppercase text-mystic">{bossView.boss.title}</p>
+          <p className="text-sm font-black">{bossView.boss.name}</p>
+          <p className="text-xs font-semibold text-stone-700">{bossView.boss.fantasy}</p>
+        </div>
+        <SecondaryButton
+          className="!min-h-8 px-2.5 py-1 text-xs"
+          onClick={() => store.scoutBoss(dungeon.id)}
+          disabled={allRevealed || state.focus.current < scoutCost}
+        >
+          <Flame size={14} /> Scout -{scoutCost}
+        </SecondaryButton>
+      </div>
+      <div className="mt-2 grid gap-1.5">
+        {bossView.statuses.map((status) => {
+          const prepMaterialCost = getBossPrepMaterialCost(state, bossView.boss, status.threat);
+          const canPrep =
+            status.revealed &&
+            state.focus.current >= bossView.boss.prepFocusCost &&
+            materialAmount >= prepMaterialCost;
+          const impactCopy =
+            status.successImpact === "covered" ? "Covered" : status.successImpact === "partial" ? "Partial" : status.threat.critical ? "Capped" : "Penalty";
+          return (
+            <div key={status.threat.id} className="rounded-md border border-ink/10 bg-parchment/80 p-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-black">
+                    {status.revealed ? status.threat.name : "Unknown threat"}
+                    {status.threat.critical && status.revealed ? " · Critical" : ""}
+                  </p>
+                  <p className="text-xs font-semibold text-stone-600">
+                    {status.revealed
+                      ? `${impactCopy} · answer: ${status.threat.traitAnswerName} · prep ${status.prepCharges}`
+                      : "Scout to reveal this boss threat."}
+                  </p>
+                </div>
+                {status.revealed && (
+                  <SecondaryButton
+                    className="!min-h-8 shrink-0 px-2.5 py-1 text-xs"
+                    onClick={() => store.prepareBossThreat(dungeon.id, status.threat.id)}
+                    disabled={!canPrep}
+                  >
+                    <Hammer size={14} /> Prep
+                  </SecondaryButton>
+                )}
+              </div>
+              {status.revealed && (
+                <p className="mt-1 text-[0.68rem] font-semibold text-stone-600">
+                  {status.threat.prepName}: {bossView.boss.prepFocusCost} Focus, {status.threat.prepMaterialCost} {materialName}
+                  {prepMaterialCost !== status.threat.prepMaterialCost ? ` (${prepMaterialCost} after resonance)` : ""}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[0.68rem] font-bold uppercase text-stone-600">
+        Intel {bossView.prepState.intel} · Attempts {bossView.prepState.attempts}
+      </p>
+    </div>
+  );
+}
+
 function DungeonCard({
   state,
   dungeon,
@@ -1890,6 +2293,7 @@ function DungeonCard({
   const view = getDungeonView(state, dungeon);
   const progressReward = EXPEDITION_PROGRESS_REWARDS[dungeon.id];
   const mastery = getMasteryProgress(state, dungeon.id);
+  const bossView = getBossViewSummary(state, dungeon, view.successChance);
   return (
     <Card className={`dungeon-card-hover ${dungeon.boss ? "dungeon-card-hover--boss border-amber-400/60" : ""}`}>
       <div className="space-y-3">
@@ -1931,10 +2335,16 @@ function DungeonCard({
             {mastery.nextTier.claimable ? " ready" : ""}
           </p>
         )}
+        {bossView && <BossPrepPanel state={state} dungeon={dungeon} store={store} bossView={bossView} />}
         {view.unlocked ? (
-          <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition) || Boolean(state.caravan.activeJob)}>
-            <Swords size={16} /> Start
-          </PrimaryButton>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            <SecondaryButton className="w-full" onClick={() => store.equipBestForContext({ dungeonId: dungeon.id })}>
+              <Backpack size={16} /> Equip Best
+            </SecondaryButton>
+            <PrimaryButton onClick={() => store.startExpedition(dungeon.id)} disabled={Boolean(state.activeExpedition) || Boolean(state.caravan.activeJob)}>
+              <Swords size={16} /> {dungeon.boss ? "Attempt Boss" : "Start"}
+            </PrimaryButton>
+          </div>
         ) : (
           <div className="rounded-md border border-stone-200 bg-stone-50 p-2 text-sm font-semibold text-stone-700">{getUnlockText(state, dungeon)}</div>
         )}
@@ -2087,8 +2497,10 @@ function OnboardingGuide({
 
 function CaravanScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
   const activeJob = state.caravan.activeJob;
+  const unlockedRegions = getUnlockedCaravanRegions(state);
   const firstUnlockedFocus = CARAVAN_FOCUS_DEFINITIONS.find((focus) => isCaravanFocusUnlocked(state, focus.id)) ?? CARAVAN_FOCUS_DEFINITIONS[0];
   const [focusId, setFocusId] = useState<CaravanFocusId>(activeJob?.focusId ?? firstUnlockedFocus.id);
+  const [regionId, setRegionId] = useState(activeJob?.regionId ?? unlockedRegions[0].id);
   const [durationHours, setDurationHours] = useState(() => {
     const activeHours = activeJob ? Math.round(activeJob.durationMs / CARAVAN_MIN_DURATION_MS) : 4;
     return Math.min(8, Math.max(1, activeHours));
@@ -2100,17 +2512,25 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
     }
   }, [firstUnlockedFocus.id, focusId, state]);
 
+  useEffect(() => {
+    if (!unlockedRegions.some((region) => region.id === regionId)) {
+      setRegionId(unlockedRegions[0].id);
+    }
+  }, [regionId, unlockedRegions]);
+
   const durationMs = durationHours * CARAVAN_MIN_DURATION_MS;
-  const previewRewards = estimateCaravanRewards(state, focusId, durationMs);
+  const previewRewards = estimateCaravanRewardsForRegion(state, focusId, regionId, durationMs);
   const activeFocus = activeJob ? CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === activeJob.focusId) : null;
+  const activeRegion = activeJob ? ZONES.find((zone) => zone.id === activeJob.regionId) : null;
   const activeRemaining = activeJob ? Math.max(0, activeJob.endsAt - now) : 0;
+  const activeReady = Boolean(activeJob && activeRemaining <= 0);
   const activeProgress = activeJob ? ((activeJob.durationMs - activeRemaining) / Math.max(1, activeJob.durationMs)) * 100 : 0;
   const endingAt = now + durationMs;
   const selectedFocusId = activeJob?.focusId ?? focusId;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-5 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
         {CARAVAN_FOCUS_DEFINITIONS.map((focus) => {
           const unlocked = isCaravanFocusUnlocked(state, focus.id);
           const Icon = getCaravanFocusIcon(focus.id);
@@ -2143,12 +2563,17 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
           <div className="space-y-3">
             <div>
               <p className="text-xs font-black uppercase text-stone-600">Active Caravan</p>
-              <h3 className="font-black">{activeFocus.label} focus</h3>
+              <h3 className="font-black">{activeRegion?.name ?? "Regional"} · {activeFocus.label} focus</h3>
               <p className="text-xs font-semibold text-stone-700">
-                Ends at {formatLocalClock(activeJob.endsAt)} · {activeRemaining > 0 ? `${formatMs(activeRemaining)} remaining` : "Ready on next return"}
+                Ends at {formatLocalClock(activeJob.endsAt)} · {activeReady ? "Ready to claim" : `${formatMs(activeRemaining)} remaining`}
               </p>
             </div>
             <ProgressBar value={activeProgress} className="bg-stone-600" />
+            {activeReady && (
+              <PrimaryButton className="w-full" onClick={() => store.claimCaravanJob()}>
+                <CheckCircle2 size={15} /> Claim Caravan
+              </PrimaryButton>
+            )}
             <DangerButton className="w-full" onClick={() => store.cancelCaravanJob()}>
               <XCircle size={15} /> Cancel Caravan, no rewards
             </DangerButton>
@@ -2159,6 +2584,27 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
       {!activeJob && (
         <Card>
           <div className="space-y-4">
+            <div>
+              <h3 className="font-black">Target Region</h3>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {unlockedRegions.map((region) => {
+                  const selected = region.id === regionId;
+                  return (
+                    <button
+                      key={region.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setRegionId(region.id)}
+                      className={`ui-hover-surface min-h-11 rounded-lg border px-2 py-1.5 text-left text-xs font-black transition ${
+                        selected ? "border-amber-400 bg-blue-50/80 ring-1 ring-amber-400/50" : "border-ink/10 bg-parchment/70"
+                      }`}
+                    >
+                      {region.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <h3 className="font-black">Set Away Time</h3>
             <input
               type="range"
@@ -2185,9 +2631,14 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
                 <span className="font-black text-ink">{formatCaravanRewardText(previewRewards)}</span>
               </p>
             </div>
-            <PrimaryButton className="w-full" onClick={() => store.startCaravanJob(focusId, durationMs)} disabled={!state.settings.heroCreated || !isCaravanFocusUnlocked(state, focusId)}>
+            <PrimaryButton
+              className="w-full"
+              onClick={() => store.startCaravanJob(focusId, durationMs, regionId)}
+              disabled={!state.settings.heroCreated || !isCaravanFocusUnlocked(state, focusId) || Boolean(state.activeExpedition)}
+            >
               <Clock size={16} /> Start {durationHours}h Caravan
             </PrimaryButton>
+            {state.activeExpedition && <p className="text-xs font-bold text-amber-900">Finish the active expedition before sending the Caravan offline.</p>}
           </div>
         </Card>
       )}
@@ -2195,7 +2646,7 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
   );
 }
 
-function EquippedItemsOverview({ state }: { state: GameState }) {
+function EquippedItemsOverview({ state, store }: { state: GameState; store: GameStore }) {
   const slots = Object.keys(slotLabels) as EquipmentSlot[];
   const equippedCount = slots.filter((slot) => state.equipment[slot]).length;
 
@@ -2228,7 +2679,15 @@ function EquippedItemsOverview({ state }: { state: GameState }) {
                 </div>
                 <p className="mt-2 line-clamp-2 font-black leading-snug">{item.name}</p>
                 <p className="mt-1 line-clamp-1 font-semibold text-stone-600">{RARITY_LABEL[item.rarity]} · +{item.upgradeLevel}</p>
+                {(formatItemTraitName(item) || formatItemFamilyName(item)) && (
+                  <p className="mt-1 line-clamp-1 font-black text-royal">
+                    {[formatItemTraitName(item), formatItemFamilyName(item)].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 {formatAffixPreview(item, 1) && <p className="mt-1 line-clamp-1 font-semibold text-stone-600">{formatAffixPreview(item, 1)}</p>}
+                <SecondaryButton className="mt-2 !min-h-7 px-2 py-0.5 text-[0.68rem]" onClick={() => store.toggleItemLock(item.id)}>
+                  {item.locked ? <Unlock size={12} /> : <Lock size={12} />} {item.locked ? "Unlock" : "Lock"}
+                </SecondaryButton>
               </div>
             );
           })}
@@ -2322,7 +2781,26 @@ function HeroScreen({
   const stats = getDerivedStats(state);
   const xpToNext = xpToNextLevel(state.hero.level);
   const xpProgress = Math.min(100, (state.hero.xp / Math.max(1, xpToNext)) * 100);
-  const canSwitchClass = state.lifetime.expeditionsStarted === 0 && state.hero.level === 1;
+  const pristineClassSelection = state.lifetime.expeditionsStarted === 0 && state.hero.level === 1;
+  const rebirthUnlockedForClassChange = canPrestige(state);
+  const earlyFreeClassChange = !rebirthUnlockedForClassChange && state.rebirth.totalRebirths === 0 && !state.classChange.freeChangeUsed;
+  const classChangeCooldownMs = state.classChange.lastChangedAt ? Math.max(0, CLASS_CHANGE_COOLDOWN_MS - (Date.now() - state.classChange.lastChangedAt)) : 0;
+  const classChangeCostPaid = state.classChange.freeChangeUsed;
+  const canPayClassChange = state.resources.renown + (rebirthUnlockedForClassChange ? calculatePrestigeRenown(state) : 0) >= CLASS_CHANGE_SOUL_MARK_COST;
+  const canSwitchClass =
+    pristineClassSelection || earlyFreeClassChange || (rebirthUnlockedForClassChange && classChangeCooldownMs <= 0 && (!classChangeCostPaid || canPayClassChange));
+  const classChangeCopy = pristineClassSelection
+    ? "Initial class selection is free."
+    : earlyFreeClassChange
+      ? "One early free respec is available before Reincarnation unlocks."
+      : rebirthUnlockedForClassChange
+        ? classChangeCooldownMs > 0
+          ? `Class change cooldown: ${formatMs(classChangeCooldownMs)}.`
+          : classChangeCostPaid
+            ? `Changing class triggers Reincarnation and costs ${CLASS_CHANGE_SOUL_MARK_COST} Soul Marks.`
+            : "Changing class triggers Reincarnation. First class change is free."
+        : `Unlock Reincarnation to change class again.`;
+  const classChangeButtonText = pristineClassSelection ? "Choose Class" : earlyFreeClassChange ? "Use Free Respec" : rebirthUnlockedForClassChange ? "Rebirth as Class" : "Locked";
   const activeClass = HERO_CLASSES.find((entry) => entry.id === state.hero.classId) ?? HERO_CLASSES[0];
   const classPassives = CLASS_PASSIVE_TEXT[state.hero.classId];
   const heroPanels: Array<{ id: HeroSubviewId; content: React.ReactNode }> = [
@@ -2330,7 +2808,7 @@ function HeroScreen({
       id: "overview",
       content: (
         <div className="space-y-3">
-          <EquippedItemsOverview state={state} />
+          <EquippedItemsOverview state={state} store={store} />
           <Card>
             <div className="space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2364,24 +2842,34 @@ function HeroScreen({
     {
       id: "class",
       content: (
-        <div className="grid gap-3 md:grid-cols-3">
-          {HERO_CLASSES.map((heroClass) => (
-            <Card key={heroClass.id} className={state.hero.classId === heroClass.id ? "border-royal/50 bg-blue-50" : ""}>
-              <h3 className="font-black">{heroClass.name}</h3>
-              <p className="text-xs font-bold text-royal sm:text-sm">{heroClass.tagline}</p>
-              <p className="mt-2 text-xs font-semibold text-stone-700 sm:text-sm">{heroClass.description}</p>
-              <ul className="mt-3 space-y-1 text-xs font-semibold text-stone-700">
-                {CLASS_PASSIVE_TEXT[heroClass.id].map((passive) => (
-                  <li key={passive.name}>
-                    Lv{passive.level} {passive.name}: {passive.effect}
-                  </li>
-                ))}
-              </ul>
-              <SecondaryButton className="mt-3 w-full" onClick={() => store.changeClass(heroClass.id)} disabled={!canSwitchClass || state.hero.classId === heroClass.id}>
-                {state.hero.classId === heroClass.id ? "Selected" : canSwitchClass ? "Choose Class" : "Locked"}
-              </SecondaryButton>
-            </Card>
-          ))}
+        <div className="space-y-3">
+          <Card className="border-royal/20 bg-blue-50/70">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-bold text-stone-700">{classChangeCopy}</p>
+              <Pill className={canSwitchClass ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-300 bg-stone-100 text-stone-700"}>
+                {canSwitchClass ? "Available" : "Unavailable"}
+              </Pill>
+            </div>
+          </Card>
+          <div className="grid gap-3 md:grid-cols-3">
+            {HERO_CLASSES.map((heroClass) => (
+              <Card key={heroClass.id} className={state.hero.classId === heroClass.id ? "border-royal/50 bg-blue-50" : ""}>
+                <h3 className="font-black">{heroClass.name}</h3>
+                <p className="text-xs font-bold text-royal sm:text-sm">{heroClass.tagline}</p>
+                <p className="mt-2 text-xs font-semibold text-stone-700 sm:text-sm">{heroClass.description}</p>
+                <ul className="mt-3 space-y-1 text-xs font-semibold text-stone-700">
+                  {CLASS_PASSIVE_TEXT[heroClass.id].map((passive) => (
+                    <li key={passive.name}>
+                      Lv{passive.level} {passive.name}: {passive.effect}
+                    </li>
+                  ))}
+                </ul>
+                <SecondaryButton className="mt-3 w-full" onClick={() => store.changeClass(heroClass.id)} disabled={!canSwitchClass || state.hero.classId === heroClass.id}>
+                  {state.hero.classId === heroClass.id ? "Selected" : classChangeButtonText}
+                </SecondaryButton>
+              </Card>
+            ))}
+          </div>
         </div>
       )
     },
@@ -2445,6 +2933,8 @@ function ItemCard({ state, item, store }: { state: GameState; item: Item; store:
   const salvageValue = getVisibleSalvageValue(state, item);
   const salvageText = formatResources(salvageValue) || "No materials";
   const affixPreview = formatAffixNamePreview(item);
+  const traitName = formatItemTraitName(item);
+  const familyName = formatItemFamilyName(item);
   return (
     <GameCard density="compact" className={`${rarityClass(item.rarity)} ${isRareOrBetter(item) ? "rarity-glow" : ""}`}>
       <div className="space-y-2">
@@ -2470,6 +2960,13 @@ function ItemCard({ state, item, store }: { state: GameState; item: Item; store:
               )}
             </span>
           </p>
+          {(traitName || familyName || item.locked) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {traitName && <Pill className="!px-2 !py-0.5 text-[0.68rem] border-royal/20 bg-blue-50 text-royal">{traitName}</Pill>}
+              {familyName && <Pill className="!px-2 !py-0.5 text-[0.68rem] border-amber-400 bg-amber-50 text-amber-900">{familyName}</Pill>}
+              {item.locked && <Pill className="!px-2 !py-0.5 text-[0.68rem] border-stone-300 bg-stone-100 text-stone-700">Locked</Pill>}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold text-stone-700">
@@ -2496,15 +2993,71 @@ function ItemCard({ state, item, store }: { state: GameState; item: Item; store:
           <span>Salvage {salvageText}</span>
         </div>
 
-        <div className="grid min-w-0 grid-cols-3 gap-1.5">
+        <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4">
           <PrimaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.equipItem(item.id)}>
             Equip
           </PrimaryButton>
-          <SecondaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.sellItem(item.id)}>Sell</SecondaryButton>
-          <SecondaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.salvageItem(item.id)}>Salvage</SecondaryButton>
+          <SecondaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.toggleItemLock(item.id)}>
+            {item.locked ? <Unlock size={14} /> : <Lock size={14} />} {item.locked ? "Unlock" : "Lock"}
+          </SecondaryButton>
+          <SecondaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.sellItem(item.id)} disabled={item.locked}>Sell</SecondaryButton>
+          <SecondaryButton className="!min-h-9 px-2 py-1 text-xs" onClick={() => store.salvageItem(item.id)} disabled={item.locked}>Salvage</SecondaryButton>
         </div>
       </div>
     </GameCard>
+  );
+}
+
+function BuildPresetsPanel({ state, store }: { state: GameState; store: GameStore }) {
+  const presetIds: BuildPresetId[] = ["preset-1", "preset-2"];
+  const resonances = getFamilyResonanceSummaries(state).filter((summary) => summary.family.active || summary.equippedCount > 0);
+  return (
+    <Card>
+      <div className="space-y-3">
+        <SectionHeader
+          title="Build Presets"
+          action={<SecondaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.equipBestForContext()}>Equip Best</SecondaryButton>}
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
+          {presetIds.map((presetId) => {
+            const preset = state.buildPresets[presetId];
+            const savedCount = Object.keys(preset.equipmentItemIds).length;
+            return (
+              <div key={presetId} className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-black">{preset.name}</p>
+                    <p className="text-xs font-semibold text-stone-600">{savedCount}/5 slots saved</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <SecondaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.saveBuildPreset(presetId)}>
+                      <Save size={14} /> Save
+                    </SecondaryButton>
+                    <PrimaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.equipBuildPreset(presetId)} disabled={savedCount === 0}>
+                      Equip
+                    </PrimaryButton>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {resonances.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {resonances.map((summary) => (
+              <Pill
+                key={summary.family.id}
+                className={`!px-2 !py-0.5 text-[0.68rem] ${
+                  summary.rank > 0 ? "border-amber-400 bg-amber-50 text-amber-900" : "border-stone-300 bg-stone-100 text-stone-700"
+                }`}
+              >
+                {summary.family.name} {summary.equippedCount}/3 {summary.rank > 0 ? `R${summary.rank}` : ""}
+              </Pill>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -2556,6 +3109,7 @@ function InventoryScreen({ state, store }: { state: GameState; store: GameStore 
           <ProgressBar value={pityProgress} className="bg-royal" />
         </div>
       </Card>
+      <BuildPresetsPanel state={state} store={store} />
       {inventoryNearFull && (
         <Card className={`feedback-pop ${inventoryFull ? "border-red-300 bg-red-50" : "border-amber-400 bg-amber-50"}`}>
           <p className={`flex items-center gap-2 ${inventoryFull ? "font-bold text-red-800" : "font-bold text-amber-900"}`}>
@@ -2775,7 +3329,7 @@ function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): stri
         : `Affix rerolls unlock at Forge level ${FORGE_AFFIX_REROLL_REQUIRED_LEVEL}.`;
     case "mine": {
       const capHours = Math.floor(OFFLINE_CAP_MS / (60 * 60 * 1000));
-      return `Improves Ore and Crystal Caravan yields. Offline jobs are player-chosen and capped at ${capHours}h.`;
+      return `Improves Fragment Caravan yields. Offline jobs are player-chosen and capped at ${capHours}h.`;
     }
     case "tavern": {
       const ready = state.dailies.tasks.filter((task) => !task.claimed && task.progress >= task.target).length;
@@ -2798,28 +3352,83 @@ function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): stri
   }
 }
 
-function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
+function ActiveConstructionPanel({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
+  const progress = getActiveConstructionProgress(state, now);
+  if (!progress) return null;
+  const building = BUILDINGS.find((entry) => entry.id === progress.buildingId);
+  if (!building) return null;
+  const focusToFinish = getConstructionFocusCostToComplete(state, now);
+  const canClaim = progress.ready;
+  const skipOneHour = Math.min(CONSTRUCTION_FOCUS_PER_HOUR, focusToFinish);
+  const canSkipOneHour = skipOneHour > 0 && state.focus.current >= skipOneHour;
+  const canSkipAll = focusToFinish > 0 && state.focus.current >= focusToFinish;
+
+  return (
+    <Card className={canClaim ? "border-emerald/30 bg-emerald-50/80" : "border-royal/20 bg-blue-50/70"}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-mystic">Construction Slot</p>
+            <h3 className="text-base font-black">{building.name} Level {progress.targetLevel}</h3>
+            <p className="text-xs font-semibold text-stone-700">
+              {canClaim ? "Ready to claim" : `${formatMs(progress.remainingMs)} remaining`} · Focus skips 1h for {CONSTRUCTION_FOCUS_PER_HOUR}
+            </p>
+          </div>
+          <Pill className={canClaim ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-royal/20 bg-blue-50 text-royal"}>
+            <Clock size={13} /> {canClaim ? "Ready" : formatPercent(progress.progress)}
+          </Pill>
+        </div>
+        <ProgressBar value={progress.progress * 100} className={canClaim ? "bg-emerald" : "bg-royal"} />
+        <div className="flex flex-wrap gap-1.5">
+          <PrimaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={store.claimConstruction} disabled={!canClaim}>
+            <CheckCircle2 size={15} /> Claim Upgrade
+          </PrimaryButton>
+          {!canClaim && (
+            <>
+              <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.accelerateConstruction(skipOneHour)} disabled={!canSkipOneHour}>
+                <Flame size={15} /> Skip 1h
+              </SecondaryButton>
+              <SecondaryButton className="!min-h-9 px-3 py-1 text-xs" onClick={() => store.accelerateConstruction(focusToFinish)} disabled={!canSkipAll}>
+                <Flame size={15} /> Finish -{focusToFinish}
+              </SecondaryButton>
+            </>
+          )}
+          <DangerButton className="!min-h-9 px-3 py-1 text-xs" onClick={store.cancelConstruction}>
+            <XCircle size={15} /> Cancel
+          </DangerButton>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function TownScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
   const totalLevels = getBuildingLevelTotal(state);
-  const nextAffordable = BUILDINGS.find((building) => state.town[building.id] < building.maxLevel && canAfford(state.resources, getBuildingCost(state, building.id)));
+  const hasActiveConstruction = Boolean(state.construction.activeBuildingId);
+  const nextAffordable = BUILDINGS.find((building) => state.town[building.id] < building.maxLevel && canAffordConstructionCost(state, getBuildingConstructionCost(state, building.id)));
   return (
     <div className="space-y-4">
+      <ActiveConstructionPanel state={state} now={now} store={store} />
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Town Buildings</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. Each upgrade feeds gear, resources, missions, unlocks, or reincarnation.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. One construction can run at a time; timers survive Reincarnation.</p>
           </div>
           <Pill className={nextAffordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
-            {nextAffordable ? `${nextAffordable.name} ready` : "No upgrade ready"}
+            {hasActiveConstruction ? "Slot occupied" : nextAffordable ? `${nextAffordable.name} ready` : "No build ready"}
           </Pill>
         </div>
       </Card>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {BUILDINGS.map((building) => {
           const level = state.town[building.id];
-          const cost = getBuildingCost(state, building.id);
-          const affordable = canAfford(state.resources, cost);
+          const cost = getBuildingConstructionCost(state, building.id);
+          const affordable = canAffordConstructionCost(state, cost);
           const maxed = level >= building.maxLevel;
+          const activeHere = state.construction.activeBuildingId === building.id;
+          const targetLevel = level + 1;
+          const durationMs = getBuildingConstructionDurationMs(building.id, targetLevel);
           const progress = Math.floor((level / building.maxLevel) * 100);
           return (
             <Card key={building.id}>
@@ -2834,11 +3443,26 @@ function TownScreen({ state, store }: { state: GameState; store: GameStore }) {
                   </Pill>
                 </div>
                 <p className="text-xs font-semibold text-stone-700">
-                  <span className="font-black text-ink">Upgrade cost:</span> {maxed ? "Maxed" : formatResources(cost)}
+                  <span className="font-black text-ink">Build cost:</span> {maxed ? "Maxed" : formatConstructionCost(cost)}
                 </p>
-                <PrimaryButton className="w-full" onClick={() => store.buyBuilding(building.id as BuildingId)} disabled={!affordable || maxed}>
-                  <Hammer size={16} /> {maxed ? "Maxed" : affordable ? "Upgrade" : "Need Resources"}
+                {!maxed && (
+                  <p className="text-xs font-semibold text-stone-600">
+                    <span className="font-black text-ink">Timer:</span> {formatMs(durationMs)}
+                  </p>
+                )}
+                {activeHere && (
+                  <p className="rounded-md border border-royal/20 bg-blue-50 px-2 py-1 text-xs font-bold text-royal">
+                    This upgrade is under construction.
+                  </p>
+                )}
+                <PrimaryButton className="w-full" onClick={() => store.buyBuilding(building.id as BuildingId)} disabled={!affordable || maxed || hasActiveConstruction}>
+                  <Hammer size={16} /> {maxed ? "Maxed" : activeHere ? "Building" : hasActiveConstruction ? "Slot Occupied" : affordable ? "Start Build" : "Need Resources"}
                 </PrimaryButton>
+                {!maxed && (
+                  <p className="text-[0.68rem] font-semibold text-stone-500">
+                    Regional stock: {formatRegionMaterials(state.regionProgress.materials)}
+                  </p>
+                )}
                 <details className="rounded-md border border-stone-200 bg-white px-3 py-2">
                   <summary className="cursor-pointer text-xs font-black uppercase text-stone-600">Details & milestones</summary>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
@@ -3687,7 +4311,7 @@ export default function Home() {
       screen = <ForgeScreen state={state} store={store} view={forgeSubview} onViewChange={setForgeSubview} reducedMotion={state.settings.reducedMotion} />;
       break;
     case "town":
-      screen = <TownScreen state={state} store={store} />;
+      screen = <TownScreen state={state} now={now} store={store} />;
       break;
     case "account":
       screen = <AccountShowcaseScreen state={state} store={store} />;

@@ -5,15 +5,19 @@ import {
   AFFIX_POOL,
   ACCOUNT_RANKS,
   BUILDINGS,
+  BOSS_DEFINITIONS,
   DAILY_RESET_HOUR_LOCAL,
   DUNGEONS,
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
   INVENTORY_LIMIT,
+  ITEM_FAMILIES,
+  ITEM_TRAITS,
   LOOT_DROP_PITY_THRESHOLD,
   REINCARNATION_GATE_BOSS_ID,
   REINCARNATION_LEVEL_REQUIREMENT,
   RENOWN_UPGRADES,
+  COLLECTION_PITY_THRESHOLD,
   FOCUS_EXPEDITION_BOOST_COST,
   FOCUS_MAX,
   FOCUS_REGEN_INTERVAL_MS,
@@ -21,26 +25,38 @@ import {
   SAVE_VERSION,
   ZONES,
   applyAccountXp,
+  applyCollectionProgress,
   applyDailyProgress,
+  applyBossThreatsToSuccessChance,
   applyOfflineProgress,
+  accelerateBuildingConstruction,
   buildShowcaseCopyText,
   buyBuildingUpgrade,
   canAfford,
   canPrestige,
   cancelCaravanJob,
+  cancelBuildingConstruction,
+  changeHeroClassWithLaunchRules,
   claimDailyFocus,
   claimDailyTask,
+  claimBuildingConstruction,
+  claimCaravanJob,
   claimMasteryTier,
   claimWeeklyQuest,
   createInitialState,
+  createItem,
   createRng,
   craftItem,
   dismissAccountShowcaseDiscovery,
   ensureDailies,
   estimateCaravanRewards,
   equipItem,
+  equipBestForContext,
+  equipBuildPreset,
   getAvailableDungeons,
   getAffixRerollCost,
+  getActiveRegionIds,
+  getBossViewSummary,
   getBuildingCost,
   getCraftCost,
   getDerivedStats,
@@ -60,8 +76,15 @@ import {
   getSellMultiplier,
   getSuccessChance,
   getFocusBoostCost,
+  getFamilyResonanceSummaries,
+  getItemFamilyDefinition,
+  getItemTraitDefinition,
+  getRegionCompletionSummary,
+  getRegionCollectionSummary,
+  getVisibleRegionCollectionSummaries,
   getWeeklyWindowStartAt,
   getXpMultiplier,
+  fundRegionalMaterialSink,
   importSave,
   loadSave,
   performPrestige,
@@ -69,12 +92,18 @@ import {
   rerollItemAffix,
   resolveExpedition,
   salvageItem,
+  scoutBoss,
   sellItem,
   serializeSave,
+  saveBuildPreset,
+  selectRegionOutpostBonus,
   selectShowcaseTitle,
   setLootFocus,
+  prepareBossThreat,
+  recordBossAttemptResult,
   startCaravanJob,
   startExpedition,
+  toggleItemLock,
   toggleShowcaseTrophy,
   upgradeItem,
   xpToNextLevel
@@ -125,6 +154,7 @@ describe("state and RNG determinism", () => {
     const a = createInitialState("same", NOW, "mage");
     const b = createInitialState("same", NOW, "mage");
     expect(a).toEqual(b);
+    expect(a.resources).toEqual({ gold: 0, fragments: 0, renown: 0 });
     expect(a.focus.current).toBe(FOCUS_MAX);
     expect(a.focus.cap).toBe(FOCUS_MAX);
     expect(a.focus.lastRegenAt).toBe(NOW);
@@ -391,16 +421,14 @@ describe("expeditions, focus, and loot", () => {
     const townResources = makeReadyState("first-session-town").resources;
     firstTwo.forEach((dungeon) => {
       townResources.gold += dungeon.baseGold;
-      townResources.ore += dungeon.materials.ore ?? 0;
-      townResources.crystal += dungeon.materials.crystal ?? 0;
+      townResources.fragments += dungeon.materials.fragments ?? 0;
     });
     expect(canAfford(townResources, getBuildingCost(initial, "forge"))).toBe(true);
 
     const earlyResources = makeReadyState("first-session-resources").resources;
     firstThree.forEach((dungeon) => {
       earlyResources.gold += dungeon.baseGold;
-      earlyResources.ore += dungeon.materials.ore ?? 0;
-      earlyResources.crystal += dungeon.materials.crystal ?? 0;
+      earlyResources.fragments += dungeon.materials.fragments ?? 0;
     });
 
     const itemUpgradeCost = getItemUpgradeCost(first.state, firstItem);
@@ -413,12 +441,10 @@ describe("expeditions, focus, and loot", () => {
     [...firstThree, DUNGEONS[3]].forEach((dungeon) => {
       afterEarlySpends.dungeonClears[dungeon.id] = 1;
       afterEarlySpends.resources.gold += dungeon.baseGold;
-      afterEarlySpends.resources.ore += dungeon.materials.ore ?? 0;
-      afterEarlySpends.resources.crystal += dungeon.materials.crystal ?? 0;
+      afterEarlySpends.resources.fragments += dungeon.materials.fragments ?? 0;
     });
     afterEarlySpends.resources.gold -= (itemUpgradeCost.gold ?? 0) + (forgeBuildingCost.gold ?? 0);
-    afterEarlySpends.resources.ore -= (itemUpgradeCost.ore ?? 0) + (forgeBuildingCost.ore ?? 0);
-    afterEarlySpends.resources.crystal -= (itemUpgradeCost.crystal ?? 0) + (forgeBuildingCost.crystal ?? 0);
+    afterEarlySpends.resources.fragments -= (itemUpgradeCost.fragments ?? 0) + (forgeBuildingCost.fragments ?? 0);
     expect(canAfford(afterEarlySpends.resources, getCraftCost(afterEarlySpends))).toBe(true);
   });
 
@@ -466,7 +492,7 @@ describe("expeditions, focus, and loot", () => {
       clone.id = `${clone.id}-${capped.inventory.length}`;
       capped.inventory.push(clone);
     }
-    capped.resources.ore = 0;
+    capped.resources.fragments = 0;
     const secondStart = startExpedition(capped, "tollroad-of-trinkets", NOW + 100_000);
     expect(secondStart.ok).toBe(true);
     if (!secondStart.ok) throw new Error("start failed");
@@ -475,7 +501,7 @@ describe("expeditions, focus, and loot", () => {
     if (!secondResolve.ok) throw new Error("resolve failed");
     expect(secondResolve.state.inventory.length).toBe(INVENTORY_LIMIT);
     if (secondResolve.summary.autoSalvagedItem) {
-      expect(secondResolve.state.resources.ore).toBeGreaterThan(0);
+      expect(secondResolve.state.resources.fragments).toBeGreaterThan(0);
     }
   });
 
@@ -523,7 +549,7 @@ describe("expeditions, focus, and loot", () => {
     expect(AFFIX_POOL.some((affix) => affix.effects?.bossRewardMultiplier)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.craftingDiscount)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.focusBoostCostReduction)).toBe(true);
-    expect(AFFIX_POOL.some((affix) => affix.effects?.materialResourceMultiplier?.ore)).toBe(true);
+    expect(AFFIX_POOL.some((affix) => affix.effects?.materialResourceMultiplier?.fragments)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.shortMissionSuccessChance)).toBe(true);
     expect(AFFIX_POOL.some((affix) => affix.effects?.longMissionLootChance)).toBe(true);
 
@@ -555,7 +581,7 @@ describe("expeditions, focus, and loot", () => {
         getAffix("deep-breath")
       ],
       sellValue: 1,
-      salvageValue: { ore: 1 },
+      salvageValue: { fragments: 1 },
       sourceDungeonId: "test",
       createdAtRunId: 0
     };
@@ -564,8 +590,114 @@ describe("expeditions, focus, and loot", () => {
     expect(getGoldMultiplier(state, emberwoodDungeon)).toBeGreaterThan(baseGold);
     expect(getLootChance(state, longDungeon)).toBeGreaterThan(baseLoot);
     expect(getSuccessChance(state, DUNGEONS[0])).toBeGreaterThan(baseSuccess);
-    expect(getCraftCost(state).ore ?? 0).toBeLessThan(baseCraftCost.ore ?? 0);
+    expect(getCraftCost(state).fragments ?? 0).toBeLessThan(baseCraftCost.fragments ?? 0);
     expect(getFocusBoostCost(state)).toBeLessThan(baseFocusCost);
+  });
+
+  it("generates one readable item trait and keeps inactive families gated", () => {
+    const state = makeReadyState("phase-6-trait-generation");
+    state.bossPrep["copper-crown-champion"] = { revealedThreats: [], prepCharges: {}, attempts: 0, intel: 0 };
+    const item = createItem(state, DUNGEONS[0], createRng("phase-6-legendary"), 9, { slot: "weapon", rarity: "legendary" });
+
+    expect(item.traitId).toBeTruthy();
+    expect(getItemTraitDefinition(item.traitId)?.category).toBe("tactical");
+    expect(item.affixes.some((affix) => ITEM_TRAITS.some((trait) => trait.id === affix.id))).toBe(false);
+    expect(state.traitCodex[item.traitId ?? ""]?.discovered).toBe(true);
+    expect(ITEM_FAMILIES.filter((family) => family.active).map((family) => family.id)).toEqual(["sunlitCharter", "emberboundKit"]);
+    expect(ITEM_FAMILIES.filter((family) => !family.active).map((family) => family.id)).toEqual(["azureLedger", "stormglassSurvey", "firstForgeOath"]);
+  });
+
+  it("equips lower-power contextual trait gear for a boss", () => {
+    const state = makeReadyState("phase-6-context-equip");
+    const rawPowerWeapon = {
+      id: "raw-power",
+      name: "Raw Power Blade",
+      slot: "weapon" as const,
+      rarity: "epic" as const,
+      itemLevel: 5,
+      upgradeLevel: 0,
+      stats: { power: 100 },
+      affixes: [],
+      sellValue: 1,
+      salvageValue: { fragments: 1 },
+      sourceDungeonId: "test",
+      createdAtRunId: 1
+    };
+    const piercingWeapon = {
+      id: "piercing-low-power",
+      name: "Piercing Low Blade",
+      slot: "weapon" as const,
+      rarity: "rare" as const,
+      itemLevel: 5,
+      upgradeLevel: 0,
+      stats: { power: 1 },
+      affixes: [],
+      traitId: "piercing" as const,
+      familyId: null,
+      sellValue: 1,
+      salvageValue: { fragments: 1 },
+      sourceDungeonId: "test",
+      createdAtRunId: 2
+    };
+    state.equipment.weapon = rawPowerWeapon;
+    state.inventory = [piercingWeapon];
+
+    const result = equipBestForContext(state, NOW + 1, { dungeonId: "copper-crown-champion" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("equip best failed");
+    expect(result.state.equipment.weapon?.id).toBe("piercing-low-power");
+    expect(result.state.inventory.some((item) => item.id === "raw-power")).toBe(true);
+  });
+
+  it("locks items and supports two build presets with family resonance", () => {
+    const state = makeReadyState("phase-6-presets");
+    const makeFamilyItem = (id: string, slot: "weapon" | "helm" | "armor") => ({
+      id,
+      name: id,
+      slot,
+      rarity: "rare" as const,
+      itemLevel: 5,
+      upgradeLevel: 0,
+      stats: { power: slot === "weapon" ? 10 : 0, defense: slot !== "weapon" ? 10 : 0 },
+      affixes: [],
+      traitId: null,
+      familyId: "sunlitCharter" as const,
+      locked: false,
+      sellValue: 1,
+      salvageValue: { fragments: 1 },
+      sourceDungeonId: "test",
+      createdAtRunId: 1
+    });
+    const weapon = makeFamilyItem("sunlit-weapon", "weapon");
+    const helm = makeFamilyItem("sunlit-helm", "helm");
+    const armor = makeFamilyItem("sunlit-armor", "armor");
+    state.equipment.weapon = weapon;
+    state.equipment.helm = helm;
+    state.equipment.armor = armor;
+
+    const saved = saveBuildPreset(state, "preset-1", NOW + 1);
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) throw new Error("preset save failed");
+
+    const changed = structuredClone(saved.state);
+    changed.inventory = [weapon, helm, armor];
+    changed.equipment = { weapon: null, helm: null, armor: null, boots: null, relic: null };
+    const equipped = equipBuildPreset(changed, "preset-1", NOW + 2);
+    expect(equipped.ok).toBe(true);
+    if (!equipped.ok) throw new Error("preset equip failed");
+    expect(equipped.state.equipment.weapon?.id).toBe("sunlit-weapon");
+    expect(getFamilyResonanceSummaries(equipped.state).find((summary) => summary.family.id === "sunlitCharter")?.rank).toBe(2);
+    expect(getItemFamilyDefinition(equipped.state.equipment.weapon?.familyId)?.name).toBe("Sunlit Charter");
+
+    equipped.state.inventory = [{ ...weapon, id: "locked-copy", locked: true }];
+    const blockedSell = sellItem(equipped.state, "locked-copy", NOW + 3);
+    const blockedSalvage = salvageItem(equipped.state, "locked-copy", NOW + 3);
+    expect(blockedSell.ok).toBe(false);
+    expect(blockedSalvage.ok).toBe(false);
+    const unlocked = toggleItemLock(equipped.state, "locked-copy", NOW + 4);
+    expect(unlocked.ok).toBe(true);
+    if (!unlocked.ok) throw new Error("unlock failed");
+    expect(unlocked.state.inventory[0].locked).toBe(false);
   });
 });
 
@@ -594,10 +726,7 @@ describe("inventory and forge actions", () => {
   it("crafts and upgrades items through forge actions", () => {
     const state = makeReadyState("forge");
     state.resources.gold = 100_000;
-    state.resources.ore = 100_000;
-    state.resources.crystal = 100_000;
-    state.resources.rune = 100_000;
-    state.resources.relicFragment = 100_000;
+    state.resources.fragments = 100_000;
 
     const crafted = craftItem(state, NOW + 10, { classBias: true });
     expect(crafted.ok).toBe(true);
@@ -617,10 +746,7 @@ describe("inventory and forge actions", () => {
   it("gates and rerolls one item affix through the forge", () => {
     const state = makeReadyState("forge-reroll");
     state.resources.gold = 100_000;
-    state.resources.ore = 100_000;
-    state.resources.crystal = 100_000;
-    state.resources.rune = 100_000;
-    state.resources.relicFragment = 100_000;
+    state.resources.fragments = 100_000;
 
     const crafted = craftItem(state, NOW + 10, { slot: "weapon" });
     expect(crafted.ok).toBe(true);
@@ -647,14 +773,46 @@ describe("inventory and forge actions", () => {
 });
 
 describe("town, dailies, offline, and saves", () => {
-  it("upgrades buildings with scaled costs", () => {
+  it("starts and claims building construction with scaled costs", () => {
     const state = makeReadyState("town");
     state.resources.gold = 10_000;
-    state.resources.ore = 10_000;
+    state.resources.fragments = 10_000;
+    state.regionProgress.materials.sunlitTimber = 10;
     const upgraded = buyBuildingUpgrade(state, "forge", NOW + 1);
     expect(upgraded.ok).toBe(true);
-    if (!upgraded.ok) throw new Error("upgrade failed");
-    expect(upgraded.state.town.forge).toBe(1);
+    if (!upgraded.ok) throw new Error("construction start failed");
+    expect(upgraded.state.town.forge).toBe(0);
+    expect(upgraded.state.construction.activeBuildingId).toBe("forge");
+    expect(upgraded.state.regionProgress.materials.sunlitTimber).toBe(8);
+
+    const claimed = claimBuildingConstruction(upgraded.state, NOW + 3 * 60 * 1000);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("construction claim failed");
+    expect(claimed.state.town.forge).toBe(1);
+    expect(claimed.state.construction.activeBuildingId).toBeNull();
+  });
+
+  it("accelerates and cancels construction without refunding Focus", () => {
+    const state = makeReadyState("town-construction-focus");
+    state.resources.gold = 10_000;
+    state.regionProgress.materials.sunlitTimber = 10;
+    state.focus.current = 20;
+
+    const started = buyBuildingUpgrade(state, "forge", NOW);
+    expect(started.ok).toBe(true);
+    if (!started.ok) throw new Error("construction start failed");
+
+    const accelerated = accelerateBuildingConstruction(started.state, 1, NOW + 1_000);
+    expect(accelerated.ok).toBe(true);
+    if (!accelerated.ok) throw new Error("construction accelerate failed");
+    expect(accelerated.state.focus.current).toBe(19);
+
+    const canceled = cancelBuildingConstruction(accelerated.state, NOW + 2_000);
+    expect(canceled.ok).toBe(true);
+    if (!canceled.ok) throw new Error("construction cancel failed");
+    expect(canceled.state.construction.activeBuildingId).toBeNull();
+    expect(canceled.state.focus.current).toBe(19);
+    expect(canceled.state.regionProgress.materials.sunlitTimber).toBe(9);
   });
 
   it("keeps building effect text aligned with balance formulas", () => {
@@ -700,10 +858,216 @@ describe("town, dailies, offline, and saves", () => {
 
     const state = makeReadyState("mine-rate");
     state.hero.level = 15;
-    const baseCrystal = estimateCaravanRewards(state, "crystal", 60 * 60 * 1000).materials.crystal ?? 0;
+    const baseFragments = estimateCaravanRewards(state, "fragments", 60 * 60 * 1000).materials.fragments ?? 0;
     state.town.mine = 6;
-    const boostedCrystal = estimateCaravanRewards(state, "crystal", 60 * 60 * 1000).materials.crystal ?? 0;
-    expect(boostedCrystal).toBeGreaterThan(baseCrystal);
+    const boostedFragments = estimateCaravanRewards(state, "fragments", 60 * 60 * 1000).materials.fragments ?? 0;
+    expect(boostedFragments).toBeGreaterThan(baseFragments);
+  });
+
+  it("surfaces only active Phase 3A regions and computes region completion", () => {
+    const state = makeReadyState("phase-3a-regions");
+    expect(getActiveRegionIds(state)).toEqual(["sunlit-marches", "emberwood"]);
+    expect(state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(state.regionProgress.materials.archiveGlyph).toBe(0);
+    expect(state.regionProgress.materials.stormglassShard).toBe(0);
+    expect(state.regionProgress.materials.oathEmber).toBe(0);
+
+    const initial = getRegionCompletionSummary(state, "sunlit-marches");
+    expect(initial).toMatchObject({
+      regionId: "sunlit-marches",
+      materialId: "sunlitTimber",
+      materialAmount: 0,
+      routesCleared: 0,
+      routesTotal: 4,
+      masteryTiersClaimed: 0,
+      masteryTiersTotal: 12,
+      completionPercent: 0
+    });
+
+    state.dungeonClears["tollroad-of-trinkets"] = 1;
+    state.dungeonMastery["tollroad-of-trinkets"] = { masteryXp: 1500, claimedTiers: [1, 2, 3], failures: 0 };
+    state.regionProgress.materials.sunlitTimber = 9;
+    const progressed = getRegionCompletionSummary(state, "sunlit-marches");
+    expect(progressed.materialAmount).toBe(9);
+    expect(progressed.routesCleared).toBe(1);
+    expect(progressed.masteryTiersClaimed).toBe(3);
+    expect(progressed.completionPercent).toBeGreaterThan(0);
+  });
+
+  it("spends active regional materials through Phase 3A sinks", () => {
+    const state = makeReadyState("phase-3a-sinks");
+    state.regionProgress.materials.sunlitTimber = 6;
+    state.regionProgress.materials.emberResin = 6;
+
+    const sunlit = fundRegionalMaterialSink(state, "sunlit-market-supplies", NOW + 1);
+    expect(sunlit.ok).toBe(true);
+    if (!sunlit.ok) throw new Error("sunlit sink failed");
+    expect(sunlit.state.regionProgress.materials.sunlitTimber).toBe(0);
+    expect(sunlit.state.resources.gold).toBe(state.resources.gold + 45);
+
+    const ember = fundRegionalMaterialSink(state, "emberwood-forge-fuel", NOW + 2);
+    expect(ember.ok).toBe(true);
+    if (!ember.ok) throw new Error("ember sink failed");
+    expect(ember.state.regionProgress.materials.emberResin).toBe(0);
+    expect(ember.state.resources.fragments).toBe(state.resources.fragments + 18);
+
+    const insufficient = fundRegionalMaterialSink(ember.state, "emberwood-forge-fuel", NOW + 3);
+    expect(insufficient.ok).toBe(false);
+    const unknown = fundRegionalMaterialSink(state, "archive-glyph-project", NOW + 4);
+    expect(unknown.ok).toBe(false);
+  });
+
+  it("awards Phase 3B collection pieces from the missing pool and completes the set once", () => {
+    const state = makeReadyState("phase-3b-collection");
+    const dungeon = DUNGEONS.find((entry) => entry.id === "tollroad-of-trinkets");
+    expect(dungeon).toBeTruthy();
+    if (!dungeon) throw new Error("missing dungeon");
+    state.regionProgress.collections["sunlit-road-relics"] = {
+      foundPieceIds: ["sunlit-coin-charm", "mossbright-jar-lantern", "bandit-map-scrap"],
+      missesSincePiece: COLLECTION_PITY_THRESHOLD,
+      completedAt: null
+    };
+
+    const result = applyCollectionProgress(state, dungeon, true, false, createRng("phase-3b-pity"), NOW + 1);
+
+    expect(result?.pieceId).toBe("copper-crown-sigil");
+    expect(result?.completed).toBe(true);
+    expect(result?.accountXpGained).toBe(25);
+    expect(result?.titlesUnlocked.map((title) => title.id)).toContain("title-sunlit-collector");
+    expect(result?.trophiesUnlocked.map((trophy) => trophy.id)).toContain("trophy-sunlit-relic-set");
+    expect(state.accountPersonalRecords.totalCollectionsCompleted).toBe(1);
+    expect(new Set(state.regionProgress.collections["sunlit-road-relics"].foundPieceIds).size).toBe(4);
+
+    const summary = getRegionCollectionSummary(state, "sunlit-road-relics");
+    expect(summary?.completionPercent).toBe(100);
+    expect(summary?.visible).toBe(true);
+    expect(getVisibleRegionCollectionSummaries(state, "sunlit-marches")).toHaveLength(1);
+  });
+
+  it("advances Phase 3B collection pity only after the collection is visible", () => {
+    const dungeon = DUNGEONS.find((entry) => entry.id === "tollroad-of-trinkets");
+    expect(dungeon).toBeTruthy();
+    if (!dungeon) throw new Error("missing dungeon");
+    const dryRng = {
+      next: () => 0.99,
+      int: (min: number) => min,
+      pick: <T,>(items: readonly T[]) => items[0]
+    };
+
+    const hidden = makeReadyState("phase-3b-hidden-pity");
+    expect(applyCollectionProgress(hidden, dungeon, false, false, dryRng, NOW + 1)).toBeNull();
+
+    const visible = makeReadyState("phase-3b-visible-pity");
+    visible.dungeonClears["tollroad-of-trinkets"] = 1;
+    const result = applyCollectionProgress(visible, dungeon, false, false, dryRng, NOW + 2);
+
+    expect(result?.eligible).toBe(true);
+    expect(result?.pieceId).toBeNull();
+    expect(result?.pityAdvanced).toBe(true);
+    expect(visible.regionProgress.collections["sunlit-road-relics"].missesSincePiece).toBe(1);
+  });
+
+  it("defines Phase 4 named bosses with tactical threats", () => {
+    expect(BOSS_DEFINITIONS.map((boss) => boss.name)).toEqual(["Bramblecrown", "Cindermaw"]);
+    const bramblecrown = BOSS_DEFINITIONS.find((boss) => boss.id === "bramblecrown");
+    expect(bramblecrown?.title).toBe("Copper Crown Champion");
+    expect(bramblecrown?.threats.map((threat) => threat.id)).toEqual(["armored", "brutal"]);
+    expect(bramblecrown?.threats.find((threat) => threat.critical)?.id).toBe("armored");
+  });
+
+  it("scouts and prepares boss threats with Focus and regional materials", () => {
+    const state = makeReadyState("phase-4-scout-prep");
+    state.focus.current = 200;
+    state.regionProgress.materials.sunlitTimber = 5;
+
+    const scouted = scoutBoss(state, "copper-crown-champion", NOW + 1);
+    expect(scouted.ok).toBe(true);
+    if (!scouted.ok) throw new Error("scout failed");
+    expect(scouted.state.focus.current).toBe(195);
+    expect(scouted.state.bossPrep["copper-crown-champion"].revealedThreats).toEqual(["armored", "brutal"]);
+
+    const prepared = prepareBossThreat(scouted.state, "copper-crown-champion", "armored", NOW + 2);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) throw new Error("prep failed");
+    expect(prepared.state.focus.current).toBe(185);
+    expect(prepared.state.regionProgress.materials.sunlitTimber).toBe(3);
+    expect(prepared.state.bossPrep["copper-crown-champion"].prepCharges.armored).toBe(1);
+
+    prepared.state.hero.level = 3;
+    prepared.state.dungeonClears["relic-bandit-cache"] = 1;
+    const started = startExpedition(prepared.state, "copper-crown-champion", NOW + 3);
+    expect(started.ok).toBe(true);
+    if (!started.ok) throw new Error("boss start failed");
+    expect(started.state.bossPrep["copper-crown-champion"].prepCharges.armored).toBe(0);
+    expect(started.state.activeExpedition?.bossPrepCoverage?.armored).toBe(0.6);
+  });
+
+  it("applies boss threat caps and failure intel", () => {
+    const boss = DUNGEONS.find((dungeon) => dungeon.id === "copper-crown-champion");
+    expect(boss).toBeTruthy();
+    if (!boss) throw new Error("missing boss");
+    const state = makeReadyState("phase-4-threats");
+    state.hero.level = 3;
+    state.hero.baseStats = { power: 200, defense: 50, speed: 30, luck: 30, stamina: 200 };
+    state.dungeonClears["relic-bandit-cache"] = 1;
+
+    const baseThreatAdjusted = getSuccessChance(state, boss);
+    expect(baseThreatAdjusted).toBeLessThanOrEqual(0.55);
+    const partiallyPrepared = getSuccessChance(state, boss, { bossPrepCoverage: { armored: 0.6 } });
+    expect(partiallyPrepared).toBeGreaterThan(baseThreatAdjusted);
+    expect(partiallyPrepared).toBeLessThanOrEqual(0.75);
+    expect(applyBossThreatsToSuccessChance(state, boss, 0.96, { armored: 1, brutal: 1 })).toBe(0.96);
+
+    let failed = null as ReturnType<typeof resolveExpedition> | null;
+    for (let runId = 1; runId <= 80; runId += 1) {
+      const attempt = makeReadyState("phase-4-failure-intel");
+      attempt.hero.level = 3;
+      attempt.dungeonClears["relic-bandit-cache"] = 1;
+      attempt.activeExpedition = {
+        dungeonId: "copper-crown-champion",
+        runId,
+        startedAt: NOW,
+        endsAt: NOW,
+        focusBoost: false
+      };
+      const result = resolveExpedition(attempt, NOW + 1);
+      if (result.ok && !result.summary.success) {
+        failed = result;
+        break;
+      }
+    }
+
+    expect(failed?.ok).toBe(true);
+    if (!failed?.ok) throw new Error("no deterministic boss failure found");
+    expect(failed.summary.boss?.name).toBe("Bramblecrown");
+    expect(failed.summary.boss?.intelGained).toBe(1);
+    expect(failed.summary.boss?.failureIntelText).toContain("Piercing");
+    expect(failed.state.bossPrep["copper-crown-champion"].intel).toBe(1);
+    expect(failed.state.bossPrep["copper-crown-champion"].revealedThreats).toEqual(["armored"]);
+    expect(failed.state.trophies["trophy-boss-intel-scroll"]?.unlockedAt).toBe(NOW + 1);
+
+    const view = getBossViewSummary(failed.state, boss, getSuccessChance(failed.state, boss));
+    expect(view?.statuses.find((status) => status.threat.id === "armored")?.revealed).toBe(true);
+
+    const successState = makeReadyState("phase-4-outpost-placeholder");
+    recordBossAttemptResult(successState, boss, true, NOW + 2);
+    expect(successState.regionProgress.outposts["sunlit-marches"]).toEqual({ selectedBonusId: null, level: 0 });
+  });
+
+  it("selects Outpost bonuses and applies Watchtower scout support", () => {
+    const state = makeReadyState("phase-5-outpost");
+    state.focus.current = 200;
+    state.dungeonClears["emberwood-heart"] = 1;
+
+    const selected = selectRegionOutpostBonus(state, "emberwood", "watchtower", NOW + 1);
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) throw new Error("outpost select failed");
+    expect(getRegionCompletionSummary(selected.state, "emberwood").outpost).toEqual({ selectedBonusId: "watchtower", level: 1 });
+
+    const scouted = scoutBoss(selected.state, "emberwood-heart", NOW + 2);
+    expect(scouted.ok).toBe(true);
+    if (!scouted.ok) throw new Error("scout failed");
+    expect(scouted.state.bossPrep["emberwood-heart"].revealedThreats).toEqual(["regenerating", "venom", "brutal"]);
   });
 
   it("banks and claims Daily Focus through expedition completions", () => {
@@ -829,38 +1193,55 @@ describe("town, dailies, offline, and saves", () => {
     expect(offline.summary?.expeditionReady).toBe(true);
     expect(offline.state.activeExpedition).not.toBeNull();
     expect(offline.state.focus.current).toBeGreaterThan(0);
-    expect(offline.state.resources.ore).toBeGreaterThanOrEqual(0);
+    expect(offline.state.resources.fragments).toBeGreaterThanOrEqual(0);
   });
 
   it("applies a chosen Caravan offline job and clears it when complete", () => {
     const state = makeReadyState("caravan");
-    state.hero.level = 5;
-    const locked = startCaravanJob(state, "rune", 2 * 60 * 60 * 1000, NOW);
+    state.hero.level = 3;
+    const locked = startCaravanJob(state, "fragments", 2 * 60 * 60 * 1000, NOW);
     expect(locked.ok).toBe(false);
 
-    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    state.hero.level = 5;
+    const planned = startCaravanJob(state, "fragments", 2 * 60 * 60 * 1000, NOW);
     expect(planned.ok).toBe(true);
     if (!planned.ok) throw new Error("caravan plan failed");
 
     const offline = applyOfflineProgress(planned.state, NOW + 3 * 60 * 60 * 1000);
-    expect(offline.summary?.caravan?.focusId).toBe("ore");
+    expect(offline.summary?.caravan?.focusId).toBe("fragments");
     expect(offline.summary?.caravan?.completed).toBe(true);
-    expect(offline.state.resources.ore).toBeGreaterThan(planned.state.resources.ore);
+    expect(offline.state.resources.fragments).toBeGreaterThan(planned.state.resources.fragments);
     expect(offline.state.caravan.activeJob).toBeNull();
     expect(offline.summary?.mineGains).toEqual({});
+  });
+
+  it("claims Caravan regional material and Account XP rewards", () => {
+    const state = makeReadyState("caravan-regional");
+    state.hero.level = 5;
+    const planned = startCaravanJob(state, "gold", 60 * 60 * 1000, NOW, "sunlit-marches");
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+
+    const claimed = claimCaravanJob(planned.state, NOW + 60 * 60 * 1000 + 1);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("caravan claim failed");
+    expect(claimed.state.caravan.activeJob).toBeNull();
+    expect(claimed.state.resources.gold).toBeGreaterThan(planned.state.resources.gold);
+    expect(claimed.state.accountRank.accountXp).toBeGreaterThan(planned.state.accountRank.accountXp);
+    expect(claimed.state.regionProgress.materials.sunlitTimber).toBeGreaterThan(planned.state.regionProgress.materials.sunlitTimber);
   });
 
   it("does not round short Caravan returns up to a full hour", () => {
     const state = makeReadyState("short-caravan");
     state.hero.level = 5;
-    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    const planned = startCaravanJob(state, "fragments", 2 * 60 * 60 * 1000, NOW);
     expect(planned.ok).toBe(true);
     if (!planned.ok) throw new Error("caravan plan failed");
 
     const offline = applyOfflineProgress(planned.state, NOW + 10 * 60 * 1000);
     expect(offline.summary?.caravan?.completed).toBe(false);
     expect(offline.summary?.caravan?.elapsedMs).toBe(10 * 60 * 1000);
-    expect(offline.summary?.caravan?.rewards).toEqual({ xp: 0, gold: 0, materials: {} });
+    expect(offline.summary?.caravan?.rewards).toEqual({ xp: 0, gold: 0, materials: {}, accountXp: 0, regionalMaterials: {} });
     expect(offline.state.resources).toEqual(planned.state.resources);
     expect(offline.state.caravan.activeJob).not.toBeNull();
   });
@@ -868,13 +1249,13 @@ describe("town, dailies, offline, and saves", () => {
   it("blocks replacing an active Caravan and cancels it without rewards", () => {
     const state = makeReadyState("single-caravan");
     state.hero.level = 5;
-    const planned = startCaravanJob(state, "ore", 2 * 60 * 60 * 1000, NOW);
+    const planned = startCaravanJob(state, "fragments", 2 * 60 * 60 * 1000, NOW);
     expect(planned.ok).toBe(true);
     if (!planned.ok) throw new Error("caravan plan failed");
 
     const blocked = startCaravanJob(planned.state, "xp", 60 * 60 * 1000, NOW + 10 * 60 * 1000);
     expect(blocked.ok).toBe(false);
-    expect(blocked.state.caravan.activeJob?.focusId).toBe("ore");
+    expect(blocked.state.caravan.activeJob?.focusId).toBe("fragments");
 
     const resourcesBeforeCancel = { ...planned.state.resources };
     const canceled = cancelCaravanJob(planned.state, NOW + 30 * 60 * 1000);
@@ -887,16 +1268,16 @@ describe("town, dailies, offline, and saves", () => {
     expect(next.ok).toBe(true);
   });
 
-  it("allows a Caravan over an active expedition but blocks new expeditions during Caravan", () => {
+  it("keeps Caravan and active expeditions mutually exclusive", () => {
     const state = makeReadyState("caravan-expedition-lock");
     const expedition = startExpedition(state, "tollroad-of-trinkets", NOW);
     expect(expedition.ok).toBe(true);
     if (!expedition.ok) throw new Error("expedition start failed");
 
     const caravanWithExpedition = startCaravanJob(expedition.state, "xp", 60 * 60 * 1000, NOW + 1_000);
-    expect(caravanWithExpedition.ok).toBe(true);
-    if (!caravanWithExpedition.ok) throw new Error("caravan over expedition failed");
-    expect(caravanWithExpedition.state.activeExpedition).not.toBeNull();
+    expect(caravanWithExpedition.ok).toBe(false);
+    if (caravanWithExpedition.ok) throw new Error("caravan over expedition should be blocked");
+    expect(caravanWithExpedition.error).toContain("expedition is active");
 
     const caravanOnly = startCaravanJob(state, "xp", 60 * 60 * 1000, NOW);
     expect(caravanOnly.ok).toBe(true);
@@ -1002,12 +1383,39 @@ describe("reincarnation gate and pacing checks", () => {
     expect(result.state.resources.renown).toBeGreaterThanOrEqual(1);
   });
 
+  it("supports early free class respec and later Reincarnation class change", () => {
+    const state = makeReadyState("class-change");
+    state.lifetime.expeditionsStarted = 1;
+    state.hero.level = 5;
+
+    const early = changeHeroClassWithLaunchRules(state, "rogue", NOW + 1);
+    expect(early.ok).toBe(true);
+    if (!early.ok) throw new Error("early class change failed");
+    expect(early.state.hero.classId).toBe("rogue");
+    expect(early.state.classChange.freeChangeUsed).toBe(true);
+    expect(early.state.rebirth.totalRebirths).toBe(0);
+
+    const blocked = changeHeroClassWithLaunchRules(early.state, "mage", NOW + 2);
+    expect(blocked.ok).toBe(false);
+
+    const rebirthReady = structuredClone(early.state);
+    rebirthReady.hero.level = REINCARNATION_LEVEL_REQUIREMENT;
+    rebirthReady.dungeonClears[REINCARNATION_GATE_BOSS_ID] = 1;
+    const changed = changeHeroClassWithLaunchRules(rebirthReady, "mage", NOW + 25 * 60 * 60 * 1000);
+    expect(changed.ok).toBe(true);
+    if (!changed.ok) throw new Error("rebirth class change failed");
+    expect(changed.state.hero.classId).toBe("mage");
+    expect(changed.state.hero.level).toBe(1);
+    expect(changed.state.rebirth.totalRebirths).toBe(1);
+    expect(changed.state.resources.renown).toBeGreaterThanOrEqual(0);
+  });
+
   it("resets the hero run while preserving account, region, mastery, town, construction, and Focus state", () => {
     let state = makeReadyState("rebirth-persistence");
     state.hero.level = REINCARNATION_LEVEL_REQUIREMENT;
     state.hero.xp = 123;
     state.resources.gold = 999;
-    state.resources.ore = 888;
+    state.resources.fragments = 888;
     state.focus.current = 123;
     state.town = {
       forge: 3,
@@ -1047,7 +1455,7 @@ describe("reincarnation gate and pacing checks", () => {
       stats: { power: 1 },
       affixes: [],
       sellValue: 1,
-      salvageValue: { ore: 1 },
+      salvageValue: { fragments: 1 },
       sourceDungeonId: "tollroad-of-trinkets",
       createdAtRunId: 1
     });
@@ -1064,7 +1472,7 @@ describe("reincarnation gate and pacing checks", () => {
     expect(result.state.hero.level).toBe(1);
     expect(result.state.hero.xp).toBe(0);
     expect(result.state.resources.gold).toBe(0);
-    expect(result.state.resources.ore).toBe(0);
+    expect(result.state.resources.fragments).toBe(0);
     expect(result.state.inventory).toEqual([]);
     expect(result.state.equipment.weapon).toBeNull();
     expect(result.state.activeExpedition).toBeNull();

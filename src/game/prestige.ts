@@ -1,12 +1,15 @@
 import { DEBUG_REINCARNATION_MULTIPLIER, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUIREMENT, REINCARNATION_UPGRADE_MAX } from "./constants";
 import { refreshAchievements } from "./achievements";
-import { DUNGEONS } from "./content";
+import { DUNGEONS, HERO_CLASSES } from "./content";
 import { cloneState, createEmptyDailies, createEmptyEquipment, createEmptyLootState } from "./state";
 import { getHeroClass } from "./balance";
 import { applyAccountXp } from "./progression";
-import type { ActionResult, GameState, PrestigeResult, RenownUpgrades } from "./types";
+import type { ActionResult, GameState, HeroClassId, PrestigeResult, RenownUpgrades } from "./types";
 
 export type RenownUpgradeId = keyof RenownUpgrades;
+
+export const CLASS_CHANGE_SOUL_MARK_COST = 3;
+export const CLASS_CHANGE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export const RENOWN_UPGRADES: { id: RenownUpgradeId; name: string; description: string; effectText: (level: number) => string }[] = [
   {
@@ -69,10 +72,7 @@ export function performPrestige(state: GameState, now: number): PrestigeResult {
   next.hero.baseStats = { ...heroClass.baseStats };
   next.resources = {
     gold: 0,
-    ore: 0,
-    crystal: 0,
-    rune: 0,
-    relicFragment: 0,
+    fragments: 0,
     renown: next.resources.renown + renownGained
   };
   next.inventory = [];
@@ -80,6 +80,12 @@ export function performPrestige(state: GameState, now: number): PrestigeResult {
   next.loot = createEmptyLootState();
   next.activeExpedition = null;
   next.dungeonClears = {};
+  Object.keys(next.bossPrep).forEach((dungeonId) => {
+    next.bossPrep[dungeonId] = {
+      ...next.bossPrep[dungeonId],
+      prepCharges: {}
+    };
+  });
   next.dailies = createEmptyDailies(now);
   next.prestige.totalPrestiges += 1;
   next.prestige.renownEarned += renownGained;
@@ -95,6 +101,81 @@ export function performPrestige(state: GameState, now: number): PrestigeResult {
   const achievements = refreshAchievements(next, now);
   next = achievements.state;
   return { ok: true, state: next, renownGained, achievementsUnlocked: achievements.unlocked };
+}
+
+function applyHeroClass(next: GameState, classId: HeroClassId) {
+  const heroClass = HERO_CLASSES.find((entry) => entry.id === classId);
+  if (!heroClass) return false;
+  next.hero.classId = heroClass.id;
+  next.hero.baseStats = { ...heroClass.baseStats };
+  return true;
+}
+
+export function changeHeroClassWithLaunchRules(state: GameState, classId: HeroClassId, now: number): ActionResult {
+  if (state.hero.classId === classId) {
+    return { ok: false, state, error: "That class is already selected." };
+  }
+  const heroClass = HERO_CLASSES.find((entry) => entry.id === classId);
+  if (!heroClass) {
+    return { ok: false, state, error: "Unknown hero class." };
+  }
+
+  const pristineSelection = state.lifetime.expeditionsStarted === 0 && state.hero.level === 1;
+  if (pristineSelection) {
+    const next = cloneState(state);
+    applyHeroClass(next, classId);
+    next.updatedAt = now;
+    return { ok: true, state: next, message: `Class changed to ${heroClass.name}.` };
+  }
+
+  const rebirthUnlocked = canPrestige(state);
+  if (!rebirthUnlocked && state.rebirth.totalRebirths === 0) {
+    if (state.classChange.freeChangeUsed) {
+      return { ok: false, state, error: "Your early free class change has already been used. Unlock Reincarnation to change again." };
+    }
+    const next = cloneState(state);
+    applyHeroClass(next, classId);
+    next.classChange.freeChangeUsed = true;
+    next.classChange.lastChangedAt = now;
+    next.updatedAt = now;
+    return { ok: true, state: next, message: `Class changed to ${heroClass.name}. Early free respec used.` };
+  }
+
+  if (!rebirthUnlocked) {
+    return { ok: false, state, error: `Class change now requires Reincarnation: level ${REINCARNATION_LEVEL_REQUIREMENT} and a Region 3 boss clear.` };
+  }
+
+  if (state.classChange.lastChangedAt && now - state.classChange.lastChangedAt < CLASS_CHANGE_COOLDOWN_MS) {
+    const remaining = CLASS_CHANGE_COOLDOWN_MS - (now - state.classChange.lastChangedAt);
+    const hours = Math.ceil(remaining / (60 * 60 * 1000));
+    return { ok: false, state, error: `Class change cooldown: ${hours}h remaining.` };
+  }
+
+  const usesFreeSlot = !state.classChange.freeChangeUsed;
+  const soulMarksAfterRebirth = state.resources.renown + calculatePrestigeRenown(state);
+  if (!usesFreeSlot && soulMarksAfterRebirth < CLASS_CHANGE_SOUL_MARK_COST) {
+    return { ok: false, state, error: `Class change costs ${CLASS_CHANGE_SOUL_MARK_COST} Soul Marks.` };
+  }
+
+  const rebirth = performPrestige(state, now);
+  if (!rebirth.ok) {
+    return { ok: false, state: rebirth.state, error: rebirth.error };
+  }
+
+  const next = cloneState(rebirth.state);
+  if (!usesFreeSlot) {
+    next.resources.renown = Math.max(0, next.resources.renown - CLASS_CHANGE_SOUL_MARK_COST);
+    next.soulMarks.current = Math.max(0, next.soulMarks.current - CLASS_CHANGE_SOUL_MARK_COST);
+  }
+  applyHeroClass(next, classId);
+  next.classChange.freeChangeUsed = true;
+  next.classChange.lastChangedAt = now;
+  next.updatedAt = now;
+  return {
+    ok: true,
+    state: next,
+    message: `Reincarnation complete. Class changed to ${heroClass.name}.${usesFreeSlot ? " First class change was free." : ` -${CLASS_CHANGE_SOUL_MARK_COST} Soul Marks.`}`
+  };
 }
 
 export function getRenownUpgradeCost(state: GameState, upgradeId: RenownUpgradeId): number {

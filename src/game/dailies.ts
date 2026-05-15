@@ -1,4 +1,5 @@
 import { DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT, DAY_MS } from "./constants";
+import { REGION_COLLECTIONS, isCollectionVisible } from "./collections";
 import { DUNGEONS, ZONES } from "./content";
 import { isDungeonUnlocked } from "./expeditions";
 import { applyAccountXp, getFirstClaimableMasteryRoute, unlockTitle, unlockTrophy } from "./progression";
@@ -139,8 +140,8 @@ function getRegionName(regionId: string): string {
   return ZONES.find((zone) => zone.id === regionId)?.name ?? "active region";
 }
 
-function hasCollectionSystemsUnlocked(_state: GameState): boolean {
-  return false;
+function hasCollectionSystemsUnlocked(state: GameState): boolean {
+  return REGION_COLLECTIONS.some((collection) => isCollectionVisible(state, collection));
 }
 
 function hasBossAttemptAvailable(state: GameState): boolean {
@@ -460,10 +461,7 @@ export function ensureDailies(state: GameState, now: number): { state: GameState
 }
 
 function addMaterials(state: GameState, materials: Partial<MaterialBundle>) {
-  state.resources.ore += materials.ore ?? 0;
-  state.resources.crystal += materials.crystal ?? 0;
-  state.resources.rune += materials.rune ?? 0;
-  state.resources.relicFragment += materials.relicFragment ?? 0;
+  state.resources.fragments += materials.fragments ?? 0;
 }
 
 function addRegionalMaterials(state: GameState, materials: Partial<Record<RegionMaterialId, number>>) {
@@ -478,7 +476,7 @@ function addDailyReward(state: GameState, reward: DailyReward | WeeklyQuestRewar
   state.resources.gold += "gold" in reward ? reward.gold : 0;
   addMaterials(state, "materials" in reward ? reward.materials : {});
   state.focus.current = Math.min(state.focus.cap, state.focus.current + ("focus" in reward ? reward.focus : 0));
-  state.resources.relicFragment += reward.fragments;
+  state.resources.fragments += reward.fragments;
   addRegionalMaterials(state, reward.regionalMaterials);
   if (reward.accountXp > 0) {
     applyAccountXp(state, reward.accountXp, now);

@@ -12,37 +12,53 @@ import {
   claimWeeklyQuest,
   claimWeeklyContractMilestone,
   cancelCaravanJob,
+  cancelBuildingConstruction,
   craftItem,
   buyRenownUpgrade,
   changeHeroClass,
+  changeHeroClassWithLaunchRules,
+  claimBuildingConstruction,
+  claimCaravanJob,
   claimMasteryTier,
+  accelerateBuildingConstruction,
   createInitialState,
+  equipBestForContext,
+  equipBuildPreset,
   equipItem,
   ensureDailies,
+  fundRegionalMaterialSink,
   getDungeon,
   importSave,
   loadSave,
   performPrestige,
+  prepareBossThreat,
   rerollItemAffix,
   resolveExpedition,
   salvageItem,
+  scoutBoss,
   sellItem,
   serializeSave,
+  saveBuildPreset,
+  selectRegionOutpostBonus,
   selectShowcaseTitle,
   setLootFocus,
   startCaravanJob,
   startExpedition,
   dismissAccountShowcaseDiscovery,
   toggleShowcaseTrophy,
+  toggleItemLock,
   upgradeItem,
   type BuildingId,
+  type BuildPresetId,
   type CaravanFocusId,
   type GameState,
   type HeroClassId,
+  type ExpeditionThreatId,
   type LootFocusId,
   type OfflineDeltaSummary,
   type ResolveExpeditionOptions,
   type RenownUpgradeId,
+  type RegionOutpostBonusId,
   type ResolveSummary
 } from "@/game";
 
@@ -57,6 +73,10 @@ export type GameStore = {
   claimExpedition: (options?: ResolveExpeditionOptions) => void;
   createHero: (name: string, classId: HeroClassId) => void;
   equipItem: (itemId: string) => void;
+  equipBestForContext: (options?: { dungeonId?: string; regionId?: string }) => void;
+  saveBuildPreset: (presetId: BuildPresetId) => void;
+  equipBuildPreset: (presetId: BuildPresetId) => void;
+  toggleItemLock: (itemId: string) => void;
   sellItem: (itemId: string) => void;
   salvageItem: (itemId: string) => void;
   craftItem: (slot?: "weapon" | "helm" | "armor" | "boots" | "relic", classBias?: boolean) => void;
@@ -64,13 +84,21 @@ export type GameStore = {
   upgradeItem: (itemId: string) => void;
   rerollItemAffix: (itemId: string, affixIndex: number) => void;
   buyBuilding: (buildingId: BuildingId) => void;
+  claimConstruction: () => void;
+  cancelConstruction: () => void;
+  accelerateConstruction: (focusAmount: number) => void;
   claimDailyFocus: () => void;
   claimDaily: (taskId: string) => void;
   claimWeeklyQuest: () => void;
   claimWeeklyContract: (milestoneIndex: number) => void;
   claimMasteryTier: (dungeonId: string) => void;
-  startCaravanJob: (focusId: CaravanFocusId, durationMs: number) => void;
+  fundRegionalProject: (sinkId: string) => void;
+  scoutBoss: (dungeonId: string) => void;
+  prepareBossThreat: (dungeonId: string, threatId: ExpeditionThreatId) => void;
+  startCaravanJob: (focusId: CaravanFocusId, durationMs: number, regionId?: string) => void;
+  claimCaravanJob: () => void;
   cancelCaravanJob: () => void;
+  selectOutpostBonus: (regionId: string, bonusId: RegionOutpostBonusId) => void;
   prestige: () => void;
   buyRenownUpgrade: (upgradeId: RenownUpgradeId) => void;
   changeClass: (classId: HeroClassId) => void;
@@ -166,6 +194,7 @@ const gamePersistStorage: PersistStorage<PersistedGameSnapshot> = {
               : null,
             offline.summary.focusGained > 0 ? `+${offline.summary.focusGained} Focus regenerated.` : null,
             offline.summary.caravan ? `Caravan returned with ${offline.summary.caravan.completed ? "completed" : "partial"} progress.` : null,
+            offline.summary.construction ? `Construction finished and is ready to claim.` : null,
             Object.values(offline.summary.mineGains).some((value) => value > 0) ? "Mine generated materials." : null,
             offline.summary.dailyReset ? "Missions refreshed." : null
           ]
@@ -261,6 +290,42 @@ export const useGameStore = create<GameStore>()(
         set({ state: result.state, error: null, lastMessage: result.message ?? "Item equipped." });
       },
 
+      equipBestForContext: (options = {}) => {
+        const result = equipBestForContext(get().state, Date.now(), options);
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Best build equipped." });
+      },
+
+      saveBuildPreset: (presetId) => {
+        const result = saveBuildPreset(get().state, presetId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Build preset saved." });
+      },
+
+      equipBuildPreset: (presetId) => {
+        const result = equipBuildPreset(get().state, presetId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Build preset equipped." });
+      },
+
+      toggleItemLock: (itemId) => {
+        const result = toggleItemLock(get().state, itemId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Item lock updated." });
+      },
+
       sellItem: (itemId) => {
         const result = sellItem(get().state, itemId, Date.now());
         if (!result.ok) {
@@ -321,7 +386,34 @@ export const useGameStore = create<GameStore>()(
           set({ error: result.error });
           return;
         }
-        set({ state: result.state, error: null, lastMessage: result.message ?? "Building upgraded." });
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Construction started." });
+      },
+
+      claimConstruction: () => {
+        const result = claimBuildingConstruction(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Construction claimed." });
+      },
+
+      cancelConstruction: () => {
+        const result = cancelBuildingConstruction(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Construction canceled." });
+      },
+
+      accelerateConstruction: (focusAmount) => {
+        const result = accelerateBuildingConstruction(get().state, focusAmount, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Construction accelerated." });
       },
 
       claimDailyFocus: () => {
@@ -371,13 +463,49 @@ export const useGameStore = create<GameStore>()(
         set({ state: progressed.state, error: null, lastMessage: result.message });
       },
 
-      startCaravanJob: (focusId, durationMs) => {
-        const result = startCaravanJob(get().state, focusId, durationMs, Date.now());
+      fundRegionalProject: (sinkId) => {
+        const result = fundRegionalMaterialSink(get().state, sinkId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Regional project funded." });
+      },
+
+      scoutBoss: (dungeonId) => {
+        const result = scoutBoss(get().state, dungeonId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Boss scouted." });
+      },
+
+      prepareBossThreat: (dungeonId, threatId) => {
+        const result = prepareBossThreat(get().state, dungeonId, threatId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Boss prep added." });
+      },
+
+      startCaravanJob: (focusId, durationMs, regionId) => {
+        const result = startCaravanJob(get().state, focusId, durationMs, Date.now(), regionId);
         if (!result.ok) {
           set({ error: result.error });
           return;
         }
         set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan planned.", lastOfflineSummary: null });
+      },
+
+      claimCaravanJob: () => {
+        const result = claimCaravanJob(get().state, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan claimed.", lastOfflineSummary: null });
       },
 
       cancelCaravanJob: () => {
@@ -387,6 +515,15 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan canceled.", lastOfflineSummary: null });
+      },
+
+      selectOutpostBonus: (regionId, bonusId) => {
+        const result = selectRegionOutpostBonus(get().state, regionId, bonusId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Outpost updated." });
       },
 
       prestige: () => {
@@ -408,8 +545,12 @@ export const useGameStore = create<GameStore>()(
       },
 
       changeClass: (classId) => {
-        const state = changeHeroClass(get().state, classId, Date.now());
-        set({ state, error: null, lastMessage: "Hero class selected." });
+        const result = changeHeroClassWithLaunchRules(get().state, classId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Hero class selected.", lastExpeditionResult: null, lastOfflineSummary: null });
       },
 
       selectShowcaseTitle: (titleId) => {

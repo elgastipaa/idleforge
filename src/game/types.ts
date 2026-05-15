@@ -8,13 +8,54 @@ export type BuildingId = "forge" | "mine" | "tavern" | "library" | "market" | "s
 
 export type GameMode = "standard" | "debug";
 
-export type MaterialId = "ore" | "crystal" | "rune" | "relicFragment";
+export type MaterialId = "fragments";
 
 export type RegionMaterialId = "sunlitTimber" | "emberResin" | "archiveGlyph" | "stormglassShard" | "oathEmber";
 
 export type ExpeditionThreatId = "armored" | "cursed" | "venom" | "elusive" | "regenerating" | "brutal";
 
 export type ItemFamilyId = "sunlitCharter" | "emberboundKit" | "azureLedger" | "stormglassSurvey" | "firstForgeOath";
+
+export type ItemTraitId =
+  | "piercing"
+  | "guarded"
+  | "flame-sealed"
+  | "antivenom"
+  | "trailwise"
+  | "ward-bound"
+  | "sunlit-surveyor"
+  | "ember-seeker"
+  | "route-scholar"
+  | "guild-appraiser";
+
+export type ItemTraitCategory = "tactical" | "regional" | "progress";
+
+export type ItemTraitDefinition = {
+  id: ItemTraitId;
+  name: string;
+  category: ItemTraitCategory;
+  description: string;
+  slots: EquipmentSlot[];
+  stats: Partial<Stats>;
+  countersThreatId?: ExpeditionThreatId;
+  regionId?: string;
+  effects?: AffixEffects;
+};
+
+export type ItemFamilyDefinition = {
+  id: ItemFamilyId;
+  name: string;
+  regionId: string | null;
+  active: boolean;
+  rank1Text: string;
+  rank2Text: string;
+};
+
+export type FamilyResonanceSummary = {
+  family: ItemFamilyDefinition;
+  equippedCount: number;
+  rank: 0 | 1 | 2;
+};
 
 export type Stats = {
   power: number;
@@ -26,10 +67,7 @@ export type Stats = {
 
 export type ResourceState = {
   gold: number;
-  ore: number;
-  crystal: number;
-  rune: number;
-  relicFragment: number;
+  fragments: number;
   renown: number;
 };
 
@@ -58,6 +96,10 @@ export type AffixEffects = {
   zoneGoldMultiplier?: Record<string, number>;
   materialMultiplier?: number;
   materialResourceMultiplier?: Partial<Record<MaterialId, number>>;
+  regionalMaterialMultiplier?: Partial<Record<RegionMaterialId, number>>;
+  masteryXpMultiplier?: Record<string, number>;
+  accountXpMultiplier?: number;
+  collectionChance?: number;
   rareDropChance?: number;
   lootChance?: number;
   bossRewardMultiplier?: number;
@@ -67,9 +109,12 @@ export type AffixEffects = {
   longMissionLootChance?: number;
   craftingDiscount?: number;
   focusBoostCostReduction?: number;
+  bossScoutCostReduction?: Record<string, number>;
+  bossPrepMaterialDiscount?: Record<string, number>;
+  threatCoverage?: Partial<Record<ExpeditionThreatId, number>>;
   sellMultiplier?: number;
   salvageMultiplier?: number;
-  runeMultiplier?: number;
+  fragmentsMultiplier?: number;
   durationReduction?: number;
   failureRewardScale?: number;
 };
@@ -94,6 +139,9 @@ export type Item = {
   upgradeLevel: number;
   stats: Partial<Stats>;
   affixes: Affix[];
+  traitId?: ItemTraitId | null;
+  familyId?: ItemFamilyId | null;
+  locked?: boolean;
   sellValue: number;
   salvageValue: Partial<MaterialBundle>;
   sourceDungeonId: string;
@@ -101,6 +149,16 @@ export type Item = {
 };
 
 export type EquipmentState = Record<EquipmentSlot, Item | null>;
+
+export type BuildPresetId = "preset-1" | "preset-2";
+
+export type BuildPresetState = {
+  id: BuildPresetId;
+  name: string;
+  equipmentItemIds: Partial<Record<EquipmentSlot, string>>;
+};
+
+export type BuildPresetMap = Record<BuildPresetId, BuildPresetState>;
 
 export type LootFocusId = "any" | EquipmentSlot;
 
@@ -160,6 +218,7 @@ export type ActiveExpedition = {
   startedAt: number;
   endsAt: number;
   focusBoost: boolean;
+  bossPrepCoverage?: Partial<Record<ExpeditionThreatId, number>>;
 };
 
 export type AchievementState = {
@@ -238,6 +297,7 @@ export type AccountShowcaseState = {
   featuredBossId: string | null;
   featuredFamilyId: ItemFamilyId | null;
   accountSignatureMode: "auto" | "manual";
+  selectedFamilyId: ItemFamilyId | null;
   firstDiscoveryPopupShown: boolean;
   firstDiscoveryPopupDismissed: boolean;
 };
@@ -308,6 +368,75 @@ export type RegionCollectionState = {
   foundPieceIds: string[];
   missesSincePiece: number;
   completedAt: number | null;
+  dust?: number;
+};
+
+export type CollectionPieceDefinition = {
+  id: string;
+  name: string;
+};
+
+export type RegionCollectionReward = {
+  accountXp: number;
+  regionalMaterialYieldBonus?: Partial<Record<RegionMaterialId, number>>;
+  masteryXpBonus?: Record<string, number>;
+  bossSuccessChanceBonus?: Record<string, number>;
+  titleId?: string;
+  trophyId?: string;
+};
+
+export type RegionCollectionDefinition = {
+  id: string;
+  name: string;
+  regionId: string;
+  materialId: RegionMaterialId;
+  pieces: CollectionPieceDefinition[];
+  eligibleDungeonIds: string[];
+  normalSuccessChance: number;
+  normalFailureChance: number;
+  bossSuccessChance: number;
+  pityThreshold: number;
+  reward: RegionCollectionReward;
+};
+
+export type RegionCollectionSummary = {
+  collectionId: string;
+  name: string;
+  regionId: string;
+  materialId: RegionMaterialId;
+  pieces: Array<CollectionPieceDefinition & { found: boolean }>;
+  piecesFound: number;
+  piecesTotal: number;
+  completionPercent: number;
+  missesSincePiece: number;
+  pityThreshold: number;
+  completedAt: number | null;
+  dust: number;
+  visible: boolean;
+};
+
+export type CollectionProgressSummary = {
+  collectionId: string;
+  collectionName: string;
+  regionId: string;
+  eligible: boolean;
+  pieceId: string | null;
+  pieceName: string | null;
+  piecesFound: number;
+  piecesTotal: number;
+  missesSincePiece: number;
+  pityThreshold: number;
+  pityAdvanced: boolean;
+  completed: boolean;
+  dustGained: number;
+  accountXpGained: number;
+  accountXpBefore: number;
+  accountXpAfter: number;
+  accountRankBefore: number;
+  accountRankAfter: number;
+  rankUps: number[];
+  titlesUnlocked: TitleDefinition[];
+  trophiesUnlocked: TrophyDefinition[];
 };
 
 export type RegionOutpostState = {
@@ -315,9 +444,45 @@ export type RegionOutpostState = {
   level: number;
 };
 
+export type RegionOutpostBonusId = "supply-post" | "watchtower" | "relic-survey" | "training-yard";
+
+export type RegionOutpostBonusDefinition = {
+  id: RegionOutpostBonusId;
+  name: string;
+  description: string;
+  effectText: string;
+};
+
 export type RegionDiaryState = {
   completedTaskIds: string[];
   claimedRewardIds: string[];
+};
+
+export type RegionalMaterialSinkReward = {
+  gold?: number;
+  fragments?: number;
+};
+
+export type RegionalMaterialSinkDefinition = {
+  id: string;
+  regionId: string;
+  materialId: RegionMaterialId;
+  name: string;
+  description: string;
+  cost: number;
+  reward: RegionalMaterialSinkReward;
+};
+
+export type RegionCompletionSummary = {
+  regionId: string;
+  materialId: RegionMaterialId | null;
+  materialAmount: number;
+  routesCleared: number;
+  routesTotal: number;
+  masteryTiersClaimed: number;
+  masteryTiersTotal: number;
+  completionPercent: number;
+  outpost: RegionOutpostState | null;
 };
 
 export type RegionProgressState = {
@@ -335,6 +500,57 @@ export type BossPrepState = {
   intel: number;
 };
 
+export type BossThreatDefinition = {
+  id: ExpeditionThreatId;
+  name: string;
+  critical: boolean;
+  traitAnswerId: string;
+  traitAnswerName: string;
+  prepName: string;
+  prepMaterialCost: number;
+  explanation: string;
+};
+
+export type BossDefinition = {
+  id: string;
+  dungeonId: string;
+  regionId: string;
+  name: string;
+  title: string;
+  fantasy: string;
+  scoutCost: number;
+  prepFocusCost: number;
+  failureIntelText: string;
+  threats: BossThreatDefinition[];
+};
+
+export type BossThreatStatus = {
+  threat: BossThreatDefinition;
+  revealed: boolean;
+  coverage: number;
+  equippedCovered: boolean;
+  prepCoverage: number;
+  prepCharges: number;
+  successImpact: "covered" | "partial" | "uncovered";
+};
+
+export type BossViewSummary = {
+  boss: BossDefinition;
+  prepState: BossPrepState;
+  statuses: BossThreatStatus[];
+  adjustedSuccessChance: number;
+};
+
+export type BossResolveSummary = {
+  bossId: string;
+  name: string;
+  title: string;
+  failureIntelText: string | null;
+  intelGained: number;
+  newlyRevealedThreats: BossThreatDefinition[];
+  revealedThreats: BossThreatDefinition[];
+};
+
 export type ConstructionState = {
   activeBuildingId: BuildingId | null;
   startedAt: number | null;
@@ -342,6 +558,26 @@ export type ConstructionState = {
   baseDurationMs: number;
   focusSpentMs: number;
   completedAt: number | null;
+  paidCostResources?: Partial<ResourceState>;
+  paidCostRegionalMaterials?: Partial<Record<RegionMaterialId, number>>;
+};
+
+export type BuildingConstructionCost = {
+  resources: Partial<ResourceState>;
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+};
+
+export type ConstructionProgressSummary = {
+  buildingId: BuildingId;
+  targetLevel: number;
+  startedAt: number;
+  completedAt: number;
+  baseDurationMs: number;
+  elapsedMs: number;
+  remainingMs: number;
+  focusSpentMs: number;
+  progress: number;
+  ready: boolean;
 };
 
 export type ClassChangeState = {
@@ -375,7 +611,7 @@ export type TrophyDefinition = {
   phase: number;
 };
 
-export type CaravanFocusId = "xp" | "gold" | "ore" | "crystal" | "rune";
+export type CaravanFocusId = "xp" | "gold" | "fragments";
 
 export type CaravanFocusDefinition = {
   id: CaravanFocusId;
@@ -388,10 +624,13 @@ export type CaravanRewardSummary = {
   xp: number;
   gold: number;
   materials: Partial<MaterialBundle>;
+  accountXp: number;
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
 };
 
 export type ActiveCaravanJob = {
   focusId: CaravanFocusId;
+  regionId: string;
   durationMs: number;
   startedAt: number;
   endsAt: number;
@@ -501,6 +740,7 @@ export type GameState = {
   focus: FocusState;
   inventory: Item[];
   equipment: EquipmentState;
+  buildPresets: BuildPresetMap;
   loot: LootState;
   activeExpedition: ActiveExpedition | null;
   dungeonClears: Record<string, number>;
@@ -568,6 +808,7 @@ export type ExpeditionProgressSummary = {
   regionalMaterials: Partial<Record<RegionMaterialId, number>>;
   titlesUnlocked: TitleDefinition[];
   trophiesUnlocked: TrophyDefinition[];
+  collection: CollectionProgressSummary | null;
 };
 
 export type ClaimMasteryTierSummary = {
@@ -578,7 +819,7 @@ export type ClaimMasteryTierSummary = {
   accountRankAfter: number;
   rankUps: number[];
   regionalMaterials: Partial<Record<RegionMaterialId, number>>;
-  relicFragmentsGained: number;
+  fragmentsGained: number;
   titlesUnlocked: TitleDefinition[];
   trophiesUnlocked: TrophyDefinition[];
 };
@@ -606,6 +847,7 @@ export type ResolveSummary = {
   levelUps: number[];
   bossClear: boolean;
   bossFirstClear: boolean;
+  boss: BossResolveSummary | null;
   firstGuaranteedWeapon: boolean;
   unlockedDungeons: DungeonDefinition[];
   unlockedZones: ZoneDefinition[];
@@ -618,10 +860,16 @@ export type OfflineDeltaSummary = {
   expeditionReady: boolean;
   caravan: {
     focusId: CaravanFocusId;
+    regionId: string;
     rewards: CaravanRewardSummary;
     elapsedMs: number;
     completed: boolean;
     levelUps: number[];
+  } | null;
+  construction: {
+    buildingId: BuildingId;
+    targetLevel: number;
+    completed: boolean;
   } | null;
   mineGains: Partial<MaterialBundle>;
   focusGained: number;

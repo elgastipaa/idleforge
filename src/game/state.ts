@@ -5,6 +5,7 @@ import type {
   AccountRankState,
   AccountShowcaseState,
   AchievementState,
+  BuildPresetMap,
   BuildingState,
   CaravanState,
   ClassChangeState,
@@ -79,6 +80,13 @@ export function createEmptyLootState(): LootState {
   };
 }
 
+export function createEmptyBuildPresets(): BuildPresetMap {
+  return {
+    "preset-1": { id: "preset-1", name: "Preset 1", equipmentItemIds: {} },
+    "preset-2": { id: "preset-2", name: "Preset 2", equipmentItemIds: {} }
+  };
+}
+
 export function createEmptyDailies(now: number): DailyState {
   const date = new Date(now);
   const weeklyWindowStartAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), DAILY_RESET_HOUR_LOCAL, 0, 0, 0).getTime();
@@ -133,6 +141,7 @@ export function createEmptyAccountShowcase(): AccountShowcaseState {
     featuredBossId: null,
     featuredFamilyId: null,
     accountSignatureMode: "auto",
+    selectedFamilyId: null,
     firstDiscoveryPopupShown: false,
     firstDiscoveryPopupDismissed: false
   };
@@ -227,7 +236,9 @@ export function createEmptyConstruction(): ConstructionState {
     targetLevel: null,
     baseDurationMs: 0,
     focusSpentMs: 0,
-    completedAt: null
+    completedAt: null,
+    paidCostResources: {},
+    paidCostRegionalMaterials: {}
   };
 }
 
@@ -263,6 +274,7 @@ export function createInitialState(seed: string, now: number, classId: HeroClass
     },
     inventory: [],
     equipment: createEmptyEquipment(),
+    buildPresets: createEmptyBuildPresets(),
     loot: createEmptyLootState(),
     activeExpedition: null,
     dungeonClears: {},

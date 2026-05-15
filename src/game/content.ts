@@ -54,7 +54,7 @@ export const CLASS_PASSIVE_TEXT: Record<
   mage: [
     { level: 5, name: "Runic Focus", effect: "-8% forge material costs." },
     { level: 10, name: "Arcane Survey", effect: "+5% success chance on non-boss expeditions." },
-    { level: 15, name: "Grand Formula", effect: "+10% rune gains." }
+    { level: 15, name: "Grand Formula", effect: "+10% Fragment gains." }
   ]
 };
 
@@ -79,7 +79,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 8,
     baseXp: 18,
     baseGold: 14,
-    materials: { ore: 1 },
+    materials: { fragments: 1 },
     lootLevel: 1,
     classModifiers: { rogue: 0.03 },
     minLevel: 1
@@ -96,7 +96,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 14,
     baseXp: 38,
     baseGold: 30,
-    materials: { ore: 2 },
+    materials: { fragments: 2 },
     lootLevel: 2,
     classModifiers: { mage: 0.03 },
     minLevel: 1,
@@ -114,7 +114,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 24,
     baseXp: 120,
     baseGold: 72,
-    materials: { ore: 5, crystal: 1 },
+    materials: { fragments: 7 },
     lootLevel: 4,
     classModifiers: { rogue: 0.02, warrior: 0.01 },
     minLevel: 2,
@@ -125,14 +125,14 @@ export const DUNGEONS: DungeonDefinition[] = [
     zoneId: "sunlit-marches",
     zoneIndex: 1,
     indexInZone: 4,
-    name: "Copper Crown Champion",
-    description: "The first boss trial, mostly pomp, partially danger, entirely worth looting.",
+    name: "Bramblecrown",
+    description: "A boastful living hedge-knight wearing polished bark, road tolls, and a crown that is mostly copper.",
     boss: true,
     durationMs: 530_000,
     power: 42,
     baseXp: 160,
     baseGold: 135,
-    materials: { ore: 8, crystal: 2 },
+    materials: { fragments: 12 },
     lootLevel: 6,
     classModifiers: { warrior: 0.04 },
     minLevel: 3,
@@ -150,7 +150,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 55,
     baseXp: 210,
     baseGold: 175,
-    materials: { ore: 10, crystal: 3 },
+    materials: { fragments: 16 },
     lootLevel: 8,
     classModifiers: { rogue: 0.03 },
     minLevel: 3,
@@ -168,7 +168,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 70,
     baseXp: 285,
     baseGold: 235,
-    materials: { ore: 12, crystal: 5 },
+    materials: { fragments: 22 },
     lootLevel: 10,
     classModifiers: { mage: 0.04 },
     minLevel: 4,
@@ -186,7 +186,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 90,
     baseXp: 380,
     baseGold: 310,
-    materials: { ore: 16, crystal: 6, rune: 1 },
+    materials: { fragments: 32 },
     lootLevel: 13,
     classModifiers: { warrior: 0.02, rogue: 0.02 },
     minLevel: 5,
@@ -197,14 +197,14 @@ export const DUNGEONS: DungeonDefinition[] = [
     zoneId: "emberwood",
     zoneIndex: 2,
     indexInZone: 4,
-    name: "Emberwood Heart",
-    description: "A boss chamber grown around a living coal and guarded by very dramatic roots.",
+    name: "Cindermaw",
+    description: "A beast that seals its wounds with living flame.",
     boss: true,
     durationMs: 270_000,
     power: 118,
     baseXp: 520,
     baseGold: 440,
-    materials: { ore: 20, crystal: 9, rune: 2 },
+    materials: { fragments: 46 },
     lootLevel: 16,
     classModifiers: { mage: 0.03, warrior: 0.02 },
     minLevel: 5,
@@ -222,7 +222,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 140,
     baseXp: 650,
     baseGold: 560,
-    materials: { crystal: 12, rune: 3 },
+    materials: { fragments: 36 },
     lootLevel: 19,
     classModifiers: { mage: 0.04 },
     minLevel: 6,
@@ -240,7 +240,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 170,
     baseXp: 820,
     baseGold: 710,
-    materials: { crystal: 15, rune: 4 },
+    materials: { fragments: 46 },
     lootLevel: 22,
     classModifiers: { rogue: 0.02, mage: 0.02 },
     minLevel: 7,
@@ -258,7 +258,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 210,
     baseXp: 1020,
     baseGold: 910,
-    materials: { crystal: 18, rune: 6 },
+    materials: { fragments: 60 },
     lootLevel: 26,
     classModifiers: { warrior: 0.02, mage: 0.03 },
     minLevel: 8,
@@ -276,7 +276,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 265,
     baseXp: 1280,
     baseGold: 1180,
-    materials: { crystal: 22, rune: 8, relicFragment: 1 },
+    materials: { fragments: 84 },
     lootLevel: 30,
     classModifiers: { mage: 0.04 },
     minLevel: 9,
@@ -294,7 +294,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 398,
     baseXp: 1550,
     baseGold: 1420,
-    materials: { crystal: 24, rune: 10, relicFragment: 1 },
+    materials: { fragments: 96 },
     lootLevel: 34,
     classModifiers: { warrior: 0.03 },
     minLevel: 12,
@@ -312,7 +312,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 472,
     baseXp: 1880,
     baseGold: 1710,
-    materials: { rune: 13, relicFragment: 2 },
+    materials: { fragments: 68 },
     lootLevel: 38,
     classModifiers: { rogue: 0.03 },
     minLevel: 13,
@@ -330,7 +330,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 560,
     baseXp: 2260,
     baseGold: 2050,
-    materials: { rune: 16, relicFragment: 2 },
+    materials: { fragments: 80 },
     lootLevel: 43,
     classModifiers: { warrior: 0.02, mage: 0.02 },
     minLevel: 14,
@@ -348,7 +348,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 665,
     baseXp: 2760,
     baseGold: 2520,
-    materials: { rune: 20, relicFragment: 3 },
+    materials: { fragments: 104 },
     lootLevel: 49,
     classModifiers: { warrior: 0.04 },
     minLevel: 15,
@@ -366,7 +366,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 760,
     baseXp: 3260,
     baseGold: 3020,
-    materials: { rune: 23, relicFragment: 4 },
+    materials: { fragments: 124 },
     lootLevel: 55,
     classModifiers: { mage: 0.03 },
     minLevel: 16,
@@ -384,7 +384,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 875,
     baseXp: 3860,
     baseGold: 3600,
-    materials: { rune: 26, relicFragment: 5 },
+    materials: { fragments: 144 },
     lootLevel: 62,
     classModifiers: { rogue: 0.02, mage: 0.02 },
     minLevel: 17,
@@ -402,7 +402,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 1010,
     baseXp: 4550,
     baseGold: 4300,
-    materials: { rune: 30, relicFragment: 6 },
+    materials: { fragments: 168 },
     lootLevel: 70,
     classModifiers: { warrior: 0.03 },
     minLevel: 18,
@@ -420,7 +420,7 @@ export const DUNGEONS: DungeonDefinition[] = [
     power: 1160,
     baseXp: 5400,
     baseGold: 5200,
-    materials: { rune: 38, relicFragment: 9 },
+    materials: { fragments: 224 },
     lootLevel: 80,
     classModifiers: { warrior: 0.02, rogue: 0.02, mage: 0.02 },
     minLevel: 18,
@@ -439,7 +439,7 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Improves future gear and adds raw hero power.",
     purpose: "Craft gear, upgrade item level, salvage inventory, and reroll affixes.",
     maxLevel: 12,
-    baseCost: { gold: 40, ore: 3 },
+    baseCost: { gold: 40, fragments: 3 },
     effectText: (level) => `+${level * 3} power, +${level} defense, +${level * 2} item stat budget`,
     milestones: [
       { level: 0, label: "Craft random gear by slot" },
@@ -454,13 +454,13 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Increases materials recovered from successful expeditions.",
     purpose: "Boost expedition materials and generate passive offline materials.",
     maxLevel: 12,
-    baseCost: { gold: 75, ore: 4 },
+    baseCost: { gold: 75, fragments: 4 },
     effectText: (level) => `+${level * 8}% expedition materials`,
     milestones: [
-      { level: 1, label: "Offline ore generation" },
-      { level: 2, label: "Offline crystal generation" },
-      { level: 5, label: "Offline rune generation" },
-      { level: 9, label: "Offline fragment generation" }
+      { level: 1, label: "Offline Fragment generation" },
+      { level: 4, label: "+32% expedition materials" },
+      { level: 8, label: "+64% expedition materials" },
+      { level: 12, label: "Maximum Mine material bonus" }
     ]
   },
   {
@@ -469,7 +469,7 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Keeps heroes rested, famous, and suspiciously well-fed.",
     purpose: "Support dailies, XP momentum, stamina, and next-goal rumors.",
     maxLevel: 12,
-    baseCost: { gold: 90, ore: 4, crystal: 1 },
+    baseCost: { gold: 90, fragments: 6 },
     effectText: (level) => `+${level * 4}% XP, +${level * 4} stamina`,
     milestones: [
       { level: 0, label: "Daily task board and rumor prompts" },
@@ -484,7 +484,7 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Turns dusty relic notes into better success chances and luck.",
     purpose: "Improve success, luck, class knowledge, and region unlock hints.",
     maxLevel: 12,
-    baseCost: { gold: 150, crystal: 4 },
+    baseCost: { gold: 150, fragments: 8 },
     effectText: (level) => `+${formatPercent(Math.min(4.8, level * 0.4))}% success, +${level} luck`,
     milestones: [
       { level: 0, label: "Region unlock hints" },
@@ -499,7 +499,7 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Improves gold rewards and sell prices.",
     purpose: "Improve sell value, gold income, and inventory pressure decisions.",
     maxLevel: 12,
-    baseCost: { gold: 85, ore: 4 },
+    baseCost: { gold: 85, fragments: 4 },
     effectText: (level) => `+${level * 5}% gold, +${level * 10}% sell value`,
     milestones: [
       { level: 0, label: "Sell items and track inventory pressure" },
@@ -514,7 +514,7 @@ export const BUILDINGS: BuildingDefinition[] = [
     description: "Focuses guild legacy into prestige momentum and steady power.",
     purpose: "Support reincarnation, Soul Marks, permanent upgrades, and power score.",
     maxLevel: 12,
-    baseCost: { gold: 220, crystal: 5, rune: 1 },
+    baseCost: { gold: 220, fragments: 14 },
     effectText: (level) => `+${level * 2} power score, +${level * 4}% Soul Marks on reincarnation`,
     milestones: [
       { level: 0, label: "Reincarnation readiness tracking" },
@@ -644,13 +644,13 @@ export const AFFIX_POOL: Affix[] = [
     description: "-12% Focus boost cost"
   },
   {
-    id: "orebound",
-    name: "Orebound",
-    prefix: "Orebound",
+    id: "fragment-bound",
+    name: "Fragment-Bound",
+    prefix: "Fragment-Bound",
     suffix: "of Rich Veins",
     stats: { defense: 4 },
-    effects: { materialResourceMultiplier: { ore: 0.14 } },
-    description: "+14% Ore from expeditions"
+    effects: { materialResourceMultiplier: { fragments: 0.14 } },
+    description: "+14% Fragments from expeditions"
   },
   {
     id: "scout",
@@ -698,13 +698,13 @@ export const AFFIX_POOL: Affix[] = [
     description: "+6% expedition materials"
   },
   {
-    id: "runic-echo",
-    name: "Runic Echo",
+    id: "fragment-echo",
+    name: "Fragment Echo",
     prefix: "Echo-Runed",
-    suffix: "of Runic Echoes",
+    suffix: "of Fragment Echoes",
     stats: { power: 3, luck: 4 },
-    effects: { runeMultiplier: 0.08 },
-    description: "+8% Rune gains"
+    effects: { fragmentsMultiplier: 0.08 },
+    description: "+8% Fragment gains"
   },
   {
     id: "scrap-savvy",
@@ -732,6 +732,39 @@ export const AFFIX_POOL: Affix[] = [
     stats: { power: 5, defense: 3 },
     effects: { bossSuccessChance: 0.045 },
     description: "+4.5% boss success chance"
+  },
+  {
+    id: "piercing",
+    name: "Piercing",
+    prefix: "Piercing",
+    suffix: "of Piercing",
+    stats: { power: 4, speed: 3 },
+    description: "Counters armored boss threats"
+  },
+  {
+    id: "guarded",
+    name: "Guarded",
+    prefix: "Guarded",
+    suffix: "of Guarding",
+    stats: { defense: 4, stamina: 10 },
+    effects: { failureRewardScale: 0.03 },
+    description: "Counters brutal boss threats"
+  },
+  {
+    id: "flame-sealed",
+    name: "Flame-Sealed",
+    prefix: "Flame-Sealed",
+    suffix: "of Sealed Flame",
+    stats: { power: 3, defense: 4 },
+    description: "Counters regenerating boss threats"
+  },
+  {
+    id: "antivenom",
+    name: "Antivenom",
+    prefix: "Antivenom",
+    suffix: "of Antivenom",
+    stats: { defense: 3, luck: 4 },
+    description: "Counters venom boss threats"
   },
   {
     id: "sure-steps",
@@ -766,8 +799,8 @@ export const AFFIX_POOL: Affix[] = [
     prefix: "Prism-Sealed",
     suffix: "of Prism Spoils",
     stats: { luck: 4 },
-    effects: { materialResourceMultiplier: { crystal: 0.12 } },
-    description: "+12% Crystal from expeditions"
+    effects: { materialResourceMultiplier: { fragments: 0.12 } },
+    description: "+12% Fragments from expeditions"
   },
   {
     id: "ancient-shards",
@@ -775,8 +808,8 @@ export const AFFIX_POOL: Affix[] = [
     prefix: "Shard-Hungry",
     suffix: "of Ancient Shards",
     stats: { luck: 4, power: 2 },
-    effects: { materialResourceMultiplier: { relicFragment: 0.1 } },
-    description: "+10% Relic Fragment gains"
+    effects: { materialResourceMultiplier: { fragments: 0.1 } },
+    description: "+10% Fragment gains"
   },
   {
     id: "storm-cache",
@@ -784,8 +817,8 @@ export const AFFIX_POOL: Affix[] = [
     prefix: "Storm-Cache",
     suffix: "of Storm Caches",
     stats: { speed: 3, luck: 4 },
-    effects: { materialResourceMultiplier: { rune: 0.1 }, lootChance: 0.015 },
-    description: "+10% Rune gains and +Loot chance"
+    effects: { materialResourceMultiplier: { fragments: 0.1 }, lootChance: 0.015 },
+    description: "+10% Fragment gains and +Loot chance"
   }
 ];
 

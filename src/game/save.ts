@@ -1,4 +1,5 @@
 import { BUILDING_IDS, DAILY_TASK_COUNT, EQUIPMENT_SLOTS, INVENTORY_LIMIT, SAVE_GAME_NAME, SAVE_VERSION, FOCUS_MAX } from "./constants";
+import { EXPEDITION_THREAT_IDS } from "./bosses";
 import { CARAVAN_FOCUS_DEFINITIONS, clampCaravanDurationMs } from "./caravan";
 import { ACHIEVEMENTS, DAILY_TASK_POOL, DUNGEONS, HERO_CLASSES } from "./content";
 import { ACCOUNT_RANKS, getAccountRankForXp } from "./progression";
@@ -7,11 +8,13 @@ import {
   createEmptyAccountRank,
   createEmptyAccountShowcase,
   createEmptyAchievements,
+  createEmptyBuildPresets,
   createEmptyCaravan,
   createEmptyClassChange,
   createEmptyConstruction,
   createEmptyDailyFocus,
   createEmptyDailies,
+  createEmptyEquipment,
   createEmptyLootState,
   createEmptyRebirth,
   createEmptyRegionProgress,
@@ -19,8 +22,10 @@ import {
   createEmptyTitles,
   createEmptyWeeklyQuest
 } from "./state";
+import { isItemFamilyId, isItemTraitId } from "./traits";
 import type {
   AccountShowcaseState,
+  BuildPresetMap,
   DailyMissionDifficulty,
   DailyReward,
   DailyTaskKind,
@@ -28,12 +33,16 @@ import type {
   DailyFocusState,
   GameState,
   ImportResult,
+  ExpeditionThreatId,
+  Item,
   ItemFamilyId,
   MaterialBundle,
+  ResourceState,
   RegionCollectionState,
   RegionDiaryState,
   RegionMaterialId,
   RegionOutpostState,
+  ConstructionState,
   TitleState,
   WeeklyQuestReward,
   WeeklyQuestState,
@@ -66,6 +75,23 @@ const DAILY_TASK_KINDS: DailyTaskKind[] = [
 ];
 const WEEKLY_QUEST_STEP_KINDS: WeeklyQuestStepKind[] = ["clear_expeditions", "claim_mastery_milestone", "collection_eligible_runs", "attempt_boss"];
 const MAX_FOCUS_CAP = Math.max(FOCUS_MAX, ...ACCOUNT_RANKS.map((rank) => rank.focusCap));
+const LEGACY_MATERIAL_WEIGHTS = {
+  ore: 1,
+  crystal: 2,
+  rune: 4,
+  relicFragment: 8
+} as const;
+
+function normalizeThreatCoverage(source: unknown): Partial<Record<ExpeditionThreatId, number>> {
+  if (!isRecord(source)) return {};
+  return EXPEDITION_THREAT_IDS.reduce<Partial<Record<ExpeditionThreatId, number>>>((coverage, threatId) => {
+    const value = normalizeNumber(source[threatId], 0);
+    if (value > 0) {
+      coverage[threatId] = Math.min(1, value);
+    }
+    return coverage;
+  }, {});
+}
 
 export type SaveEnvelope = {
   game: typeof SAVE_GAME_NAME;
@@ -100,13 +126,88 @@ function normalizeRegionMaterials(value: unknown): Partial<Record<RegionMaterial
   return output;
 }
 
+function normalizeFragmentsAmount(value: unknown): number {
+  if (!isRecord(value)) {
+    return 0;
+  }
+  const existingFragments = normalizeNumber(value.fragments, 0);
+  const legacyFragments = Object.entries(LEGACY_MATERIAL_WEIGHTS).reduce(
+    (total, [materialId, weight]) => total + Math.max(0, normalizeNumber(value[materialId], 0)) * weight,
+    0
+  );
+  return Math.max(0, Math.floor(existingFragments + legacyFragments));
+}
+
+function normalizeMaterialBundle(value: unknown): Partial<MaterialBundle> {
+  const fragments = normalizeFragmentsAmount(value);
+  return fragments > 0 ? { fragments } : {};
+}
+
+function normalizeResourceState(value: unknown): ResourceState {
+  return {
+    gold: isRecord(value) ? Math.max(0, normalizeNumber(value.gold, 0)) : 0,
+    fragments: normalizeFragmentsAmount(value),
+    renown: isRecord(value) ? Math.max(0, normalizeNumber(value.renown, 0)) : 0
+  };
+}
+
+function normalizeResourceCost(value: unknown): Partial<ResourceState> {
+  if (!isRecord(value)) return {};
+  return (["gold", "fragments", "renown"] as (keyof ResourceState)[]).reduce<Partial<ResourceState>>((cost, resource) => {
+    const amount = Math.max(0, normalizeNumber(value[resource], 0));
+    if (amount > 0) cost[resource] = amount;
+    return cost;
+  }, {});
+}
+
+function normalizeConstructionState(value: unknown): ConstructionState {
+  if (!isRecord(value)) return createEmptyConstruction();
+  const activeBuildingId = BUILDING_IDS.includes(value.activeBuildingId as (typeof BUILDING_IDS)[number])
+    ? (value.activeBuildingId as ConstructionState["activeBuildingId"])
+    : null;
+  if (!activeBuildingId) return createEmptyConstruction();
+  const startedAt = normalizeNumber(value.startedAt, 0);
+  const targetLevel = normalizeNumber(value.targetLevel, 0);
+  const baseDurationMs = normalizeNumber(value.baseDurationMs, 0);
+  if (startedAt <= 0 || targetLevel <= 0 || baseDurationMs <= 0) return createEmptyConstruction();
+  const completedAtValue = normalizeNumber(value.completedAt, 0);
+  return {
+    activeBuildingId,
+    startedAt,
+    targetLevel,
+    baseDurationMs,
+    focusSpentMs: Math.max(0, normalizeNumber(value.focusSpentMs, 0)),
+    completedAt: completedAtValue > 0 ? completedAtValue : null,
+    paidCostResources: normalizeResourceCost(value.paidCostResources),
+    paidCostRegionalMaterials: normalizeRegionMaterials(value.paidCostRegionalMaterials)
+  };
+}
+
+function normalizeItemEconomy(item: Item): Item {
+  return {
+    ...item,
+    traitId: isItemTraitId((item as Item & Record<string, unknown>).traitId) ? (item as Item & Record<string, unknown>).traitId : null,
+    familyId: isItemFamilyId((item as Item & Record<string, unknown>).familyId) ? (item as Item & Record<string, unknown>).familyId : null,
+    locked: Boolean((item as Item & Record<string, unknown>).locked),
+    salvageValue: normalizeMaterialBundle((item as Item & Record<string, unknown>).salvageValue)
+  };
+}
+
+function normalizeEquipmentEconomy(equipment: unknown): GameState["equipment"] {
+  const source = isRecord(equipment) ? equipment : createEmptyEquipment();
+  return EQUIPMENT_SLOTS.reduce<GameState["equipment"]>((normalized, slot) => {
+    normalized[slot] = source[slot] ? normalizeItemEconomy(source[slot] as Item) : null;
+    return normalized;
+  }, {} as GameState["equipment"]);
+}
+
 function normalizeDailyReward(reward: unknown): DailyReward {
   if (!isRecord(reward)) {
     return { gold: 0, materials: {}, focus: 0, accountXp: 0, regionalMaterials: {}, fragments: 0 };
   }
   return {
     gold: Math.max(0, normalizeNumber(reward.gold, 0)),
-    materials: isRecord(reward.materials) ? (reward.materials as Partial<MaterialBundle>) : {},
+    materials: normalizeMaterialBundle(reward.materials),
     focus: Math.max(0, normalizeNumber(reward.focus, normalizeNumber(reward[LEGACY_ACTION_RESOURCE_FIELD], 0))),
     accountXp: Math.max(0, normalizeNumber(reward.accountXp, 0)),
     regionalMaterials: normalizeRegionMaterials(reward.regionalMaterials),
@@ -208,10 +309,30 @@ function normalizeAccountShowcase(value: unknown): AccountShowcaseState {
     favoriteRegionId: typeof value.favoriteRegionId === "string" ? value.favoriteRegionId : null,
     featuredBossId: typeof value.featuredBossId === "string" ? value.featuredBossId : null,
     featuredFamilyId: ITEM_FAMILY_IDS.includes(value.featuredFamilyId as ItemFamilyId) ? (value.featuredFamilyId as ItemFamilyId) : null,
+    selectedFamilyId: ITEM_FAMILY_IDS.includes(value.selectedFamilyId as ItemFamilyId) ? (value.selectedFamilyId as ItemFamilyId) : null,
     accountSignatureMode: value.accountSignatureMode === "manual" ? "manual" : "auto",
     firstDiscoveryPopupShown: Boolean(value.firstDiscoveryPopupShown),
     firstDiscoveryPopupDismissed: Boolean(value.firstDiscoveryPopupDismissed)
   };
+}
+
+function normalizeBuildPresets(value: unknown): BuildPresetMap {
+  const empty = createEmptyBuildPresets();
+  if (!isRecord(value)) return empty;
+  return (Object.keys(empty) as (keyof BuildPresetMap)[]).reduce<BuildPresetMap>((presets, presetId) => {
+    const source = isRecord(value[presetId]) ? value[presetId] : {};
+    const equipmentSource = isRecord(source.equipmentItemIds) ? source.equipmentItemIds : {};
+    presets[presetId] = {
+      id: presetId,
+      name: typeof source.name === "string" ? source.name.slice(0, 24) : empty[presetId].name,
+      equipmentItemIds: EQUIPMENT_SLOTS.reduce<BuildPresetMap[typeof presetId]["equipmentItemIds"]>((ids, slot) => {
+        const itemId = equipmentSource[slot];
+        if (typeof itemId === "string") ids[slot] = itemId;
+        return ids;
+      }, {})
+    };
+    return presets;
+  }, empty);
 }
 
 function validateState(state: unknown): state is GameState {
@@ -224,7 +345,7 @@ function validateState(state: unknown): state is GameState {
   if (!finiteNumber(hero.level) || hero.level < 1) return false;
   const resources = state.resources;
   if (!isRecord(resources)) return false;
-  for (const resource of ["gold", "ore", "crystal", "rune", "relicFragment", "renown"]) {
+  for (const resource of ["gold", "fragments", "renown"]) {
     if (!finiteNumber(resources[resource]) || Number(resources[resource]) < 0) return false;
   }
   if (!Array.isArray(state.inventory) || state.inventory.length > INVENTORY_LIMIT) return false;
@@ -248,6 +369,16 @@ function validateState(state: unknown): state is GameState {
     if (!DUNGEONS.some((dungeon) => dungeon.id === activeExpedition.dungeonId)) return false;
     if (!finiteNumber(activeExpedition.startedAt) || !finiteNumber(activeExpedition.endsAt)) return false;
     if (typeof activeExpedition.focusBoost !== "boolean") return false;
+    if (activeExpedition.bossPrepCoverage !== undefined) {
+      if (!isRecord(activeExpedition.bossPrepCoverage)) return false;
+      if (
+        Object.entries(activeExpedition.bossPrepCoverage).some(
+          ([threatId, value]) => !EXPEDITION_THREAT_IDS.includes(threatId as ExpeditionThreatId) || !finiteNumber(value) || Number(value) < 0
+        )
+      ) {
+        return false;
+      }
+    }
   }
   const caravan = state.caravan;
   if (caravan !== undefined) {
@@ -256,10 +387,21 @@ function validateState(state: unknown): state is GameState {
       const activeJob = caravan.activeJob;
       if (!isRecord(activeJob)) return false;
       if (!CARAVAN_FOCUS_DEFINITIONS.some((focus) => focus.id === activeJob.focusId)) return false;
+      if (typeof activeJob.regionId !== "string" || !DUNGEONS.some((dungeon) => dungeon.zoneId === activeJob.regionId)) return false;
       if (!finiteNumber(activeJob.durationMs) || activeJob.durationMs !== clampCaravanDurationMs(activeJob.durationMs)) return false;
       if (!finiteNumber(activeJob.startedAt) || !finiteNumber(activeJob.endsAt)) return false;
       if (activeJob.endsAt <= activeJob.startedAt) return false;
     }
+  }
+  const construction = state.construction;
+  if (!isRecord(construction)) return false;
+  if (construction.activeBuildingId !== null) {
+    if (!BUILDING_IDS.includes(construction.activeBuildingId as (typeof BUILDING_IDS)[number])) return false;
+    if (!finiteNumber(construction.startedAt) || !finiteNumber(construction.targetLevel)) return false;
+    if (!finiteNumber(construction.baseDurationMs) || Number(construction.baseDurationMs) <= 0) return false;
+    if (!finiteNumber(construction.focusSpentMs) || Number(construction.focusSpentMs) < 0) return false;
+    if (construction.completedAt !== null && !finiteNumber(construction.completedAt)) return false;
+    if (!isRecord(construction.paidCostResources) || !isRecord(construction.paidCostRegionalMaterials)) return false;
   }
   const focus = state.focus;
   if (!isRecord(focus)) return false;
@@ -373,7 +515,8 @@ export function normalizeImportedState(state: GameState, now: number): GameState
         runId: normalizeNumber(activeExpeditionSource.runId, 0),
         startedAt: normalizeNumber(activeExpeditionSource.startedAt, now),
         endsAt: normalizeNumber(activeExpeditionSource.endsAt, now),
-        focusBoost: Boolean(activeExpeditionSource.focusBoost ?? activeExpeditionSource[LEGACY_ACTION_BOOST_FIELD])
+        focusBoost: Boolean(activeExpeditionSource.focusBoost ?? activeExpeditionSource[LEGACY_ACTION_BOOST_FIELD]),
+        bossPrepCoverage: normalizeThreatCoverage(activeExpeditionSource.bossPrepCoverage)
       }
     : null;
   const prestigeUpgrades = {
@@ -385,11 +528,33 @@ export function normalizeImportedState(state: GameState, now: number): GameState
   const emptyRegionProgress = createEmptyRegionProgress();
   const regionProgressSource: Record<string, unknown> = isRecord(state.regionProgress) ? (state.regionProgress as unknown as Record<string, unknown>) : {};
   const regionMaterials: Record<string, unknown> = isRecord(regionProgressSource.materials) ? regionProgressSource.materials : {};
+  const resources = normalizeResourceState(state.resources);
+  const activeCaravanJobSource = isRecord(state.caravan?.activeJob) ? (state.caravan.activeJob as unknown as Record<string, unknown>) : null;
+  const activeCaravanJob = activeCaravanJobSource
+    ? (() => {
+        const startedAt = normalizeNumber(activeCaravanJobSource.startedAt, now);
+        const durationMs = clampCaravanDurationMs(normalizeNumber(activeCaravanJobSource.durationMs, 60 * 60 * 1000));
+        const regionId =
+          typeof activeCaravanJobSource.regionId === "string" && DUNGEONS.some((dungeon) => dungeon.zoneId === activeCaravanJobSource.regionId)
+            ? activeCaravanJobSource.regionId
+            : DUNGEONS[0].zoneId;
+        const focusId = CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === activeCaravanJobSource.focusId)?.id ?? CARAVAN_FOCUS_DEFINITIONS[0].id;
+        const endsAt = normalizeNumber(activeCaravanJobSource.endsAt, startedAt + durationMs);
+        return {
+          focusId,
+          regionId,
+          durationMs,
+          startedAt,
+          endsAt: endsAt > startedAt ? endsAt : startedAt + durationMs
+        };
+      })()
+    : null;
 
   return {
     ...state,
     achievements,
     activeExpedition,
+    resources,
     focus: {
       current: focusCurrent,
       cap: focusCap,
@@ -402,8 +567,11 @@ export function normalizeImportedState(state: GameState, now: number): GameState
       lastTaskSetKey: typeof state.dailies?.lastTaskSetKey === "string" ? state.dailies.lastTaskSetKey : null,
       weekly
     },
+    inventory: Array.isArray(state.inventory) ? state.inventory.slice(0, INVENTORY_LIMIT).map(normalizeItemEconomy) : [],
+    equipment: normalizeEquipmentEconomy(state.equipment),
+    buildPresets: normalizeBuildPresets(state.buildPresets),
     loot,
-    caravan: state.caravan?.activeJob ? { activeJob: state.caravan.activeJob } : createEmptyCaravan(),
+    caravan: activeCaravanJob ? { activeJob: activeCaravanJob } : createEmptyCaravan(),
     updatedAt: now,
     lifetime: {
       ...state.lifetime,
@@ -430,10 +598,10 @@ export function normalizeImportedState(state: GameState, now: number): GameState
     },
     soulMarks: state.soulMarks ?? {
       ...createEmptySoulMarks(),
-      current: state.resources?.renown ?? 0,
+      current: resources.renown,
       lifetimeEarned: state.prestige?.renownEarned ?? 0,
       upgradesClaimed: prestigeUpgrades,
-      discovered: (state.resources?.renown ?? 0) > 0 || (state.prestige?.renownEarned ?? 0) > 0
+      discovered: resources.renown > 0 || (state.prestige?.renownEarned ?? 0) > 0
     },
     accountShowcase: normalizeAccountShowcase(state.accountShowcase),
     accountPersonalRecords: state.accountPersonalRecords ?? {
@@ -461,7 +629,7 @@ export function normalizeImportedState(state: GameState, now: number): GameState
       diaries: isRecord(regionProgressSource.diaries) ? (regionProgressSource.diaries as Record<string, RegionDiaryState>) : {}
     },
     bossPrep: isRecord(state.bossPrep) ? state.bossPrep : {},
-    construction: state.construction ?? createEmptyConstruction(),
+    construction: normalizeConstructionState(state.construction),
     classChange: state.classChange ?? createEmptyClassChange(),
     traitCodex: isRecord(state.traitCodex) ? state.traitCodex : {},
     familyCodex: isRecord(state.familyCodex) ? state.familyCodex : {},
