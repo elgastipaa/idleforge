@@ -43,7 +43,13 @@ export const ACCOUNT_RANKS: AccountRankDefinition[] = [
   { rank: 7, xp: 2050, focusCap: 240, label: "Second Build Preset" },
   { rank: 8, xp: 2850, focusCap: 240, label: "Region Filters" },
   { rank: 9, xp: 3800, focusCap: 240, label: "Trophy Shelf III" },
-  { rank: 10, xp: 4900, focusCap: 260, label: "Mastery Codex" }
+  { rank: 10, xp: 4900, focusCap: 260, label: "Mastery Codex" },
+  { rank: 11, xp: 6200, focusCap: 260, label: "Azure Charter" },
+  { rank: 12, xp: 7700, focusCap: 260, label: "Archive Discipline" },
+  { rank: 13, xp: 9400, focusCap: 280, label: "Deep Route Planning" },
+  { rank: 14, xp: 11300, focusCap: 280, label: "Storm Relay" },
+  { rank: 15, xp: 13400, focusCap: 280, label: "Forge Aspirant" },
+  { rank: 16, xp: 15800, focusCap: 300, label: "First Forge Ledger" }
 ];
 
 export const REGION_MATERIAL_LABELS: Record<RegionMaterialId, string> = {
@@ -166,6 +172,129 @@ export const EXPEDITION_PROGRESS_REWARDS: Record<string, ExpeditionProgressRewar
     firstClearAccountXp: 40,
     firstClearTitleId: "title-cindermaw-breaker",
     firstClearTrophyId: "trophy-cindermaw-fang"
+  },
+  "index-of-whispers": {
+    phase: 8,
+    successMasteryXp: 95,
+    failureMasteryXp: 32,
+    successAccountXp: 38,
+    failureAccountXp: 13,
+    successRegionalMaterial: { id: "archiveGlyph", amount: 4 },
+    fragmentSeed: 28
+  },
+  "mirror-script-hall": {
+    phase: 8,
+    successMasteryXp: 100,
+    failureMasteryXp: 34,
+    successAccountXp: 45,
+    failureAccountXp: 15,
+    successRegionalMaterial: { id: "archiveGlyph", amount: 5 },
+    fragmentSeed: 36
+  },
+  "astral-ledger-stacks": {
+    phase: 8,
+    successMasteryXp: 105,
+    failureMasteryXp: 36,
+    successAccountXp: 52,
+    failureAccountXp: 18,
+    successRegionalMaterial: { id: "archiveGlyph", amount: 7 },
+    failureRegionalMaterial: { id: "archiveGlyph", amount: 2 },
+    fragmentSeed: 44
+  },
+  "curator-of-blue-fire": {
+    phase: 8,
+    successMasteryXp: 115,
+    failureMasteryXp: 44,
+    successAccountXp: 60,
+    failureAccountXp: 22,
+    successRegionalMaterial: { id: "archiveGlyph", amount: 10 },
+    failureRegionalMaterial: { id: "archiveGlyph", amount: 3 },
+    fragmentSeed: 56,
+    firstClearAccountXp: 60,
+    firstClearTitleId: "title-azure-curator",
+    firstClearTrophyId: "trophy-azure-blue-fire"
+  },
+  "thunderchain-ascent": {
+    phase: 8,
+    successMasteryXp: 120,
+    failureMasteryXp: 42,
+    successAccountXp: 70,
+    failureAccountXp: 24,
+    successRegionalMaterial: { id: "stormglassShard", amount: 7 },
+    fragmentSeed: 70
+  },
+  "skybell-ruins": {
+    phase: 8,
+    successMasteryXp: 130,
+    failureMasteryXp: 45,
+    successAccountXp: 80,
+    failureAccountXp: 27,
+    successRegionalMaterial: { id: "stormglassShard", amount: 9 },
+    fragmentSeed: 84
+  },
+  "opalfang-bridge": {
+    phase: 8,
+    successMasteryXp: 140,
+    failureMasteryXp: 50,
+    successAccountXp: 90,
+    failureAccountXp: 30,
+    successRegionalMaterial: { id: "stormglassShard", amount: 11 },
+    failureRegionalMaterial: { id: "stormglassShard", amount: 3 },
+    fragmentSeed: 100
+  },
+  "stormglass-regent": {
+    phase: 8,
+    successMasteryXp: 160,
+    failureMasteryXp: 62,
+    successAccountXp: 110,
+    failureAccountXp: 38,
+    successRegionalMaterial: { id: "stormglassShard", amount: 16 },
+    failureRegionalMaterial: { id: "stormglassShard", amount: 5 },
+    fragmentSeed: 122,
+    firstClearAccountXp: 90,
+    firstClearTitleId: "title-stormglass-regent",
+    firstClearTrophyId: "trophy-stormglass-regent"
+  },
+  "ashdoor-antechamber": {
+    phase: 8,
+    successMasteryXp: 165,
+    failureMasteryXp: 55,
+    successAccountXp: 125,
+    failureAccountXp: 42,
+    successRegionalMaterial: { id: "oathEmber", amount: 10 },
+    fragmentSeed: 150
+  },
+  "bellows-of-memory": {
+    phase: 8,
+    successMasteryXp: 180,
+    failureMasteryXp: 60,
+    successAccountXp: 145,
+    failureAccountXp: 48,
+    successRegionalMaterial: { id: "oathEmber", amount: 13 },
+    fragmentSeed: 174
+  },
+  "anvil-of-bright-oaths": {
+    phase: 8,
+    successMasteryXp: 200,
+    failureMasteryXp: 68,
+    successAccountXp: 165,
+    failureAccountXp: 55,
+    successRegionalMaterial: { id: "oathEmber", amount: 16 },
+    failureRegionalMaterial: { id: "oathEmber", amount: 5 },
+    fragmentSeed: 204
+  },
+  "crown-of-the-first-forge": {
+    phase: 8,
+    successMasteryXp: 240,
+    failureMasteryXp: 90,
+    successAccountXp: 220,
+    failureAccountXp: 75,
+    successRegionalMaterial: { id: "oathEmber", amount: 24 },
+    failureRegionalMaterial: { id: "oathEmber", amount: 8 },
+    fragmentSeed: 260,
+    firstClearAccountXp: 150,
+    firstClearTitleId: "title-first-forge-victor",
+    firstClearTrophyId: "trophy-first-forge-crown"
   }
 };
 
@@ -199,6 +328,51 @@ const MASTERY_TIER_REWARDS: Record<string, Partial<Record<MasteryTierNumber, Mas
     1: { accountXp: 8, regionalMaterials: { emberResin: 3 } },
     2: { accountXp: 14, regionalMaterials: { emberResin: 6 }, titleId: "title-known-route" },
     3: { accountXp: 28, regionalMaterials: { emberResin: 12 }, trophyId: "trophy-cinderleaf-bridge-token" }
+  },
+  "index-of-whispers": {
+    1: { accountXp: 10, regionalMaterials: { archiveGlyph: 4 } },
+    2: { accountXp: 18, regionalMaterials: { archiveGlyph: 8 }, titleId: "title-known-route" },
+    3: { accountXp: 36, regionalMaterials: { archiveGlyph: 14 }, fragments: 18 }
+  },
+  "mirror-script-hall": {
+    1: { accountXp: 10, regionalMaterials: { archiveGlyph: 4 } },
+    2: { accountXp: 20, regionalMaterials: { archiveGlyph: 8 }, titleId: "title-known-route" },
+    3: { accountXp: 40, regionalMaterials: { archiveGlyph: 15 }, fragments: 22 }
+  },
+  "astral-ledger-stacks": {
+    1: { accountXp: 12, regionalMaterials: { archiveGlyph: 5 } },
+    2: { accountXp: 22, regionalMaterials: { archiveGlyph: 9 }, titleId: "title-known-route" },
+    3: { accountXp: 44, regionalMaterials: { archiveGlyph: 18 }, trophyId: "trophy-astral-ledger-seal" }
+  },
+  "thunderchain-ascent": {
+    1: { accountXp: 14, regionalMaterials: { stormglassShard: 5 } },
+    2: { accountXp: 26, regionalMaterials: { stormglassShard: 10 }, titleId: "title-known-route" },
+    3: { accountXp: 52, regionalMaterials: { stormglassShard: 20 }, fragments: 32 }
+  },
+  "skybell-ruins": {
+    1: { accountXp: 16, regionalMaterials: { stormglassShard: 6 } },
+    2: { accountXp: 30, regionalMaterials: { stormglassShard: 12 }, titleId: "title-known-route" },
+    3: { accountXp: 60, regionalMaterials: { stormglassShard: 24 }, fragments: 40 }
+  },
+  "opalfang-bridge": {
+    1: { accountXp: 18, regionalMaterials: { stormglassShard: 7 } },
+    2: { accountXp: 34, regionalMaterials: { stormglassShard: 14 }, titleId: "title-known-route" },
+    3: { accountXp: 68, regionalMaterials: { stormglassShard: 28 }, trophyId: "trophy-opalfang-bridge-glass" }
+  },
+  "ashdoor-antechamber": {
+    1: { accountXp: 22, regionalMaterials: { oathEmber: 7 } },
+    2: { accountXp: 42, regionalMaterials: { oathEmber: 14 }, titleId: "title-known-route" },
+    3: { accountXp: 84, regionalMaterials: { oathEmber: 28 }, fragments: 55 }
+  },
+  "bellows-of-memory": {
+    1: { accountXp: 24, regionalMaterials: { oathEmber: 8 } },
+    2: { accountXp: 46, regionalMaterials: { oathEmber: 16 }, titleId: "title-known-route" },
+    3: { accountXp: 92, regionalMaterials: { oathEmber: 32 }, fragments: 70 }
+  },
+  "anvil-of-bright-oaths": {
+    1: { accountXp: 28, regionalMaterials: { oathEmber: 10 } },
+    2: { accountXp: 54, regionalMaterials: { oathEmber: 20 }, titleId: "title-known-route" },
+    3: { accountXp: 108, regionalMaterials: { oathEmber: 40 }, trophyId: "trophy-bright-oath-anvil" }
   }
 };
 
@@ -215,7 +389,16 @@ export const TITLE_DEFINITIONS: TitleDefinition[] = [
   { id: "title-copper-crowned", name: "Copper-Crowned", unlockCondition: "Defeat Bramblecrown.", target: 1, showcasePriority: 3, phase: 4 },
   { id: "title-cindermaw-breaker", name: "Cindermaw Breaker", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 },
   { id: "title-sunlit-diarist", name: "Sunlit Diarist", unlockCondition: "Complete Sunlit Marches Diary I.", target: 1, showcasePriority: 4, phase: 7 },
-  { id: "title-emberwood-diarist", name: "Emberwood Diarist", unlockCondition: "Complete Emberwood Diary I.", target: 1, showcasePriority: 4, phase: 7 }
+  { id: "title-emberwood-diarist", name: "Emberwood Diarist", unlockCondition: "Complete Emberwood Diary I.", target: 1, showcasePriority: 4, phase: 7 },
+  { id: "title-azure-curator", name: "Azure Curator", unlockCondition: "Defeat the Curator of Blue Fire.", target: 1, showcasePriority: 2, phase: 8 },
+  { id: "title-stormglass-regent", name: "Stormglass Regent", unlockCondition: "Defeat the Stormglass Regent.", target: 1, showcasePriority: 2, phase: 8 },
+  { id: "title-first-forge-victor", name: "First Forge Victor", unlockCondition: "Defeat the Crown of the First Forge.", target: 1, showcasePriority: 1, phase: 8 },
+  { id: "title-azure-archivist", name: "Azure Archivist", unlockCondition: "Complete Azure Vault Relics.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "title-stormglass-surveyor", name: "Stormglass Surveyor", unlockCondition: "Complete Stormglass Survey Relics.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "title-oathkeeper", name: "Oathkeeper", unlockCondition: "Complete First Forge Oath Relics.", target: 1, showcasePriority: 2, phase: 8 },
+  { id: "title-azure-diarist", name: "Azure Diarist", unlockCondition: "Complete Azure Vaults Diary I.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "title-stormglass-diarist", name: "Stormglass Diarist", unlockCondition: "Complete Stormglass Peaks Diary I.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "title-first-forge-diarist", name: "First Forge Diarist", unlockCondition: "Complete First Forge Diary I.", target: 1, showcasePriority: 2, phase: 8 }
 ];
 
 export const TROPHY_DEFINITIONS: TrophyDefinition[] = [
@@ -228,7 +411,16 @@ export const TROPHY_DEFINITIONS: TrophyDefinition[] = [
   { id: "trophy-emberwood-relic-set", name: "Emberwood Relic Set", unlockCondition: "Complete Emberwood Heartwood Relics.", target: 1, showcasePriority: 3, phase: 3 },
   { id: "trophy-boss-intel-scroll", name: "Boss Intel Scroll", unlockCondition: "Gain boss intel from a failed boss attempt.", target: 1, showcasePriority: 5, phase: 4 },
   { id: "trophy-copper-crown", name: "Copper Crown", unlockCondition: "Defeat Bramblecrown.", target: 1, showcasePriority: 2, phase: 4 },
-  { id: "trophy-cindermaw-fang", name: "Cindermaw Fang", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 }
+  { id: "trophy-cindermaw-fang", name: "Cindermaw Fang", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 },
+  { id: "trophy-astral-ledger-seal", name: "Astral Ledger Seal", unlockCondition: "Claim Tier 3 mastery for Astral Ledger Stacks.", target: 1, showcasePriority: 4, phase: 8 },
+  { id: "trophy-opalfang-bridge-glass", name: "Opalfang Bridge Glass", unlockCondition: "Claim Tier 3 mastery for Opalfang Bridge.", target: 1, showcasePriority: 4, phase: 8 },
+  { id: "trophy-bright-oath-anvil", name: "Bright Oath Anvil", unlockCondition: "Claim Tier 3 mastery for Anvil of Bright Oaths.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "trophy-azure-blue-fire", name: "Blue Fire Permit", unlockCondition: "Defeat the Curator of Blue Fire.", target: 1, showcasePriority: 2, phase: 8 },
+  { id: "trophy-stormglass-regent", name: "Stormglass Court Shard", unlockCondition: "Defeat the Stormglass Regent.", target: 1, showcasePriority: 2, phase: 8 },
+  { id: "trophy-first-forge-crown", name: "First Forge Crown", unlockCondition: "Defeat the Crown of the First Forge.", target: 1, showcasePriority: 1, phase: 8 },
+  { id: "trophy-azure-relic-set", name: "Azure Relic Set", unlockCondition: "Complete Azure Vault Relics.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "trophy-stormglass-relic-set", name: "Stormglass Relic Set", unlockCondition: "Complete Stormglass Survey Relics.", target: 1, showcasePriority: 3, phase: 8 },
+  { id: "trophy-first-forge-relic-set", name: "First Forge Relic Set", unlockCondition: "Complete First Forge Oath Relics.", target: 1, showcasePriority: 1, phase: 8 }
 ];
 
 const COLLECTION_COMPLETION_BONUSES: Partial<
@@ -253,12 +445,33 @@ const COLLECTION_COMPLETION_BONUSES: Partial<
     regionId: "emberwood",
     materialYieldMultiplier: 1.02,
     masteryXpMultiplier: 1
+  },
+  archiveGlyph: {
+    collectionId: "azure-vault-relics",
+    regionId: "azure-vaults",
+    materialYieldMultiplier: 1.02,
+    masteryXpMultiplier: 1.02
+  },
+  stormglassShard: {
+    collectionId: "stormglass-survey-relics",
+    regionId: "stormglass-peaks",
+    materialYieldMultiplier: 1.02,
+    masteryXpMultiplier: 1.02
+  },
+  oathEmber: {
+    collectionId: "first-forge-oath-relics",
+    regionId: "first-forge",
+    materialYieldMultiplier: 1.03,
+    masteryXpMultiplier: 1.02
   }
 };
 
 const COLLECTION_REGION_MATERIAL_BY_REGION_ID: Partial<Record<string, RegionMaterialId>> = {
   "sunlit-marches": "sunlitTimber",
-  emberwood: "emberResin"
+  emberwood: "emberResin",
+  "azure-vaults": "archiveGlyph",
+  "stormglass-peaks": "stormglassShard",
+  "first-forge": "oathEmber"
 };
 
 function getTitleDefinition(titleId: string): TitleDefinition | null {
@@ -444,7 +657,8 @@ function getRegionalMaterialAmountWithCollectionBonus(state: GameState, regionId
     (1 +
       getEquippedTraitRegionalMaterialBonus(state, materialId) +
       getFamilyRegionalMaterialBonus(state, regionId, materialId) +
-      getRegionDiaryRegionalMaterialYieldBonus(state, materialId));
+      getRegionDiaryRegionalMaterialYieldBonus(state, materialId) +
+      state.prestige.upgrades.horizonCartography * 0.02);
   return Math.floor(baseAmount * multiplier);
 }
 

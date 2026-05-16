@@ -8,6 +8,7 @@ import {
   BOSS_DEFINITIONS,
   DAILY_RESET_HOUR_LOCAL,
   DUNGEONS,
+  EXPEDITION_PROGRESS_REWARDS,
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
   INVENTORY_LIMIT,
@@ -33,6 +34,7 @@ import {
   accelerateBuildingConstruction,
   buildShowcaseCopyText,
   buyBuildingUpgrade,
+  buyRenownUpgrade,
   canAfford,
   canPrestige,
   cancelCaravanJob,
@@ -81,6 +83,7 @@ import {
   getSuccessChance,
   getFocusBoostCost,
   getFamilyResonanceSummaries,
+  getFragmentGainPassiveMultiplier,
   getItemFamilyDefinition,
   getItemTraitDefinition,
   getCaravanMasterySummary,
@@ -184,7 +187,7 @@ describe("state and RNG determinism", () => {
       ["clear_expeditions", 15],
       ["claim_mastery_milestone", 1]
     ]);
-    expect(a.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(a.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"]);
     expect(Object.keys(a.regionProgress.materials)).toEqual(["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"]);
     expect(a.construction.activeBuildingId).toBeNull();
     expect(a.classChange).toMatchObject({ freeChangeUsed: false, lastChangedAt: null });
@@ -604,7 +607,7 @@ describe("expeditions, focus, and loot", () => {
     expect(getFocusBoostCost(state)).toBeLessThan(baseFocusCost);
   });
 
-  it("generates one readable item trait and keeps inactive families gated", () => {
+  it("generates one readable item trait and keeps Launch Candidate families active", () => {
     const state = makeReadyState("phase-6-trait-generation");
     state.bossPrep["copper-crown-champion"] = { revealedThreats: [], prepCharges: {}, attempts: 0, intel: 0 };
     const item = createItem(state, DUNGEONS[0], createRng("phase-6-legendary"), 9, { slot: "weapon", rarity: "legendary" });
@@ -613,8 +616,14 @@ describe("expeditions, focus, and loot", () => {
     expect(getItemTraitDefinition(item.traitId)?.category).toBe("tactical");
     expect(item.affixes.some((affix) => ITEM_TRAITS.some((trait) => trait.id === affix.id))).toBe(false);
     expect(state.traitCodex[item.traitId ?? ""]?.discovered).toBe(true);
-    expect(ITEM_FAMILIES.filter((family) => family.active).map((family) => family.id)).toEqual(["sunlitCharter", "emberboundKit"]);
-    expect(ITEM_FAMILIES.filter((family) => !family.active).map((family) => family.id)).toEqual(["azureLedger", "stormglassSurvey", "firstForgeOath"]);
+    expect(ITEM_FAMILIES.filter((family) => family.active).map((family) => family.id)).toEqual([
+      "sunlitCharter",
+      "emberboundKit",
+      "azureLedger",
+      "stormglassSurvey",
+      "firstForgeOath"
+    ]);
+    expect(ITEM_FAMILIES.filter((family) => !family.active)).toEqual([]);
   });
 
   it("equips lower-power contextual trait gear for a boss", () => {
@@ -874,10 +883,10 @@ describe("town, dailies, offline, and saves", () => {
     expect(boostedFragments).toBeGreaterThan(baseFragments);
   });
 
-  it("surfaces only active Phase 3A regions and computes region completion", () => {
+  it("surfaces all Launch Candidate regions and computes region completion", () => {
     const state = makeReadyState("phase-3a-regions");
-    expect(getActiveRegionIds(state)).toEqual(["sunlit-marches", "emberwood"]);
-    expect(state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(getActiveRegionIds(state)).toEqual(["sunlit-marches", "emberwood", "azure-vaults", "stormglass-peaks", "first-forge"]);
+    expect(state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"]);
     expect(state.regionProgress.materials.archiveGlyph).toBe(0);
     expect(state.regionProgress.materials.stormglassShard).toBe(0);
     expect(state.regionProgress.materials.oathEmber).toBe(0);
@@ -1047,12 +1056,90 @@ describe("town, dailies, offline, and saves", () => {
     expect(progress.masteryXpGained).toBe(102);
   });
 
-  it("defines Phase 4 named bosses with tactical threats", () => {
-    expect(BOSS_DEFINITIONS.map((boss) => boss.name)).toEqual(["Bramblecrown", "Cindermaw"]);
+  it("defines Launch Candidate named bosses with tactical threats", () => {
+    expect(BOSS_DEFINITIONS.map((boss) => boss.name)).toEqual([
+      "Bramblecrown",
+      "Cindermaw",
+      "Curator of Blue Fire",
+      "Stormglass Regent",
+      "Crown of the First Forge"
+    ]);
     const bramblecrown = BOSS_DEFINITIONS.find((boss) => boss.id === "bramblecrown");
     expect(bramblecrown?.title).toBe("Copper Crown Champion");
     expect(bramblecrown?.threats.map((threat) => threat.id)).toEqual(["armored", "brutal"]);
     expect(bramblecrown?.threats.find((threat) => threat.critical)?.id).toBe("armored");
+    const firstForge = BOSS_DEFINITIONS.find((boss) => boss.id === "crown-of-the-first-forge");
+    expect(firstForge?.dungeonId).toBe("crown-of-the-first-forge");
+    expect(firstForge?.threats.filter((threat) => threat.critical).map((threat) => threat.id)).toEqual(["armored", "cursed"]);
+  });
+
+  it("activates Phase 8 regions, rewards, diaries, and Soul Mark extension effects", () => {
+    const state = makeReadyState("phase-8-activation");
+    const missingRewards = DUNGEONS.filter((dungeon) => !EXPEDITION_PROGRESS_REWARDS[dungeon.id]).map((dungeon) => dungeon.id);
+    expect(missingRewards).toEqual([]);
+    expect(ACCOUNT_RANKS.at(-1)).toMatchObject({ rank: 16, focusCap: 300 });
+    expect(["azure-vaults", "stormglass-peaks", "first-forge"].map((regionId) => getRegionDiarySummary(state, regionId)?.totalTasks)).toEqual([4, 4, 4]);
+    expect(getRegionCollectionSummary(state, "azure-vault-relics")?.pieces).toHaveLength(4);
+    expect(getRegionCollectionSummary(state, "stormglass-survey-relics")?.pieces).toHaveLength(4);
+    expect(getRegionCollectionSummary(state, "first-forge-oath-relics")?.pieces).toHaveLength(4);
+
+    const azure = DUNGEONS.find((dungeon) => dungeon.id === "index-of-whispers");
+    expect(azure).toBeTruthy();
+    if (!azure) throw new Error("missing Azure dungeon");
+    const progress = applyExpeditionProgress(state, azure, true, false, NOW + 1);
+    expect(progress.regionalMaterials.archiveGlyph).toBeGreaterThan(0);
+    expect(progress.accountXpGained).toBeGreaterThan(0);
+
+    const collectionBoostState = makeReadyState("phase-8-collection-boost");
+    collectionBoostState.regionProgress.collections["azure-vault-relics"] = {
+      foundPieceIds: ["whisper-index-card", "mirror-script-rubbing", "astral-ledger-seal", "blue-fire-permit"],
+      missesSincePiece: 0,
+      completedAt: NOW
+    };
+    const boostedProgress = applyExpeditionProgress(collectionBoostState, azure, true, false, NOW + 2);
+    expect(boostedProgress.masteryXpGained).toBeGreaterThan(EXPEDITION_PROGRESS_REWARDS["index-of-whispers"].successMasteryXp);
+
+    const boosted = makeReadyState("phase-8-boosts");
+    const firstForgeRewards = estimateCaravanRewardsForRegion(boosted, "gold", "first-forge", 60 * 60 * 1000);
+    boosted.prestige.upgrades.horizonCartography = 10;
+    const boostedFirstForgeRewards = estimateCaravanRewardsForRegion(boosted, "gold", "first-forge", 60 * 60 * 1000);
+    expect(boostedFirstForgeRewards.regionalMaterials.oathEmber).toBeGreaterThan(firstForgeRewards.regionalMaterials.oathEmber ?? 0);
+    boosted.prestige.upgrades.forgeInheritance = 5;
+    expect(getFragmentGainPassiveMultiplier(boosted)).toBeCloseTo(1.15);
+
+    boosted.resources.renown = 20;
+    boosted.soulMarks.current = 20;
+    const bought = buyRenownUpgrade(boosted, "horizonCartography", NOW + 2);
+    expect(bought.ok).toBe(true);
+    if (!bought.ok) throw new Error("upgrade purchase failed");
+    expect(bought.state.prestige.upgrades.horizonCartography).toBe(11);
+
+    const stormglass = DUNGEONS.find((dungeon) => dungeon.id === "thunderchain-ascent");
+    expect(stormglass).toBeTruthy();
+    if (!stormglass) throw new Error("missing Stormglass dungeon");
+    const durationState = makeReadyState("phase-8-family-duration");
+    const baseDuration = getDurationMs(durationState, stormglass);
+    const makeStormglassItem = (id: string, slot: "weapon" | "boots" | "relic") => ({
+      id,
+      name: id,
+      slot,
+      rarity: "rare" as const,
+      itemLevel: 5,
+      upgradeLevel: 0,
+      stats: {},
+      affixes: [],
+      traitId: null,
+      familyId: "stormglassSurvey" as const,
+      locked: false,
+      sellValue: 1,
+      salvageValue: { fragments: 1 },
+      sourceDungeonId: "test",
+      createdAtRunId: 1
+    });
+    durationState.equipment.weapon = makeStormglassItem("stormglass-weapon", "weapon");
+    durationState.equipment.boots = makeStormglassItem("stormglass-boots", "boots");
+    durationState.equipment.relic = makeStormglassItem("stormglass-relic", "relic");
+    expect(getDurationMs(durationState, stormglass)).toBeLessThan(baseDuration);
   });
 
   it("scouts and prepares boss threats with Focus and regional materials", () => {
@@ -1488,7 +1575,9 @@ describe("town, dailies, offline, and saves", () => {
     expect(loaded.state.dailies.tasks[0].kind).toBe("spend_focus");
     expect(loaded.state.dailies.tasks[0].reward.focus).toBe(9);
     expect(loaded.state.accountRank.accountRank).toBe(1);
-    expect(loaded.state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin"]);
+    expect(loaded.state.regionProgress.activeMaterialIds).toEqual(["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"]);
+    expect(loaded.state.prestige.upgrades.horizonCartography).toBe(0);
+    expect(loaded.state.prestige.upgrades.forgeInheritance).toBe(0);
     expect(loaded.state.construction.activeBuildingId).toBeNull();
     expect(loaded.state.titles["title-first-charter"]?.unlockedAt).toBe(NOW);
     expect(loaded.state.soulMarks.current).toBe(loaded.state.resources.renown);
@@ -1627,7 +1716,7 @@ describe("reincarnation gate and pacing checks", () => {
   });
 
   it("describes permanent upgrades with clear current and next-run effects", () => {
-    expect(RENOWN_UPGRADES).toHaveLength(4);
+    expect(RENOWN_UPGRADES).toHaveLength(6);
     RENOWN_UPGRADES.forEach((upgrade) => {
       expect(upgrade.effectText(0)).toContain("No");
       expect(upgrade.effectText(1)).not.toBe(upgrade.effectText(0));

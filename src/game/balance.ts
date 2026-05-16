@@ -14,6 +14,7 @@ import {
   getLootPassiveBonus,
   getNonBossSuccessPassiveBonus
 } from "./heroes";
+import { getFamilyDurationReduction } from "./traits";
 import type { DerivedStats, DungeonDefinition, ExpeditionThreatId, GameState, HeroClassId, Item, ItemRarity, MaterialBundle, Stats } from "./types";
 
 export function clamp(value: number, min: number, max: number): number {
@@ -93,8 +94,9 @@ export function getDurationMs(state: GameState, dungeon: DungeonDefinition): num
   const speedUpgradeReduction = Math.min(0.4, state.prestige.upgrades.swiftCharters * 0.05);
   const speedStatReduction = Math.min(0.08, getDerivedStats(state).speed * 0.0006);
   const affixDurationReduction = Math.min(0.15, getAffixEffectTotal(state, "durationReduction"));
+  const familyDurationReduction = getFamilyDurationReduction(state, dungeon.zoneId);
   const passiveMultiplier = getDurationPassiveMultiplier(state);
-  const multiplier = Math.max(0.35, (1 - speedUpgradeReduction - speedStatReduction - affixDurationReduction) * passiveMultiplier);
+  const multiplier = Math.max(0.35, (1 - speedUpgradeReduction - speedStatReduction - affixDurationReduction - familyDurationReduction) * passiveMultiplier);
   return Math.max(10_000, Math.floor(dungeon.durationMs * multiplier));
 }
 

@@ -485,7 +485,7 @@ function validateState(state: unknown): state is GameState {
   }
   const prestige = state.prestige;
   if (!isRecord(prestige) || !isRecord(prestige.upgrades)) return false;
-  for (const key of ["guildLegacy", "swiftCharters", "treasureOath", "bossAttunement"]) {
+  for (const key of ["guildLegacy", "swiftCharters", "treasureOath", "bossAttunement", "horizonCartography", "forgeInheritance"]) {
     if (!finiteNumber(prestige.upgrades[key])) return false;
   }
   return true;
@@ -571,8 +571,11 @@ export function normalizeImportedState(state: GameState, now: number): GameState
     guildLegacy: state.prestige?.upgrades?.guildLegacy ?? 0,
     swiftCharters: state.prestige?.upgrades?.swiftCharters ?? 0,
     treasureOath: state.prestige?.upgrades?.treasureOath ?? 0,
-    bossAttunement: state.prestige?.upgrades?.bossAttunement ?? 0
+    bossAttunement: state.prestige?.upgrades?.bossAttunement ?? 0,
+    horizonCartography: state.prestige?.upgrades?.horizonCartography ?? 0,
+    forgeInheritance: state.prestige?.upgrades?.forgeInheritance ?? 0
   };
+  const soulMarksSource: Record<string, unknown> = isRecord(state.soulMarks) ? (state.soulMarks as unknown as Record<string, unknown>) : {};
   const emptyRegionProgress = createEmptyRegionProgress();
   const regionProgressSource: Record<string, unknown> = isRecord(state.regionProgress) ? (state.regionProgress as unknown as Record<string, unknown>) : {};
   const regionMaterials: Record<string, unknown> = isRecord(regionProgressSource.materials) ? regionProgressSource.materials : {};
@@ -651,12 +654,12 @@ export function normalizeImportedState(state: GameState, now: number): GameState
       ...createEmptyRebirth(),
       totalRebirths: state.prestige?.totalPrestiges ?? 0
     },
-    soulMarks: state.soulMarks ?? {
+    soulMarks: {
       ...createEmptySoulMarks(),
-      current: resources.renown,
-      lifetimeEarned: state.prestige?.renownEarned ?? 0,
+      current: Math.max(0, normalizeNumber(soulMarksSource.current, resources.renown)),
+      lifetimeEarned: Math.max(0, normalizeNumber(soulMarksSource.lifetimeEarned, state.prestige?.renownEarned ?? 0)),
       upgradesClaimed: prestigeUpgrades,
-      discovered: resources.renown > 0 || (state.prestige?.renownEarned ?? 0) > 0
+      discovered: Boolean(soulMarksSource.discovered) || resources.renown > 0 || (state.prestige?.renownEarned ?? 0) > 0
     },
     accountShowcase: normalizeAccountShowcase(state.accountShowcase),
     accountPersonalRecords: state.accountPersonalRecords ?? {

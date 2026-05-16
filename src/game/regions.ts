@@ -5,7 +5,10 @@ import type { ActionResult, GameState, RegionCompletionSummary, RegionMaterialId
 
 const ACTIVE_REGION_MATERIAL_ENTRIES: { regionId: string; materialId: RegionMaterialId }[] = [
   { regionId: "sunlit-marches", materialId: "sunlitTimber" },
-  { regionId: "emberwood", materialId: "emberResin" }
+  { regionId: "emberwood", materialId: "emberResin" },
+  { regionId: "azure-vaults", materialId: "archiveGlyph" },
+  { regionId: "stormglass-peaks", materialId: "stormglassShard" },
+  { regionId: "first-forge", materialId: "oathEmber" }
 ];
 
 const REGION_MATERIAL_BY_REGION_ID: Partial<Record<string, RegionMaterialId>> = ACTIVE_REGION_MATERIAL_ENTRIES.reduce(
@@ -34,6 +37,33 @@ export const REGIONAL_MATERIAL_SINKS: RegionalMaterialSinkDefinition[] = [
     description: "Burn resin into forge-ready Fragments.",
     cost: 6,
     reward: { fragments: 18 }
+  },
+  {
+    id: "azure-archive-index",
+    regionId: "azure-vaults",
+    materialId: "archiveGlyph",
+    name: "Archive Index",
+    description: "File Archive Glyphs into sellable route ledgers.",
+    cost: 8,
+    reward: { gold: 95 }
+  },
+  {
+    id: "stormglass-relay",
+    regionId: "stormglass-peaks",
+    materialId: "stormglassShard",
+    name: "Stormglass Relay",
+    description: "Cut stormglass into high-grade forge conduits.",
+    cost: 10,
+    reward: { fragments: 42 }
+  },
+  {
+    id: "first-forge-ember-vow",
+    regionId: "first-forge",
+    materialId: "oathEmber",
+    name: "Ember Vow",
+    description: "Bank Oath Embers for a rich guild grant.",
+    cost: 12,
+    reward: { gold: 220, fragments: 65 }
   }
 ];
 

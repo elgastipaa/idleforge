@@ -25,6 +25,9 @@ export type ItemTraitId =
   | "ward-bound"
   | "sunlit-surveyor"
   | "ember-seeker"
+  | "archive-scribe"
+  | "stormglass-runner"
+  | "oathbound-smith"
   | "route-scholar"
   | "guild-appraiser";
 
@@ -236,6 +239,8 @@ export type RenownUpgrades = {
   swiftCharters: number;
   treasureOath: number;
   bossAttunement: number;
+  horizonCartography: number;
+  forgeInheritance: number;
 };
 
 export type PrestigeState = {

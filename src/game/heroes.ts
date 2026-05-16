@@ -87,8 +87,6 @@ export function getCraftMaterialDiscount(state: GameState): number {
 }
 
 export function getFragmentGainPassiveMultiplier(state: GameState): number {
-  if (state.hero.classId === "mage" && hasLevelPassive(state, 15)) {
-    return 1.1;
-  }
-  return 1;
+  const classMultiplier = state.hero.classId === "mage" && hasLevelPassive(state, 15) ? 1.1 : 1;
+  return classMultiplier * (1 + state.prestige.upgrades.forgeInheritance * 0.03);
 }

@@ -95,6 +95,36 @@ export const ITEM_TRAITS: ItemTraitDefinition[] = [
     effects: { regionalMaterialMultiplier: { emberResin: 0.03 }, zoneGoldMultiplier: { emberwood: 0.04 } }
   },
   {
+    id: "archive-scribe",
+    name: "Archive Scribe",
+    category: "regional",
+    description: "+3% Archive Glyph yield and +2% Azure Mastery XP.",
+    slots: ["helm", "armor", "relic"],
+    stats: { luck: 4, defense: 2 },
+    regionId: "azure-vaults",
+    effects: { regionalMaterialMultiplier: { archiveGlyph: 0.03 }, masteryXpMultiplier: { "azure-vaults": 0.02 } }
+  },
+  {
+    id: "stormglass-runner",
+    name: "Stormglass Runner",
+    category: "regional",
+    description: "+3% Stormglass Shard yield and -2% expedition duration.",
+    slots: ["boots", "weapon", "relic"],
+    stats: { speed: 5, luck: 2 },
+    regionId: "stormglass-peaks",
+    effects: { regionalMaterialMultiplier: { stormglassShard: 0.03 }, durationReduction: 0.02 }
+  },
+  {
+    id: "oathbound-smith",
+    name: "Oathbound Smith",
+    category: "regional",
+    description: "+3% Oath Ember yield and +2% First Forge Mastery XP.",
+    slots: ["weapon", "armor", "relic"],
+    stats: { power: 5, stamina: 8 },
+    regionId: "first-forge",
+    effects: { regionalMaterialMultiplier: { oathEmber: 0.03 }, masteryXpMultiplier: { "first-forge": 0.02 } }
+  },
+  {
     id: "route-scholar",
     name: "Route Scholar",
     category: "progress",
@@ -135,25 +165,25 @@ export const ITEM_FAMILIES: ItemFamilyDefinition[] = [
     id: "azureLedger",
     name: "Azure Ledger",
     regionId: "azure-vaults",
-    active: false,
-    rank1Text: "Dormant until Azure Vaults expansion.",
-    rank2Text: "Dormant until Azure Vaults expansion."
+    active: true,
+    rank1Text: "+2% Azure Mastery XP.",
+    rank2Text: "+4% Archive Glyph yield."
   },
   {
     id: "stormglassSurvey",
     name: "Stormglass Survey",
     regionId: "stormglass-peaks",
-    active: false,
-    rank1Text: "Dormant until Stormglass expansion.",
-    rank2Text: "Dormant until Stormglass expansion."
+    active: true,
+    rank1Text: "+2% Stormglass Shard yield.",
+    rank2Text: "-2% expedition duration from Stormglass route gear."
   },
   {
     id: "firstForgeOath",
     name: "First Forge Oath",
     regionId: "first-forge",
-    active: false,
-    rank1Text: "Dormant until First Forge expansion.",
-    rank2Text: "Dormant until First Forge expansion."
+    active: true,
+    rank1Text: "+2% First Forge Mastery XP.",
+    rank2Text: "+4% Oath Ember yield."
   }
 ];
 
@@ -242,12 +272,23 @@ export function getFamilyRegionalMaterialBonus(state: GameState, regionId: strin
   if (!resonance || resonance.family.regionId !== regionId) return 0;
   if (resonance.family.id === "sunlitCharter" && materialId === "sunlitTimber" && resonance.rank >= 2) return 0.04;
   if (resonance.family.id === "emberboundKit" && materialId === "emberResin" && resonance.rank >= 1) return 0.02;
+  if (resonance.family.id === "azureLedger" && materialId === "archiveGlyph" && resonance.rank >= 2) return 0.04;
+  if (resonance.family.id === "stormglassSurvey" && materialId === "stormglassShard" && resonance.rank >= 1) return 0.02;
+  if (resonance.family.id === "firstForgeOath" && materialId === "oathEmber" && resonance.rank >= 2) return 0.04;
   return 0;
 }
 
 export function getFamilyMasteryBonus(state: GameState, regionId: string): number {
   const resonance = getActiveFamilyResonance(state);
   if (resonance?.family.id === "sunlitCharter" && resonance.family.regionId === regionId && resonance.rank >= 1) return 0.02;
+  if (resonance?.family.id === "azureLedger" && resonance.family.regionId === regionId && resonance.rank >= 1) return 0.02;
+  if (resonance?.family.id === "firstForgeOath" && resonance.family.regionId === regionId && resonance.rank >= 1) return 0.02;
+  return 0;
+}
+
+export function getFamilyDurationReduction(state: GameState, regionId: string): number {
+  const resonance = getActiveFamilyResonance(state);
+  if (resonance?.family.id === "stormglassSurvey" && resonance.family.regionId === regionId && resonance.rank >= 2) return 0.02;
   return 0;
 }
 

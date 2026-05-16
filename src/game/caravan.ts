@@ -198,11 +198,14 @@ function calculateCaravanRewards(state: GameState, focusId: CaravanFocusId, regi
   const regionTier = Math.max(1, region.index);
   const marketBoost = 1 + state.town.market * 0.05;
   const mineBoost = 1 + state.town.mine * 0.04;
+  const cartographyBoost = 1 + state.prestige.upgrades.horizonCartography * 0.02;
 
   rewards.gold = normalize((12 + regionTier * 5 + heroLevel * 0.8) * hours * marketBoost);
   rewards.accountXp = normalize((3 + regionTier * 1.5) * hours);
   if (materialId) {
-    rewards.regionalMaterials[materialId] = normalize((1.8 + regionTier * 0.8) * hours * mineBoost * getOutpostCaravanMaterialMultiplier(state, region.id));
+    rewards.regionalMaterials[materialId] = normalize(
+      (1.8 + regionTier * 0.8) * hours * mineBoost * cartographyBoost * getOutpostCaravanMaterialMultiplier(state, region.id)
+    );
     if (hasClaimedCaravanMasteryTier(state, region.id, 1) && (rewards.regionalMaterials[materialId] ?? 0) > 0) {
       rewards.regionalMaterials[materialId] = (rewards.regionalMaterials[materialId] ?? 0) + CARAVAN_MASTERY_REGIONAL_MATERIAL_BONUS;
     }

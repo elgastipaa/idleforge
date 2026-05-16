@@ -35,6 +35,18 @@ export const RENOWN_UPGRADES: { id: RenownUpgradeId; name: string; description: 
     name: "Boss Attunement",
     description: "Steadier boss odds reduce stalls at region gates.",
     effectText: (level) => (level <= 0 ? "No boss bonus" : `+${level * 2}% boss success chance`)
+  },
+  {
+    id: "horizonCartography",
+    name: "Horizon Cartography",
+    description: "Mapped distant routes make regional material economies scale across the full world.",
+    effectText: (level) => (level <= 0 ? "No regional material bonus" : `+${level * 2}% regional material rewards`)
+  },
+  {
+    id: "forgeInheritance",
+    name: "Forge Inheritance",
+    description: "Remembered forge technique turns salvage and crafting loops into stronger Fragment income.",
+    effectText: (level) => (level <= 0 ? "No Fragment bonus" : `+${level * 3}% Fragment gains`)
   }
 ];
 

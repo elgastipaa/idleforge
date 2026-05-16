@@ -115,6 +115,153 @@ export const REGION_DIARIES: RegionDiaryDefinition[] = [
       regionalMaterialYieldBonus: { emberResin: 0.02 },
       titleId: "title-emberwood-diarist"
     }
+  },
+  {
+    id: "azure-vaults-tier-1",
+    regionId: "azure-vaults",
+    tier: 1,
+    name: "Azure Vaults Diary I",
+    tasks: [
+      {
+        id: "azure-clear-expeditions",
+        kind: "clear_region_expeditions",
+        label: "Clear every Azure expedition",
+        description: "Clear Index, Mirror Script, Astral Ledger, and the Curator once.",
+        target: 4,
+        dungeonIds: ["index-of-whispers", "mirror-script-hall", "astral-ledger-stacks", "curator-of-blue-fire"]
+      },
+      {
+        id: "azure-index-mastery-1",
+        kind: "claim_mastery_tier",
+        label: "Map Index of Whispers",
+        description: "Claim mastery tier 1 on Index of Whispers.",
+        target: 1,
+        dungeonId: "index-of-whispers",
+        masteryTier: 1
+      },
+      {
+        id: "azure-salvage-3",
+        kind: "salvage_region_items",
+        label: "Salvage 3 Azure items",
+        description: "Salvage items found in Azure Vaults expeditions.",
+        target: 3
+      },
+      {
+        id: "azure-upgrade-town-glyphs",
+        kind: "upgrade_town_with_material",
+        label: "Use Archive Glyphs in town",
+        description: "Complete one building upgrade paid with Archive Glyphs.",
+        target: 1,
+        materialId: "archiveGlyph"
+      }
+    ],
+    reward: {
+      id: "azure-diary-tier-1",
+      name: "Azure Index Notes",
+      description: "+2% Azure mastery XP, 12 Archive Glyphs, and the Azure Diarist title.",
+      accountXp: 55,
+      regionalMaterials: { archiveGlyph: 12 },
+      masteryXpBonus: { "azure-vaults": 0.02 },
+      titleId: "title-azure-diarist"
+    }
+  },
+  {
+    id: "stormglass-peaks-tier-1",
+    regionId: "stormglass-peaks",
+    tier: 1,
+    name: "Stormglass Peaks Diary I",
+    tasks: [
+      {
+        id: "stormglass-clear-expeditions",
+        kind: "clear_region_expeditions",
+        label: "Clear every Stormglass expedition",
+        description: "Clear Thunderchain, Skybell, Opalfang, and the Regent once.",
+        target: 4,
+        dungeonIds: ["thunderchain-ascent", "skybell-ruins", "opalfang-bridge", "stormglass-regent"]
+      },
+      {
+        id: "stormglass-thunderchain-mastery-1",
+        kind: "claim_mastery_tier",
+        label: "Map Thunderchain Ascent",
+        description: "Claim mastery tier 1 on Thunderchain Ascent.",
+        target: 1,
+        dungeonId: "thunderchain-ascent",
+        masteryTier: 1
+      },
+      {
+        id: "stormglass-salvage-3",
+        kind: "salvage_region_items",
+        label: "Salvage 3 Stormglass items",
+        description: "Salvage items found in Stormglass Peaks expeditions.",
+        target: 3
+      },
+      {
+        id: "stormglass-upgrade-town-shards",
+        kind: "upgrade_town_with_material",
+        label: "Use Stormglass Shards in town",
+        description: "Complete one building upgrade paid with Stormglass Shards.",
+        target: 1,
+        materialId: "stormglassShard"
+      }
+    ],
+    reward: {
+      id: "stormglass-diary-tier-1",
+      name: "Stormglass Relay Notes",
+      description: "+2% Stormglass Shard yield, 12 Stormglass Shards, and the Stormglass Diarist title.",
+      accountXp: 70,
+      regionalMaterials: { stormglassShard: 12 },
+      regionalMaterialYieldBonus: { stormglassShard: 0.02 },
+      titleId: "title-stormglass-diarist"
+    }
+  },
+  {
+    id: "first-forge-tier-1",
+    regionId: "first-forge",
+    tier: 1,
+    name: "First Forge Diary I",
+    tasks: [
+      {
+        id: "first-forge-clear-expeditions",
+        kind: "clear_region_expeditions",
+        label: "Clear every First Forge expedition",
+        description: "Clear Ashdoor, Bellows, Bright Oaths, and the Crown once.",
+        target: 4,
+        dungeonIds: ["ashdoor-antechamber", "bellows-of-memory", "anvil-of-bright-oaths", "crown-of-the-first-forge"]
+      },
+      {
+        id: "first-forge-ashdoor-mastery-1",
+        kind: "claim_mastery_tier",
+        label: "Map Ashdoor Antechamber",
+        description: "Claim mastery tier 1 on Ashdoor Antechamber.",
+        target: 1,
+        dungeonId: "ashdoor-antechamber",
+        masteryTier: 1
+      },
+      {
+        id: "first-forge-salvage-3",
+        kind: "salvage_region_items",
+        label: "Salvage 3 First Forge items",
+        description: "Salvage items found in First Forge expeditions.",
+        target: 3
+      },
+      {
+        id: "first-forge-upgrade-town-embers",
+        kind: "upgrade_town_with_material",
+        label: "Use Oath Embers in town",
+        description: "Complete one building upgrade paid with Oath Embers.",
+        target: 1,
+        materialId: "oathEmber"
+      }
+    ],
+    reward: {
+      id: "first-forge-diary-tier-1",
+      name: "First Forge Oath Notes",
+      description: "+2% First Forge mastery XP, 15 Oath Embers, and the First Forge Diarist title.",
+      accountXp: 100,
+      regionalMaterials: { oathEmber: 15 },
+      masteryXpBonus: { "first-forge": 0.02 },
+      titleId: "title-first-forge-diarist"
+    }
   }
 ];
 

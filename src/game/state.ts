@@ -41,7 +41,9 @@ function createEmptyRenownUpgrades(): RenownUpgrades {
     guildLegacy: 0,
     swiftCharters: 0,
     treasureOath: 0,
-    bossAttunement: 0
+    bossAttunement: 0,
+    horizonCartography: 0,
+    forgeInheritance: 0
   };
 }
 
@@ -216,7 +218,7 @@ export function createEmptyWeeklyQuest(now: number): WeeklyQuestState {
 
 export function createEmptyRegionProgress(): RegionProgressState {
   return {
-    activeMaterialIds: ["sunlitTimber", "emberResin"],
+    activeMaterialIds: ["sunlitTimber", "emberResin", "archiveGlyph", "stormglassShard", "oathEmber"],
     materials: REGION_MATERIAL_IDS.reduce(
       (materials, materialId) => {
         materials[materialId] = 0;

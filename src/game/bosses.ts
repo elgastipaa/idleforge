@@ -109,6 +109,148 @@ export const BOSS_DEFINITIONS: BossDefinition[] = [
         explanation: "Inferno-Heart favors sturdy builds. Guarded gear or prep keeps the attempt viable."
       }
     ]
+  },
+  {
+    id: "curator-of-blue-fire",
+    dungeonId: "curator-of-blue-fire",
+    regionId: "azure-vaults",
+    name: "Curator of Blue Fire",
+    title: "Keeper of the Forbidden Index",
+    fantasy: "A patient archive warden who burns false histories in blue flame and files the ashes by name.",
+    scoutCost: 10,
+    prepFocusCost: 18,
+    failureIntelText:
+      "The Curator rewrote the route before your final strike. Ward-Bound or Trailwise coverage keeps the index from turning the attempt against you.",
+    threats: [
+      {
+        id: "cursed",
+        name: "Blue-Fire Writ",
+        critical: true,
+        traitAnswerId: "ward-bound",
+        traitAnswerName: "Ward-Bound",
+        prepName: "Index Seal",
+        prepMaterialCost: 5,
+        explanation: "Blue-Fire Writ caps your odds unless Ward-Bound gear or prep anchors the route."
+      },
+      {
+        id: "elusive",
+        name: "Shifting Shelves",
+        critical: false,
+        traitAnswerId: "trailwise",
+        traitAnswerName: "Trailwise",
+        prepName: "Shelf Map",
+        prepMaterialCost: 4,
+        explanation: "Shifting Shelves waste time and openings. Trailwise gear or prep keeps the boss in reach."
+      },
+      {
+        id: "brutal",
+        name: "Archive Verdict",
+        critical: false,
+        traitAnswerId: "guarded",
+        traitAnswerName: "Guarded",
+        prepName: "Verdict Ward",
+        prepMaterialCost: 5,
+        explanation: "Archive Verdict punishes glass builds. Guarded gear or prep steadies the attempt."
+      }
+    ]
+  },
+  {
+    id: "stormglass-regent",
+    dungeonId: "stormglass-regent",
+    regionId: "stormglass-peaks",
+    name: "Stormglass Regent",
+    title: "Sovereign Above the Relay",
+    fantasy: "A glass-crowned ruler who conducts thunder through a court of suspended bells.",
+    scoutCost: 12,
+    prepFocusCost: 22,
+    failureIntelText:
+      "The Regent split the battlefield across the storm relay. Piercing and Trailwise answers stop the court from scattering your momentum.",
+    threats: [
+      {
+        id: "brutal",
+        name: "Thunder Court",
+        critical: true,
+        traitAnswerId: "guarded",
+        traitAnswerName: "Guarded",
+        prepName: "Grounding Banner",
+        prepMaterialCost: 6,
+        explanation: "Thunder Court caps fragile attempts unless Guarded gear or prep grounds the strike."
+      },
+      {
+        id: "elusive",
+        name: "Glassstep",
+        critical: true,
+        traitAnswerId: "trailwise",
+        traitAnswerName: "Trailwise",
+        prepName: "Relay Pins",
+        prepMaterialCost: 6,
+        explanation: "Glassstep caps your odds unless Trailwise gear or prep keeps the Regent visible."
+      },
+      {
+        id: "armored",
+        name: "Opal Plate",
+        critical: false,
+        traitAnswerId: "piercing",
+        traitAnswerName: "Piercing",
+        prepName: "Opal Crack",
+        prepMaterialCost: 5,
+        explanation: "Opal Plate turns glancing hits away. Piercing gear or prep opens a clean line."
+      }
+    ]
+  },
+  {
+    id: "crown-of-the-first-forge",
+    dungeonId: "crown-of-the-first-forge",
+    regionId: "first-forge",
+    name: "Crown of the First Forge",
+    title: "Living Oath of the Anvil",
+    fantasy: "The first oath ever hammered into metal, still hot enough to judge every later promise.",
+    scoutCost: 15,
+    prepFocusCost: 28,
+    failureIntelText:
+      "The Crown reforged every weakness you left uncovered. Bring Piercing, Ward-Bound, and Flame-Sealed answers before challenging the oath again.",
+    threats: [
+      {
+        id: "armored",
+        name: "Prime Anvil",
+        critical: true,
+        traitAnswerId: "piercing",
+        traitAnswerName: "Piercing",
+        prepName: "Anvil Wedge",
+        prepMaterialCost: 8,
+        explanation: "Prime Anvil caps your odds unless Piercing gear or prep cracks the living metal."
+      },
+      {
+        id: "cursed",
+        name: "Oath Weight",
+        critical: true,
+        traitAnswerId: "ward-bound",
+        traitAnswerName: "Ward-Bound",
+        prepName: "Oath Counterseal",
+        prepMaterialCost: 7,
+        explanation: "Oath Weight turns broken promises into failure. Ward-Bound gear or prep anchors the vow."
+      },
+      {
+        id: "regenerating",
+        name: "Rekindled Core",
+        critical: false,
+        traitAnswerId: "flame-sealed",
+        traitAnswerName: "Flame-Sealed",
+        prepName: "Core Quench",
+        prepMaterialCost: 7,
+        explanation: "Rekindled Core closes wounds. Flame-Sealed gear or prep keeps progress from being reforged."
+      },
+      {
+        id: "brutal",
+        name: "Hammerfall",
+        critical: false,
+        traitAnswerId: "guarded",
+        traitAnswerName: "Guarded",
+        prepName: "Hammer Brace",
+        prepMaterialCost: 6,
+        explanation: "Hammerfall rewards sturdy builds. Guarded gear or prep makes the final exchange survivable."
+      }
+    ]
   }
 ];
 

@@ -68,6 +68,78 @@ export const REGION_COLLECTIONS: RegionCollectionDefinition[] = [
       titleId: "title-ember-curator",
       trophyId: "trophy-emberwood-relic-set"
     }
+  },
+  {
+    id: "azure-vault-relics",
+    name: "Azure Vault Relics",
+    regionId: "azure-vaults",
+    materialId: "archiveGlyph",
+    pieces: [
+      { id: "whisper-index-card", name: "Whisper Index Card" },
+      { id: "mirror-script-rubbing", name: "Mirror-Script Rubbing" },
+      { id: "astral-ledger-seal", name: "Astral Ledger Seal" },
+      { id: "blue-fire-permit", name: "Blue Fire Permit" }
+    ],
+    eligibleDungeonIds: ["index-of-whispers", "mirror-script-hall", "astral-ledger-stacks", "curator-of-blue-fire"],
+    normalSuccessChance: NORMAL_SUCCESS_COLLECTION_CHANCE,
+    normalFailureChance: NORMAL_FAILURE_COLLECTION_CHANCE,
+    bossSuccessChance: BOSS_SUCCESS_COLLECTION_CHANCE,
+    pityThreshold: COLLECTION_PITY_THRESHOLD,
+    reward: {
+      accountXp: 45,
+      regionalMaterialYieldBonus: { archiveGlyph: 0.02 },
+      masteryXpBonus: { "azure-vaults": 0.02 },
+      titleId: "title-azure-archivist",
+      trophyId: "trophy-azure-relic-set"
+    }
+  },
+  {
+    id: "stormglass-survey-relics",
+    name: "Stormglass Survey Relics",
+    regionId: "stormglass-peaks",
+    materialId: "stormglassShard",
+    pieces: [
+      { id: "thunderchain-link", name: "Thunderchain Link" },
+      { id: "skybell-clapper", name: "Skybell Clapper" },
+      { id: "opalfang-glass", name: "Opalfang Glass" },
+      { id: "regent-court-shard", name: "Regent Court Shard" }
+    ],
+    eligibleDungeonIds: ["thunderchain-ascent", "skybell-ruins", "opalfang-bridge", "stormglass-regent"],
+    normalSuccessChance: NORMAL_SUCCESS_COLLECTION_CHANCE,
+    normalFailureChance: NORMAL_FAILURE_COLLECTION_CHANCE,
+    bossSuccessChance: BOSS_SUCCESS_COLLECTION_CHANCE,
+    pityThreshold: COLLECTION_PITY_THRESHOLD,
+    reward: {
+      accountXp: 60,
+      regionalMaterialYieldBonus: { stormglassShard: 0.02 },
+      masteryXpBonus: { "stormglass-peaks": 0.02 },
+      titleId: "title-stormglass-surveyor",
+      trophyId: "trophy-stormglass-relic-set"
+    }
+  },
+  {
+    id: "first-forge-oath-relics",
+    name: "First Forge Oath Relics",
+    regionId: "first-forge",
+    materialId: "oathEmber",
+    pieces: [
+      { id: "ashdoor-writ", name: "Ashdoor Writ" },
+      { id: "memory-bellows-plate", name: "Memory Bellows Plate" },
+      { id: "bright-oath-anvil-mark", name: "Bright Oath Anvil Mark" },
+      { id: "first-forge-crown-core", name: "First Forge Crown Core" }
+    ],
+    eligibleDungeonIds: ["ashdoor-antechamber", "bellows-of-memory", "anvil-of-bright-oaths", "crown-of-the-first-forge"],
+    normalSuccessChance: NORMAL_SUCCESS_COLLECTION_CHANCE,
+    normalFailureChance: NORMAL_FAILURE_COLLECTION_CHANCE,
+    bossSuccessChance: BOSS_SUCCESS_COLLECTION_CHANCE,
+    pityThreshold: COLLECTION_PITY_THRESHOLD,
+    reward: {
+      accountXp: 85,
+      regionalMaterialYieldBonus: { oathEmber: 0.03 },
+      masteryXpBonus: { "first-forge": 0.02 },
+      titleId: "title-oathkeeper",
+      trophyId: "trophy-first-forge-relic-set"
+    }
   }
 ];
 
