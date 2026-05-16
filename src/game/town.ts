@@ -2,6 +2,7 @@ import { BUILDINGS } from "./content";
 import { refreshAchievements } from "./achievements";
 import { getDerivedStats } from "./balance";
 import { applyDailyProgress, ensureDailies } from "./dailies";
+import { recordRegionDiaryProgress } from "./diaries";
 import { cloneState, createEmptyConstruction } from "./state";
 import type {
   ActionResult,
@@ -279,8 +280,10 @@ export function claimBuildingConstruction(state: GameState, now: number): Action
   const dailyPrepared = ensureDailies(next, now);
   const working = dailyPrepared.state;
   const beforePower = getDerivedStats(working).powerScore;
+  const paidRegionalMaterials = { ...working.construction.paidCostRegionalMaterials };
   working.town[activeBuildingId] = Math.max(working.town[activeBuildingId], progress.targetLevel);
   working.construction = createEmptyConstruction();
+  recordRegionDiaryProgress(working, now, { kind: "town_upgrade", regionalMaterials: paidRegionalMaterials });
   const progressed = applyDailyProgress(working, now, { upgrade_building: 1 });
   const progressedState = progressed.state;
   progressedState.updatedAt = now;

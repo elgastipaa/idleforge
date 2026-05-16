@@ -1,4 +1,5 @@
 import { DUNGEONS, ZONES } from "./content";
+import { getCaravanMasterySummaries } from "./caravan";
 import { ACCOUNT_RANKS, TITLE_DEFINITIONS, TROPHY_DEFINITIONS, getNextAccountRankDefinition } from "./progression";
 import { cloneState } from "./state";
 import type { ActionResult, GameState, TitleDefinition, TrophyDefinition, ZoneDefinition } from "./types";
@@ -162,6 +163,10 @@ export function buildShowcaseCopyText(state: GameState): string {
   const featuredRegion = getFeaturedRegion(state);
   const featuredBoss = getFeaturedBoss(state);
   const records = state.accountPersonalRecords;
+  const diaryRewardsClaimed = Object.values(state.regionProgress.diaries).reduce((total, diary) => total + new Set(diary.claimedRewardIds ?? []).size, 0);
+  const traitDiscoveries = Object.values(state.traitCodex).filter((entry) => entry.discovered).length;
+  const familyDiscoveries = Object.values(state.familyCodex).filter((entry) => (entry.discoveredSlots ?? []).length > 0).length;
+  const caravanMasteryTiers = getCaravanMasterySummaries(state).reduce((total, summary) => total + summary.claimedTiers.length, 0);
 
   return [
     "Relic Forge Idle Account Showcase",
@@ -173,6 +178,10 @@ export function buildShowcaseCopyText(state: GameState): string {
     `Highest Power: ${Math.max(records.highestPowerReached, state.lifetime.highestPowerScore)}`,
     `Expeditions Completed: ${records.lifetimeExpeditionsCompleted}`,
     `Mastery Tiers Claimed: ${records.totalMasteryTiersClaimed}`,
+    `Collections Completed: ${records.totalCollectionsCompleted}`,
+    `Region Diaries Claimed: ${diaryRewardsClaimed}`,
+    `Codex Discoveries: ${traitDiscoveries} traits, ${familyDiscoveries} families`,
+    `Caravan Mastery Tiers: ${caravanMasteryTiers}`,
     `Featured Region: ${featuredRegion?.name ?? "No region featured yet"}`,
     `Best Boss: ${featuredBoss?.name ?? "No boss defeated yet"}`
   ].join("\n");

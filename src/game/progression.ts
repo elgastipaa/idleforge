@@ -1,5 +1,6 @@
 import { FOCUS_MAX } from "./constants";
 import { DUNGEONS } from "./content";
+import { getRegionDiaryMasteryXpBonus, getRegionDiaryRegionalMaterialYieldBonus } from "./diaries";
 import { getRegionalMaterialYieldMultiplier } from "./outposts";
 import {
   getEquippedTraitAccountXpBonus,
@@ -212,7 +213,9 @@ export const TITLE_DEFINITIONS: TitleDefinition[] = [
   { id: "title-sunlit-collector", name: "Sunlit Collector", unlockCondition: "Complete Sunlit Road Relics.", target: 1, showcasePriority: 4, phase: 3 },
   { id: "title-ember-curator", name: "Ember Curator", unlockCondition: "Complete Emberwood Heartwood Relics.", target: 1, showcasePriority: 4, phase: 3 },
   { id: "title-copper-crowned", name: "Copper-Crowned", unlockCondition: "Defeat Bramblecrown.", target: 1, showcasePriority: 3, phase: 4 },
-  { id: "title-cindermaw-breaker", name: "Cindermaw Breaker", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 }
+  { id: "title-cindermaw-breaker", name: "Cindermaw Breaker", unlockCondition: "Defeat Cindermaw.", target: 1, showcasePriority: 1, phase: 4 },
+  { id: "title-sunlit-diarist", name: "Sunlit Diarist", unlockCondition: "Complete Sunlit Marches Diary I.", target: 1, showcasePriority: 4, phase: 7 },
+  { id: "title-emberwood-diarist", name: "Emberwood Diarist", unlockCondition: "Complete Emberwood Diary I.", target: 1, showcasePriority: 4, phase: 7 }
 ];
 
 export const TROPHY_DEFINITIONS: TrophyDefinition[] = [
@@ -424,7 +427,11 @@ function getMasteryXpWithCollectionBonus(state: GameState, dungeon: DungeonDefin
   const materialId = COLLECTION_REGION_MATERIAL_BY_REGION_ID[dungeon.zoneId] ?? null;
   const bonus = materialId ? COLLECTION_COMPLETION_BONUSES[materialId] : null;
   const collectionMultiplier = bonus && bonus.regionId === dungeon.zoneId && isCollectionCompleted(state, bonus.collectionId) ? bonus.masteryXpMultiplier : 1;
-  const multiplier = collectionMultiplier + getEquippedTraitMasteryBonus(state, dungeon.zoneId) + getFamilyMasteryBonus(state, dungeon.zoneId);
+  const multiplier =
+    collectionMultiplier +
+    getEquippedTraitMasteryBonus(state, dungeon.zoneId) +
+    getFamilyMasteryBonus(state, dungeon.zoneId) +
+    getRegionDiaryMasteryXpBonus(state, dungeon.zoneId);
   return Math.floor(baseMasteryXp * multiplier);
 }
 
@@ -434,7 +441,10 @@ function getRegionalMaterialAmountWithCollectionBonus(state: GameState, regionId
   const multiplier =
     collectionMultiplier *
     (includeOutpostBonus ? getRegionalMaterialYieldMultiplier(state, regionId) : 1) *
-    (1 + getEquippedTraitRegionalMaterialBonus(state, materialId) + getFamilyRegionalMaterialBonus(state, regionId, materialId));
+    (1 +
+      getEquippedTraitRegionalMaterialBonus(state, materialId) +
+      getFamilyRegionalMaterialBonus(state, regionId, materialId) +
+      getRegionDiaryRegionalMaterialYieldBonus(state, materialId));
   return Math.floor(baseAmount * multiplier);
 }
 

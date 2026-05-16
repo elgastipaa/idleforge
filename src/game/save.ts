@@ -26,6 +26,7 @@ import { isItemFamilyId, isItemTraitId } from "./traits";
 import type {
   AccountShowcaseState,
   BuildPresetMap,
+  CaravanMasteryState,
   DailyMissionDifficulty,
   DailyReward,
   DailyTaskKind,
@@ -124,6 +125,47 @@ function normalizeRegionMaterials(value: unknown): Partial<Record<RegionMaterial
     }
   });
   return output;
+}
+
+function normalizeRegionDiaryStates(value: unknown): Record<string, RegionDiaryState> {
+  if (!isRecord(value)) return {};
+  return Object.entries(value).reduce<Record<string, RegionDiaryState>>((diaries, [regionId, diary]) => {
+    if (!isRecord(diary)) return diaries;
+    const taskProgress = isRecord(diary.taskProgress)
+      ? Object.entries(diary.taskProgress).reduce<Record<string, number>>((progress, [taskId, amount]) => {
+          if (typeof taskId !== "string" || taskId.length === 0) return progress;
+          const normalized = Math.max(0, Math.floor(normalizeNumber(amount, 0)));
+          if (normalized > 0) progress[taskId] = normalized;
+          return progress;
+        }, {})
+      : {};
+    diaries[regionId] = {
+      completedTaskIds: Array.isArray(diary.completedTaskIds)
+        ? Array.from(new Set(diary.completedTaskIds.filter((taskId): taskId is string => typeof taskId === "string" && taskId.length > 0)))
+        : [],
+      claimedRewardIds: Array.isArray(diary.claimedRewardIds)
+        ? Array.from(new Set(diary.claimedRewardIds.filter((rewardId): rewardId is string => typeof rewardId === "string" && rewardId.length > 0)))
+        : [],
+      taskProgress
+    };
+    return diaries;
+  }, {});
+}
+
+function normalizeCaravanMasteryStates(value: unknown): Record<string, CaravanMasteryState> {
+  if (!isRecord(value)) return {};
+  return Object.entries(value).reduce<Record<string, CaravanMasteryState>>((masteries, [regionId, mastery]) => {
+    if (!isRecord(mastery) || !DUNGEONS.some((dungeon) => dungeon.zoneId === regionId)) return masteries;
+    masteries[regionId] = {
+      regionId,
+      caravansSent: Math.max(0, Math.floor(normalizeNumber(mastery.caravansSent, 0))),
+      masteryXp: Math.max(0, Math.floor(normalizeNumber(mastery.masteryXp, 0))),
+      claimedTiers: Array.isArray(mastery.claimedTiers)
+        ? Array.from(new Set(mastery.claimedTiers.filter((tier): tier is number => finiteNumber(tier) && tier > 0))).sort((a, b) => a - b)
+        : []
+    };
+    return masteries;
+  }, {});
 }
 
 function normalizeFragmentsAmount(value: unknown): number {
@@ -388,7 +430,13 @@ function validateState(state: unknown): state is GameState {
       if (!isRecord(activeJob)) return false;
       if (!CARAVAN_FOCUS_DEFINITIONS.some((focus) => focus.id === activeJob.focusId)) return false;
       if (typeof activeJob.regionId !== "string" || !DUNGEONS.some((dungeon) => dungeon.zoneId === activeJob.regionId)) return false;
-      if (!finiteNumber(activeJob.durationMs) || activeJob.durationMs !== clampCaravanDurationMs(activeJob.durationMs)) return false;
+      if (!finiteNumber(activeJob.durationMs) || Number(activeJob.durationMs) <= 0 || Number(activeJob.durationMs) > 8 * 60 * 60 * 1000) return false;
+      if (
+        activeJob.rewardDurationMs !== undefined &&
+        (!finiteNumber(activeJob.rewardDurationMs) || clampCaravanDurationMs(Number(activeJob.rewardDurationMs)) !== activeJob.rewardDurationMs)
+      ) {
+        return false;
+      }
       if (!finiteNumber(activeJob.startedAt) || !finiteNumber(activeJob.endsAt)) return false;
       if (activeJob.endsAt <= activeJob.startedAt) return false;
     }
@@ -533,7 +581,10 @@ export function normalizeImportedState(state: GameState, now: number): GameState
   const activeCaravanJob = activeCaravanJobSource
     ? (() => {
         const startedAt = normalizeNumber(activeCaravanJobSource.startedAt, now);
-        const durationMs = clampCaravanDurationMs(normalizeNumber(activeCaravanJobSource.durationMs, 60 * 60 * 1000));
+        const rewardDurationMs = clampCaravanDurationMs(
+          normalizeNumber(activeCaravanJobSource.rewardDurationMs, normalizeNumber(activeCaravanJobSource.durationMs, 60 * 60 * 1000))
+        );
+        const durationMs = Math.max(1, Math.min(8 * 60 * 60 * 1000, Math.floor(normalizeNumber(activeCaravanJobSource.durationMs, rewardDurationMs))));
         const regionId =
           typeof activeCaravanJobSource.regionId === "string" && DUNGEONS.some((dungeon) => dungeon.zoneId === activeCaravanJobSource.regionId)
             ? activeCaravanJobSource.regionId
@@ -544,6 +595,7 @@ export function normalizeImportedState(state: GameState, now: number): GameState
           focusId,
           regionId,
           durationMs,
+          rewardDurationMs,
           startedAt,
           endsAt: endsAt > startedAt ? endsAt : startedAt + durationMs
         };
@@ -571,7 +623,10 @@ export function normalizeImportedState(state: GameState, now: number): GameState
     equipment: normalizeEquipmentEconomy(state.equipment),
     buildPresets: normalizeBuildPresets(state.buildPresets),
     loot,
-    caravan: activeCaravanJob ? { activeJob: activeCaravanJob } : createEmptyCaravan(),
+    caravan: {
+      activeJob: activeCaravanJob,
+      mastery: normalizeCaravanMasteryStates(isRecord(state.caravan) ? state.caravan.mastery : undefined)
+    },
     updatedAt: now,
     lifetime: {
       ...state.lifetime,
@@ -626,7 +681,7 @@ export function normalizeImportedState(state: GameState, now: number): GameState
       ),
       collections: isRecord(regionProgressSource.collections) ? (regionProgressSource.collections as Record<string, RegionCollectionState>) : {},
       outposts: isRecord(regionProgressSource.outposts) ? (regionProgressSource.outposts as Record<string, RegionOutpostState>) : {},
-      diaries: isRecord(regionProgressSource.diaries) ? (regionProgressSource.diaries as Record<string, RegionDiaryState>) : {}
+      diaries: normalizeRegionDiaryStates(regionProgressSource.diaries)
     },
     bossPrep: isRecord(state.bossPrep) ? state.bossPrep : {},
     construction: normalizeConstructionState(state.construction),

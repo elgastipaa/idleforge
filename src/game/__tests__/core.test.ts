@@ -27,6 +27,7 @@ import {
   applyAccountXp,
   applyCollectionProgress,
   applyDailyProgress,
+  applyExpeditionProgress,
   applyBossThreatsToSuccessChance,
   applyOfflineProgress,
   accelerateBuildingConstruction,
@@ -41,7 +42,9 @@ import {
   claimDailyTask,
   claimBuildingConstruction,
   claimCaravanJob,
+  claimCaravanMasteryTier,
   claimMasteryTier,
+  claimRegionDiaryReward,
   claimWeeklyQuest,
   createInitialState,
   createItem,
@@ -50,6 +53,7 @@ import {
   dismissAccountShowcaseDiscovery,
   ensureDailies,
   estimateCaravanRewards,
+  estimateCaravanRewardsForRegion,
   equipItem,
   equipBestForContext,
   equipBuildPreset,
@@ -79,8 +83,10 @@ import {
   getFamilyResonanceSummaries,
   getItemFamilyDefinition,
   getItemTraitDefinition,
+  getCaravanMasterySummary,
   getRegionCompletionSummary,
   getRegionCollectionSummary,
+  getRegionDiarySummary,
   getVisibleRegionCollectionSummaries,
   getWeeklyWindowStartAt,
   getXpMultiplier,
@@ -328,6 +334,10 @@ describe("expeditions, focus, and loot", () => {
     expect(snippet).toContain("Highest Power:");
     expect(snippet).toContain("Expeditions Completed: 1");
     expect(snippet).toContain("Mastery Tiers Claimed: 1");
+    expect(snippet).toContain("Collections Completed: 0");
+    expect(snippet).toContain("Region Diaries Claimed: 0");
+    expect(snippet).toContain("Codex Discoveries:");
+    expect(snippet).toContain("Caravan Mastery Tiers: 0");
     expect(snippet).not.toMatch(/leaderboard|global|server/i);
   });
 
@@ -967,6 +977,76 @@ describe("town, dailies, offline, and saves", () => {
     expect(visible.regionProgress.collections["sunlit-road-relics"].missesSincePiece).toBe(1);
   });
 
+  it("tracks and claims Phase 7A Sunlit diary progress with permanent reward effects", () => {
+    let state = makeReadyState("phase-7a-diary");
+    ["tollroad-of-trinkets", "mossbright-cellar", "relic-bandit-cache", "copper-crown-champion"].forEach((dungeonId) => {
+      state.dungeonClears[dungeonId] = 1;
+    });
+    state.dungeonMastery["tollroad-of-trinkets"] = { masteryXp: 100, claimedTiers: [], failures: 0 };
+
+    const mastery = claimMasteryTier(state, "tollroad-of-trinkets", NOW + 1);
+    expect(mastery.ok).toBe(true);
+    if (!mastery.ok) throw new Error("mastery claim failed");
+    state = mastery.state;
+
+    for (let index = 0; index < 3; index += 1) {
+      state.inventory.push({
+        id: `sunlit-salvage-${index}`,
+        name: `Sunlit Salvage ${index}`,
+        slot: "weapon",
+        rarity: "common",
+        itemLevel: 1,
+        upgradeLevel: 0,
+        stats: { power: 1 },
+        affixes: [],
+        traitId: null,
+        familyId: null,
+        locked: false,
+        sellValue: 1,
+        salvageValue: { fragments: 1 },
+        sourceDungeonId: "tollroad-of-trinkets",
+        createdAtRunId: 1
+      });
+      const salvaged = salvageItem(state, `sunlit-salvage-${index}`, NOW + 2 + index);
+      expect(salvaged.ok).toBe(true);
+      if (!salvaged.ok) throw new Error("salvage failed");
+      state = salvaged.state;
+    }
+
+    state.construction = {
+      activeBuildingId: "forge",
+      startedAt: NOW,
+      targetLevel: 1,
+      baseDurationMs: 1,
+      focusSpentMs: 0,
+      completedAt: null,
+      paidCostResources: {},
+      paidCostRegionalMaterials: { sunlitTimber: 2 }
+    };
+    const built = claimBuildingConstruction(state, NOW + 10);
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error("construction claim failed");
+    state = built.state;
+
+    const summary = getRegionDiarySummary(state, "sunlit-marches");
+    expect(summary?.readyToClaim).toBe(true);
+    expect(summary?.completedTasks).toBe(4);
+    expect(summary?.tasks.find((task) => task.id === "sunlit-salvage-3")?.progress).toBe(3);
+
+    const claimed = claimRegionDiaryReward(state, "sunlit-marches", NOW + 11);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("diary claim failed");
+    expect(claimed.state.regionProgress.diaries["sunlit-marches"].claimedRewardIds).toContain("sunlit-diary-tier-1");
+    expect(claimed.state.regionProgress.materials.sunlitTimber).toBe(state.regionProgress.materials.sunlitTimber + 10);
+    expect(claimed.state.titles["title-sunlit-diarist"]?.unlockedAt).toBe(NOW + 11);
+
+    const tollroad = DUNGEONS.find((entry) => entry.id === "tollroad-of-trinkets");
+    expect(tollroad).toBeTruthy();
+    if (!tollroad) throw new Error("missing tollroad");
+    const progress = applyExpeditionProgress(claimed.state, tollroad, true, false, NOW + 12);
+    expect(progress.masteryXpGained).toBe(102);
+  });
+
   it("defines Phase 4 named bosses with tactical threats", () => {
     expect(BOSS_DEFINITIONS.map((boss) => boss.name)).toEqual(["Bramblecrown", "Cindermaw"]);
     const bramblecrown = BOSS_DEFINITIONS.find((boss) => boss.id === "bramblecrown");
@@ -1231,6 +1311,52 @@ describe("town, dailies, offline, and saves", () => {
     expect(claimed.state.regionProgress.materials.sunlitTimber).toBeGreaterThan(planned.state.regionProgress.materials.sunlitTimber);
   });
 
+  it("tracks Phase 7B Caravan Mastery tiers and applies claimed bonuses", () => {
+    const state = makeReadyState("caravan-mastery");
+    state.hero.level = 5;
+    const oneHour = 60 * 60 * 1000;
+    const fourHours = 4 * oneHour;
+    const baseline = estimateCaravanRewardsForRegion(state, "gold", "sunlit-marches", oneHour);
+
+    const planned = startCaravanJob(state, "gold", fourHours, NOW, "sunlit-marches");
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+    expect(planned.state.caravan.activeJob?.rewardDurationMs).toBe(fourHours);
+
+    const claimed = claimCaravanJob(planned.state, NOW + fourHours + 1);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("caravan claim failed");
+    expect(getCaravanMasterySummary(claimed.state, "sunlit-marches")).toMatchObject({
+      caravansSent: 1,
+      masteryXp: 4,
+      highestClaimedTier: 0
+    });
+
+    const tier1 = claimCaravanMasteryTier(claimed.state, "sunlit-marches", NOW + fourHours + 2);
+    expect(tier1.ok).toBe(true);
+    if (!tier1.ok) throw new Error("tier 1 claim failed");
+    expect(getCaravanMasterySummary(tier1.state, "sunlit-marches").highestClaimedTier).toBe(1);
+    const tier1Rewards = estimateCaravanRewardsForRegion(tier1.state, "gold", "sunlit-marches", oneHour);
+    expect(tier1Rewards.regionalMaterials.sunlitTimber).toBe((baseline.regionalMaterials.sunlitTimber ?? 0) + 1);
+
+    tier1.state.caravan.mastery["sunlit-marches"].masteryXp = 12;
+    const tier2 = claimCaravanMasteryTier(tier1.state, "sunlit-marches", NOW + fourHours + 3);
+    expect(tier2.ok).toBe(true);
+    if (!tier2.ok) throw new Error("tier 2 claim failed");
+    const tier2Rewards = estimateCaravanRewardsForRegion(tier2.state, "gold", "sunlit-marches", oneHour);
+    expect(tier2Rewards.accountXp).toBeGreaterThan(tier1Rewards.accountXp);
+
+    tier2.state.caravan.mastery["sunlit-marches"].masteryXp = 24;
+    const tier3 = claimCaravanMasteryTier(tier2.state, "sunlit-marches", NOW + fourHours + 4);
+    expect(tier3.ok).toBe(true);
+    if (!tier3.ok) throw new Error("tier 3 claim failed");
+    const fast = startCaravanJob(tier3.state, "gold", fourHours, NOW + fourHours + 5, "sunlit-marches");
+    expect(fast.ok).toBe(true);
+    if (!fast.ok) throw new Error("fast caravan plan failed");
+    expect(fast.state.caravan.activeJob?.rewardDurationMs).toBe(fourHours);
+    expect(fast.state.caravan.activeJob?.durationMs).toBeLessThan(fourHours);
+  });
+
   it("does not round short Caravan returns up to a full hour", () => {
     const state = makeReadyState("short-caravan");
     state.hero.level = 5;
@@ -1438,7 +1564,8 @@ describe("reincarnation gate and pacing checks", () => {
     state.regionProgress.materials.sunlitTimber = 12;
     state.regionProgress.collections.sunlit = { foundPieceIds: ["sunlit-a"], missesSincePiece: 3, completedAt: null };
     state.regionProgress.outposts["sunlit-marches"] = { selectedBonusId: "watchtower", level: 1 };
-    state.regionProgress.diaries["sunlit-marches"] = { completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"] };
+    state.regionProgress.diaries["sunlit-marches"] = { completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"], taskProgress: { "clear-road": 1 } };
+    state.caravan.mastery["sunlit-marches"] = { regionId: "sunlit-marches", caravansSent: 2, masteryXp: 12, claimedTiers: [1, 2] };
     state.accountShowcase.selectedTitleId = "sunlit-scout";
     state.traitCodex["ward-bound"] = { traitId: "ward-bound", discovered: true, bestValueSeen: 1, timesFound: 2 };
     state.familyCodex.sunlitCharter = { familyId: "sunlitCharter", discoveredSlots: ["weapon"], highestResonanceReached: 1 };
@@ -1487,7 +1614,8 @@ describe("reincarnation gate and pacing checks", () => {
     expect(result.state.regionProgress.materials.sunlitTimber).toBe(12);
     expect(result.state.regionProgress.collections.sunlit?.foundPieceIds).toEqual(["sunlit-a"]);
     expect(result.state.regionProgress.outposts["sunlit-marches"]).toEqual({ selectedBonusId: "watchtower", level: 1 });
-    expect(result.state.regionProgress.diaries["sunlit-marches"]).toEqual({ completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"] });
+    expect(result.state.regionProgress.diaries["sunlit-marches"]).toEqual({ completedTaskIds: ["clear-road"], claimedRewardIds: ["tier-1"], taskProgress: { "clear-road": 1 } });
+    expect(result.state.caravan.mastery["sunlit-marches"]).toEqual({ regionId: "sunlit-marches", caravansSent: 2, masteryXp: 12, claimedTiers: [1, 2] });
     expect(result.state.accountShowcase.selectedTitleId).toBe("sunlit-scout");
     expect(result.state.traitCodex["ward-bound"]?.timesFound).toBe(2);
     expect(result.state.familyCodex.sunlitCharter?.highestResonanceReached).toBe(1);

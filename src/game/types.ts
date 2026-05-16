@@ -456,6 +456,66 @@ export type RegionOutpostBonusDefinition = {
 export type RegionDiaryState = {
   completedTaskIds: string[];
   claimedRewardIds: string[];
+  taskProgress: Record<string, number>;
+};
+
+export type RegionDiaryTaskKind =
+  | "clear_region_expeditions"
+  | "claim_mastery_tier"
+  | "salvage_region_items"
+  | "upgrade_town_with_material"
+  | "prepare_region_boss";
+
+export type RegionDiaryTaskDefinition = {
+  id: string;
+  kind: RegionDiaryTaskKind;
+  label: string;
+  description: string;
+  target: number;
+  dungeonIds?: string[];
+  dungeonId?: string;
+  masteryTier?: MasteryTierNumber;
+  materialId?: RegionMaterialId;
+};
+
+export type RegionDiaryRewardDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  accountXp: number;
+  regionalMaterials?: Partial<Record<RegionMaterialId, number>>;
+  masteryXpBonus?: Record<string, number>;
+  regionalMaterialYieldBonus?: Partial<Record<RegionMaterialId, number>>;
+  titleId?: string;
+  trophyId?: string;
+};
+
+export type RegionDiaryDefinition = {
+  id: string;
+  regionId: string;
+  tier: number;
+  name: string;
+  tasks: RegionDiaryTaskDefinition[];
+  reward: RegionDiaryRewardDefinition;
+};
+
+export type RegionDiaryTaskSummary = RegionDiaryTaskDefinition & {
+  progress: number;
+  completed: boolean;
+};
+
+export type RegionDiarySummary = {
+  diaryId: string;
+  regionId: string;
+  tier: number;
+  name: string;
+  tasks: RegionDiaryTaskSummary[];
+  completedTasks: number;
+  totalTasks: number;
+  completionPercent: number;
+  readyToClaim: boolean;
+  claimed: boolean;
+  reward: RegionDiaryRewardDefinition;
 };
 
 export type RegionalMaterialSinkReward = {
@@ -632,12 +692,41 @@ export type ActiveCaravanJob = {
   focusId: CaravanFocusId;
   regionId: string;
   durationMs: number;
+  rewardDurationMs: number;
   startedAt: number;
   endsAt: number;
 };
 
+export type CaravanMasteryState = {
+  regionId: string;
+  caravansSent: number;
+  masteryXp: number;
+  claimedTiers: number[];
+};
+
+export type CaravanMasteryTierDefinition = {
+  tier: number;
+  xpRequired: number;
+  label: string;
+  effectText: string;
+};
+
+export type CaravanMasterySummary = {
+  regionId: string;
+  regionName: string;
+  caravansSent: number;
+  masteryXp: number;
+  claimedTiers: number[];
+  highestClaimedTier: number;
+  claimableTiers: CaravanMasteryTierDefinition[];
+  nextTier: CaravanMasteryTierDefinition | null;
+  progressPercent: number;
+  activeBonusText: string[];
+};
+
 export type CaravanState = {
   activeJob: ActiveCaravanJob | null;
+  mastery: Record<string, CaravanMasteryState>;
 };
 
 export type DailyTaskKind =
@@ -865,6 +954,7 @@ export type OfflineDeltaSummary = {
     elapsedMs: number;
     completed: boolean;
     levelUps: number[];
+    masteryXpGained?: number;
   } | null;
   construction: {
     buildingId: BuildingId;

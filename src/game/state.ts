@@ -68,7 +68,8 @@ export function createEmptyAchievements(): Record<string, AchievementState> {
 
 export function createEmptyCaravan(): CaravanState {
   return {
-    activeJob: null
+    activeJob: null,
+    mastery: {}
   };
 }
 

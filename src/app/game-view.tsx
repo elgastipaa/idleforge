@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Backpack,
+  BookOpen,
   CheckCircle2,
   Clock,
   Coins,
@@ -14,6 +15,7 @@ import {
   Flame,
   Gem,
   Hammer,
+  ListChecks,
   Lock,
   Pickaxe,
   RotateCcw,
@@ -43,6 +45,8 @@ import {
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
   INVENTORY_LIMIT,
+  ITEM_FAMILIES,
+  ITEM_TRAITS,
   INVENTORY_NEAR_FULL_THRESHOLD,
   LOOT_DROP_PITY_THRESHOLD,
   OFFLINE_CAP_MS,
@@ -106,11 +110,15 @@ import {
   getLockedTitleEntries,
   getLockedTrophyEntries,
   getPinnedTrophyEntries,
+  getRegionDiarySummary,
   getRegionCompletionSummary,
   getRegionMaterialId,
   getRegionalMaterialSinks,
   getOutpostBonusDefinition,
   getVisibleRegionCollectionSummaries,
+  getCaravanActualDurationMs,
+  getCaravanMasterySummary,
+  getCaravanMasterySummaries,
   getUnlockedCaravanRegions,
   getSelectedTitleDefinition,
   getUnlockedTitleEntries,
@@ -131,6 +139,7 @@ import {
   type LootFocusId,
   type MasteryTierDefinition,
   type RegionMaterialId,
+  type RegionDiaryRewardDefinition,
   type RegionOutpostBonusId,
   type RenownUpgradeId,
   type ResolveSummary,
@@ -315,6 +324,21 @@ function formatMissionReward(reward: {
     (reward.focus ?? 0) > 0 ? `${formatNumber(reward.focus ?? 0)} Focus` : null
   ].filter(Boolean);
   return parts.join(", ") || "Reward pending";
+}
+
+function formatRegionDiaryReward(reward: RegionDiaryRewardDefinition): string {
+  const permanentParts = [
+    ...Object.values(reward.masteryXpBonus ?? {}).map((bonus) => `${formatPercent(bonus)} mastery XP`),
+    ...Object.values(reward.regionalMaterialYieldBonus ?? {}).map((bonus) => `${formatPercent(bonus)} regional yield`)
+  ];
+  return [
+    formatMissionReward({ accountXp: reward.accountXp, regionalMaterials: reward.regionalMaterials }),
+    permanentParts.length > 0 ? permanentParts.join(", ") : null,
+    reward.titleId ? "Title" : null,
+    reward.trophyId ? "Trophy" : null
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function formatStats(stats: Partial<Stats>): string {
@@ -1154,7 +1178,9 @@ function OfflineSummaryPanel({
             <span className="font-black text-ink">Caravan</span>
             <span className="truncate">
               {summary.caravan
-                ? `${caravanFocus?.label ?? "Focus"} ${summary.caravan.completed ? "completed" : "progress"}: ${formatCaravanRewardText(summary.caravan.rewards)}`
+                ? `${caravanFocus?.label ?? "Focus"} ${summary.caravan.completed ? "completed" : "progress"}: ${formatCaravanRewardText(summary.caravan.rewards)}${
+                    (summary.caravan.masteryXpGained ?? 0) > 0 ? ` · +${summary.caravan.masteryXpGained} Mastery XP` : ""
+                  }`
                 : "No active job"}
             </span>
           </div>
@@ -1932,8 +1958,9 @@ function RegionCompletionPanel({ state, store, region }: { state: GameState; sto
   const materialName = completion.materialId ? REGION_MATERIAL_LABELS[completion.materialId] : "Regional Material";
   const sinks = getRegionalMaterialSinks(region.zone.id);
   const collections = getVisibleRegionCollectionSummaries(state, region.zone.id);
+  const diarySummary = getRegionDiarySummary(state, region.zone.id);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [activeDrawer, setActiveDrawer] = useState<"relics" | "projects" | "outpost" | null>(null);
+  const [activeDrawer, setActiveDrawer] = useState<"relics" | "projects" | "outpost" | "diary" | null>(null);
   const outpost = completion.outpost;
   const outpostBonus = getOutpostBonusDefinition(outpost?.selectedBonusId ?? null);
   const primaryCollection = collections[0] ?? null;
@@ -1949,7 +1976,12 @@ function RegionCompletionPanel({ state, store, region }: { state: GameState; sto
         primaryCollection.completedAt ? " complete" : ` · pity ${primaryCollection.missesSincePiece}/${primaryCollection.pityThreshold}`
       }`
     : "Hidden";
-  const toggleDrawer = (drawer: "relics" | "projects" | "outpost") => {
+  const diarySummaryText = diarySummary
+    ? diarySummary.claimed
+      ? "Tier 1 claimed"
+      : `${diarySummary.completedTasks}/${diarySummary.totalTasks} tasks`
+    : "No diary";
+  const toggleDrawer = (drawer: "relics" | "projects" | "outpost" | "diary") => {
     setActiveDrawer((active) => (active === drawer ? null : drawer));
   };
   const renderCollectionDetails = () =>
@@ -2059,6 +2091,45 @@ function RegionCompletionPanel({ state, store, region }: { state: GameState; sto
         Defeat this region's boss to establish an Outpost.
       </div>
     );
+  const renderDiaryDetails = () =>
+    diarySummary ? (
+      <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-black">{diarySummary.name}</p>
+            <p className="text-xs font-semibold text-stone-700">Reward: {formatRegionDiaryReward(diarySummary.reward)}</p>
+          </div>
+          <SecondaryButton
+            className="!min-h-8 shrink-0 px-2.5 py-1 text-xs"
+            onClick={() => store.claimRegionDiary(region.zone.id)}
+            disabled={!diarySummary.readyToClaim}
+          >
+            <ListChecks size={14} /> {diarySummary.claimed ? "Claimed" : diarySummary.readyToClaim ? "Claim" : "In Progress"}
+          </SecondaryButton>
+        </div>
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {diarySummary.tasks.map((task) => (
+            <div
+              key={task.id}
+              className={`rounded-md border px-2 py-1.5 text-xs font-semibold ${
+                task.completed ? "border-emerald/30 bg-emerald-50/80 text-emerald" : "border-stone-300 bg-white/70 text-stone-700"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-black">{task.label}</span>
+                <span className="shrink-0 font-black">
+                  {Math.min(task.progress, task.target)}/{task.target}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <div className="rounded-md border border-ink/10 bg-parchment/70 p-2 text-xs font-semibold text-stone-600">
+        No region diary is available for this region yet.
+      </div>
+    );
 
   return (
     <Card className="surface-card-elevated border-royal/20">
@@ -2103,7 +2174,7 @@ function RegionCompletionPanel({ state, store, region }: { state: GameState; sto
         )}
         {REGION_COMPLETION_LAYOUT === "sectioned" && (
           <div className="space-y-2">
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -2137,10 +2208,22 @@ function RegionCompletionPanel({ state, store, region }: { state: GameState; sto
                   </SecondaryButton>
                 </div>
               </div>
+              <div className="rounded-md border border-ink/10 bg-parchment/70 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black">Diary</p>
+                    <p className="truncate text-xs font-semibold text-stone-600">{diarySummaryText}</p>
+                  </div>
+                  <SecondaryButton className="!min-h-8 shrink-0 px-2.5 py-1 text-xs" onClick={() => toggleDrawer("diary")} disabled={!diarySummary}>
+                    <ListChecks size={14} /> {activeDrawer === "diary" ? "Hide" : "Open"}
+                  </SecondaryButton>
+                </div>
+              </div>
             </div>
             {activeDrawer === "relics" && renderCollectionDetails()}
             {activeDrawer === "projects" && renderProjectDetails()}
             {activeDrawer === "outpost" && renderOutpostDetails()}
+            {activeDrawer === "diary" && renderDiaryDetails()}
           </div>
         )}
       </div>
@@ -2519,13 +2602,17 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
   }, [regionId, unlockedRegions]);
 
   const durationMs = durationHours * CARAVAN_MIN_DURATION_MS;
+  const actualDurationMs = getCaravanActualDurationMs(state, regionId, durationMs);
   const previewRewards = estimateCaravanRewardsForRegion(state, focusId, regionId, durationMs);
   const activeFocus = activeJob ? CARAVAN_FOCUS_DEFINITIONS.find((focus) => focus.id === activeJob.focusId) : null;
   const activeRegion = activeJob ? ZONES.find((zone) => zone.id === activeJob.regionId) : null;
+  const masteryRegionId = activeJob?.regionId ?? regionId;
+  const masterySummary = getCaravanMasterySummary(state, masteryRegionId);
+  const claimableMasteryTier = masterySummary.claimableTiers[0] ?? null;
   const activeRemaining = activeJob ? Math.max(0, activeJob.endsAt - now) : 0;
   const activeReady = Boolean(activeJob && activeRemaining <= 0);
   const activeProgress = activeJob ? ((activeJob.durationMs - activeRemaining) / Math.max(1, activeJob.durationMs)) * 100 : 0;
-  const endingAt = now + durationMs;
+  const endingAt = now + actualDurationMs;
   const selectedFocusId = activeJob?.focusId ?? focusId;
 
   return (
@@ -2558,6 +2645,34 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
         })}
       </div>
 
+      <Card className="border-royal/15 bg-parchment/80">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-black uppercase text-mystic">Caravan Mastery</p>
+              <h3 className="font-black">{masterySummary.regionName}</h3>
+              <p className="text-xs font-semibold text-stone-700">
+                Tier {masterySummary.highestClaimedTier}/3 · {masterySummary.caravansSent} sent · {masterySummary.masteryXp} Mastery XP
+              </p>
+            </div>
+            <SecondaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.claimCaravanMastery(masteryRegionId)} disabled={!claimableMasteryTier}>
+              <Star size={14} /> {claimableMasteryTier ? `Claim T${claimableMasteryTier.tier}` : "No Tier"}
+            </SecondaryButton>
+          </div>
+          <ProgressBar value={masterySummary.progressPercent} className="bg-royal" />
+          <div className="grid gap-1.5 text-xs font-semibold text-stone-700">
+            {masterySummary.nextTier ? (
+              <p>
+                Next: <span className="font-black text-ink">T{masterySummary.nextTier.tier} {masterySummary.nextTier.label}</span> at {masterySummary.nextTier.xpRequired} XP.
+              </p>
+            ) : (
+              <p className="font-black text-emerald">All Caravan Mastery tiers claimed.</p>
+            )}
+            <p>{masterySummary.activeBonusText.length > 0 ? masterySummary.activeBonusText.join(" ") : "No active mastery bonuses yet."}</p>
+          </div>
+        </div>
+      </Card>
+
       {activeJob && activeFocus && (
         <Card className="border-stone-300 bg-parchment/70">
           <div className="space-y-3">
@@ -2565,7 +2680,8 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
               <p className="text-xs font-black uppercase text-stone-600">Active Caravan</p>
               <h3 className="font-black">{activeRegion?.name ?? "Regional"} · {activeFocus.label} focus</h3>
               <p className="text-xs font-semibold text-stone-700">
-                Ends at {formatLocalClock(activeJob.endsAt)} · {activeReady ? "Ready to claim" : `${formatMs(activeRemaining)} remaining`}
+                Ends at {formatLocalClock(activeJob.endsAt)} · {activeReady ? "Ready to claim" : `${formatMs(activeRemaining)} remaining`} · rewards for{" "}
+                {Math.round((activeJob.rewardDurationMs ?? activeJob.durationMs) / CARAVAN_MIN_DURATION_MS)}h
               </p>
             </div>
             <ProgressBar value={activeProgress} className="bg-stone-600" />
@@ -2589,6 +2705,7 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
               <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                 {unlockedRegions.map((region) => {
                   const selected = region.id === regionId;
+                  const regionMastery = getCaravanMasterySummary(state, region.id);
                   return (
                     <button
                       key={region.id}
@@ -2599,7 +2716,8 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
                         selected ? "border-amber-400 bg-blue-50/80 ring-1 ring-amber-400/50" : "border-ink/10 bg-parchment/70"
                       }`}
                     >
-                      {region.name}
+                      <span className="block">{region.name}</span>
+                      <span className="block text-[0.62rem] font-bold text-stone-600">Mastery T{regionMastery.highestClaimedTier}/3</span>
                     </button>
                   );
                 })}
@@ -2625,6 +2743,7 @@ function CaravanScreen({ state, now, store }: { state: GameState; now: number; s
               <p>
                 <span className="block text-[0.68rem] font-black uppercase text-stone-500">Ends</span>
                 <span className="font-black text-ink">{formatLocalClock(endingAt)}</span>
+                {actualDurationMs < durationMs && <span className="block text-xs font-bold text-emerald">{formatMs(actualDurationMs)} travel</span>}
               </p>
               <p>
                 <span className="block text-[0.68rem] font-black uppercase text-stone-500">Expected haul</span>
@@ -3515,14 +3634,32 @@ function AccountShowcaseScreen({ state, store }: { state: GameState; store: Game
     : 100;
   const snippet = buildShowcaseCopyText(state);
   const highestPower = Math.max(state.accountPersonalRecords.highestPowerReached, state.lifetime.highestPowerScore);
+  const diaryRewardsClaimed = Object.values(state.regionProgress.diaries).reduce((total, diary) => total + new Set(diary.claimedRewardIds ?? []).size, 0);
+  const caravanMasteryTiers = getCaravanMasterySummaries(state).reduce((total, summary) => total + summary.claimedTiers.length, 0);
   const records = [
     { label: "Rebirths", value: state.rebirth.totalRebirths },
     { label: "Highest Power", value: highestPower },
     { label: "Mastery Tiers", value: state.accountPersonalRecords.totalMasteryTiersClaimed },
     { label: "Expeditions", value: state.accountPersonalRecords.lifetimeExpeditionsCompleted },
     { label: "Bosses Defeated", value: state.accountPersonalRecords.lifetimeBossesDefeated },
-    { label: "Collections", value: state.accountPersonalRecords.totalCollectionsCompleted }
+    { label: "Collections", value: state.accountPersonalRecords.totalCollectionsCompleted },
+    { label: "Diaries", value: diaryRewardsClaimed },
+    { label: "Caravan Tiers", value: caravanMasteryTiers }
   ];
+  const codexUnlocked = state.accountRank.accountRank >= 10;
+  const activeRegionIds = new Set(getActiveRegionIds(state));
+  const traitCodexEntries = ITEM_TRAITS.map((definition) => ({
+    definition,
+    discovery: state.traitCodex[definition.id] ?? null
+  }));
+  const discoveredTraitCount = traitCodexEntries.filter((entry) => entry.discovery?.discovered).length;
+  const familyCodexEntries = ITEM_FAMILIES.filter(
+    (family) => family.active || Boolean(state.familyCodex[family.id]) || Boolean(family.regionId && activeRegionIds.has(family.regionId))
+  ).map((definition) => ({
+    definition,
+    discovery: state.familyCodex[definition.id] ?? null
+  }));
+  const discoveredFamilyCount = familyCodexEntries.filter((entry) => (entry.discovery?.discoveredSlots.length ?? 0) > 0).length;
 
   const copyShowcase = async () => {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -3681,6 +3818,74 @@ function AccountShowcaseScreen({ state, store }: { state: GameState; store: Game
               <p><span className="font-black text-ink">Best Boss:</span> {featuredBoss?.name ?? "No boss defeated yet"}</p>
               <p><span className="font-black text-ink">Current Chase:</span> {getNextGoal(state)}</p>
             </div>
+          </Card>
+
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BookOpen size={18} className="text-royal" />
+                <div>
+                  <h3 className="font-black">Trait & Family Codex</h3>
+                  <p className="text-xs font-semibold text-stone-700 sm:text-sm">
+                    {codexUnlocked
+                      ? `${discoveredTraitCount}/${ITEM_TRAITS.length} traits · ${discoveredFamilyCount}/${familyCodexEntries.length} families`
+                      : "Unlocks at Account Rank 10."}
+                  </p>
+                </div>
+              </div>
+              <Pill className={codexUnlocked ? "border-royal/20 bg-blue-50 text-royal" : "border-stone-200 bg-stone-50 text-stone-700"}>
+                {codexUnlocked ? "Unlocked" : `Rank ${state.accountRank.accountRank}/10`}
+              </Pill>
+            </div>
+            {codexUnlocked ? (
+              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase text-mystic">Traits</p>
+                  <div className="grid gap-1.5">
+                    {traitCodexEntries.map(({ definition, discovery }) => {
+                      const discovered = Boolean(discovery?.discovered);
+                      return (
+                        <div key={definition.id} className={`rounded-md border px-2 py-1.5 text-xs ${discovered ? "border-royal/20 bg-blue-50/80" : "border-stone-200 bg-stone-50 text-stone-600"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black">{discovered ? definition.name : "Undiscovered Trait"}</span>
+                            <span className="font-bold uppercase">{definition.category}</span>
+                          </div>
+                          <p className="mt-0.5 font-semibold text-stone-700">
+                            {discovered ? `${definition.description} Found ${discovery?.timesFound ?? 0}x · best level ${discovery?.bestValueSeen ?? 0}` : "Identity unknown."}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase text-mystic">Families</p>
+                  <div className="grid gap-1.5">
+                    {familyCodexEntries.map(({ definition, discovery }) => {
+                      const slots = discovery?.discoveredSlots ?? [];
+                      const discovered = slots.length > 0;
+                      return (
+                        <div key={definition.id} className={`rounded-md border px-2 py-1.5 text-xs ${discovered ? "border-amber-300 bg-amber-50/80" : "border-stone-200 bg-stone-50 text-stone-600"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black">{discovered ? definition.name : "Undiscovered Family"}</span>
+                            <span className="font-bold">{slots.length}/5 slots</span>
+                          </div>
+                          <p className="mt-0.5 font-semibold text-stone-700">
+                            {discovered
+                              ? `Best resonance ${discovery?.highestResonanceReached ?? 0}. ${definition.rank1Text} ${definition.rank2Text}`
+                              : "No item family pieces discovered."}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+                Discoveries are being tracked silently.
+              </div>
+            )}
           </Card>
 
           <Card>

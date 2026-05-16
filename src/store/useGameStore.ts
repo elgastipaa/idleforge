@@ -19,6 +19,8 @@ import {
   changeHeroClassWithLaunchRules,
   claimBuildingConstruction,
   claimCaravanJob,
+  claimCaravanMasteryTier,
+  claimRegionDiaryReward,
   claimMasteryTier,
   accelerateBuildingConstruction,
   createInitialState,
@@ -93,11 +95,13 @@ export type GameStore = {
   claimWeeklyContract: (milestoneIndex: number) => void;
   claimMasteryTier: (dungeonId: string) => void;
   fundRegionalProject: (sinkId: string) => void;
+  claimRegionDiary: (regionId: string) => void;
   scoutBoss: (dungeonId: string) => void;
   prepareBossThreat: (dungeonId: string, threatId: ExpeditionThreatId) => void;
   startCaravanJob: (focusId: CaravanFocusId, durationMs: number, regionId?: string) => void;
   claimCaravanJob: () => void;
   cancelCaravanJob: () => void;
+  claimCaravanMastery: (regionId: string) => void;
   selectOutpostBonus: (regionId: string, bonusId: RegionOutpostBonusId) => void;
   prestige: () => void;
   buyRenownUpgrade: (upgradeId: RenownUpgradeId) => void;
@@ -472,6 +476,15 @@ export const useGameStore = create<GameStore>()(
         set({ state: result.state, error: null, lastMessage: result.message ?? "Regional project funded." });
       },
 
+      claimRegionDiary: (regionId) => {
+        const result = claimRegionDiaryReward(get().state, regionId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Region diary claimed." });
+      },
+
       scoutBoss: (dungeonId) => {
         const result = scoutBoss(get().state, dungeonId, Date.now());
         if (!result.ok) {
@@ -515,6 +528,15 @@ export const useGameStore = create<GameStore>()(
           return;
         }
         set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan canceled.", lastOfflineSummary: null });
+      },
+
+      claimCaravanMastery: (regionId) => {
+        const result = claimCaravanMasteryTier(get().state, regionId, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Caravan Mastery claimed." });
       },
 
       selectOutpostBonus: (regionId, bonusId) => {

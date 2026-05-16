@@ -1,4 +1,5 @@
 import { getEquippedAffixes } from "./affixes";
+import { recordRegionDiaryProgress } from "./diaries";
 import { regenerateFocus } from "./focus";
 import { getOutpostScoutRevealBonus, getOutpostThreatCoverage } from "./outposts";
 import { unlockTrophy } from "./progression";
@@ -328,6 +329,7 @@ export function prepareBossThreat(state: GameState, dungeonId: string, threatId:
   next.focus.current -= definition.prepFocusCost;
   next.regionProgress.materials[materialId] = materialAvailable - materialCost;
   prepState.prepCharges[threatId] = (prepState.prepCharges[threatId] ?? 0) + 1;
+  recordRegionDiaryProgress(next, now, { kind: "prepare_boss", regionId: definition.regionId });
   next.updatedAt = now;
   return { ok: true, state: next, message: `${threat.prepName} prepared for ${definition.name}.` };
 }

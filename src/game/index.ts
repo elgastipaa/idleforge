@@ -22,6 +22,7 @@ export * from "./collections";
 export * from "./bosses";
 export * from "./outposts";
 export * from "./traits";
+export * from "./diaries";
 export * from "./showcase";
 export * from "./caravan";
 export * from "./offline";

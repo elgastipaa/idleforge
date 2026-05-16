@@ -4,6 +4,7 @@ import { refreshAchievements } from "./achievements";
 import { getDerivedStats, getDungeon, getItemScore, getSellMultiplier } from "./balance";
 import { getBossDefinitionForDungeon } from "./bosses";
 import { applyDailyProgress, ensureDailies } from "./dailies";
+import { recordRegionDiaryProgress } from "./diaries";
 import { getFragmentGainPassiveMultiplier } from "./heroes";
 import { cloneState } from "./state";
 import { getTraitContextScore, refreshFamilyResonanceCodex } from "./traits";
@@ -110,6 +111,7 @@ export function salvageItem(state: GameState, itemId: string, now: number): Acti
   };
   addSalvage(working.resources, salvage);
   working.lifetime.totalItemsSalvaged += 1;
+  recordRegionDiaryProgress(working, now, { kind: "salvage_item", sourceDungeonId: item.sourceDungeonId });
   const progressed = applyDailyProgress(working, now, { salvage_items: 1 });
   const progressedState = progressed.state;
   progressedState.updatedAt = now;
