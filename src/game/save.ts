@@ -32,6 +32,7 @@ import type {
   DailyTaskKind,
   DailyTaskRole,
   DailyFocusState,
+  EventProgressState,
   GameState,
   ImportResult,
   ExpeditionThreatId,
@@ -165,6 +166,23 @@ function normalizeCaravanMasteryStates(value: unknown): Record<string, CaravanMa
         : []
     };
     return masteries;
+  }, {});
+}
+
+function normalizeEventProgressStates(value: unknown): Record<string, EventProgressState> {
+  if (!isRecord(value)) return {};
+  return Object.entries(value).reduce<Record<string, EventProgressState>>((events, [eventId, progress]) => {
+    if (!isRecord(progress)) return events;
+    const participation = Math.max(0, Math.floor(normalizeNumber(progress.participation, 0)));
+    const claimedRewards = Array.isArray(progress.claimedRewards)
+      ? Array.from(new Set(progress.claimedRewards.filter((index): index is number => finiteNumber(index) && index >= 0))).sort((a, b) => a - b)
+      : [];
+    events[eventId] = {
+      eventId: typeof progress.eventId === "string" && progress.eventId.length > 0 ? progress.eventId : eventId,
+      participation,
+      claimedRewards
+    };
+    return events;
   }, {});
 }
 
@@ -672,7 +690,7 @@ export function normalizeImportedState(state: GameState, now: number): GameState
     },
     dailyFocus: normalizeDailyFocusState(state.dailyFocus, now),
     weeklyQuest: normalizeWeeklyQuestState(state.weeklyQuest, now),
-    eventProgress: isRecord(state.eventProgress) ? state.eventProgress : {},
+    eventProgress: normalizeEventProgressStates(state.eventProgress),
     regionProgress: {
       activeMaterialIds: emptyRegionProgress.activeMaterialIds,
       materials: REGION_MATERIAL_IDS.reduce(
@@ -697,7 +715,8 @@ export function normalizeImportedState(state: GameState, now: number): GameState
       reducedMotion: Boolean(state.settings?.reducedMotion),
       debugBalance: Boolean(state.settings?.debugBalance),
       onboardingDismissed: Boolean(state.settings?.onboardingDismissed),
-      heroCreated: Boolean(state.settings?.heroCreated ?? true)
+      heroCreated: Boolean(state.settings?.heroCreated ?? true),
+      completionNotificationsOptIn: Boolean(state.settings?.completionNotificationsOptIn)
     }
   };
 }

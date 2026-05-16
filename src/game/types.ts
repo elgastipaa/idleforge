@@ -369,6 +369,59 @@ export type WeeklyQuestState = {
   recapSeen: boolean;
 };
 
+export type EventBonusModifier =
+  | { type: "extraRegionalMaterial"; regionId: string; multiplier: number }
+  | { type: "extraMasteryXp"; multiplier: number }
+  | { type: "guaranteedThreatReveal"; regionId: string }
+  | { type: "bossDoubleRewards"; bossId: string };
+
+export type EventReward = {
+  gold: number;
+  fragments: number;
+  focus: number;
+  regionalMaterials: Partial<Record<RegionMaterialId, number>>;
+};
+
+export type EventRewardTier = {
+  tier: number;
+  targetParticipation: number;
+  label: string;
+  reward: EventReward;
+};
+
+export type EventDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  startsAt: number;
+  endsAt: number;
+  themeRegionId?: string;
+  bonusModifiers: EventBonusModifier[];
+  rewardScheduleId: string;
+};
+
+export type EventProgressState = {
+  eventId: string;
+  participation: number;
+  claimedRewards: number[];
+};
+
+export type EventRewardTierStatus = EventRewardTier & {
+  rewardIndex: number;
+  claimed: boolean;
+  claimable: boolean;
+  remaining: number;
+};
+
+export type EventBannerSummary = {
+  event: EventDefinition;
+  progress: EventProgressState;
+  tiers: EventRewardTierStatus[];
+  active: boolean;
+  startsInMs: number;
+  endsInMs: number;
+};
+
 export type RegionCollectionState = {
   foundPieceIds: string[];
   missesSincePiece: number;
@@ -820,6 +873,7 @@ export type SettingsState = {
   debugBalance: boolean;
   onboardingDismissed: boolean;
   heroCreated: boolean;
+  completionNotificationsOptIn: boolean;
 };
 
 export type GameState = {
@@ -851,7 +905,7 @@ export type GameState = {
   accountPersonalRecords: AccountPersonalRecords;
   dailyFocus: DailyFocusState;
   weeklyQuest: WeeklyQuestState;
-  eventProgress: Record<string, unknown>;
+  eventProgress: Record<string, EventProgressState>;
   regionProgress: RegionProgressState;
   bossPrep: Record<string, BossPrepState>;
   construction: ConstructionState;

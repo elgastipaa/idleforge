@@ -5,7 +5,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Backpack,
+  BellRing,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   Clock,
   Coins,
@@ -32,6 +34,12 @@ import {
 import { useGameStore } from "@/store/useGameStore";
 import type { GameStore } from "@/store/useGameStore";
 import { useIsClient } from "@/hooks/useIsClient";
+import { CommandCenter } from "@/app/components/command-center";
+import { FrontierMap } from "@/app/components/frontier-map";
+import { GuildhallSlotGrid } from "@/app/components/guildhall-slot-grid";
+import { GuildReportPanel } from "@/app/components/guild-report-panel";
+import { OrdersBoard } from "@/app/components/orders-board";
+import { WarRoomPanel } from "@/app/components/war-room-panel";
 import {
   ACHIEVEMENTS,
   BUILDINGS,
@@ -104,6 +112,7 @@ import {
   getBossPrepMaterialCost,
   getFeaturedRegion,
   getFamilyResonanceSummaries,
+  getEventBannerSummary,
   getItemFamilyDefinition,
   getItemTraitDefinition,
   getActiveRegionIds,
@@ -155,9 +164,9 @@ const tabs: { id: TabId; label: string; Icon: typeof Swords }[] = [
   { id: "hero", label: "Hero", Icon: Crown },
   { id: "inventory", label: "Inventory", Icon: Backpack },
   { id: "forge", label: "Forge", Icon: Flame },
-  { id: "town", label: "Town", Icon: Hammer },
+  { id: "town", label: "Guildhall", Icon: Hammer },
   { id: "account", label: "Account", Icon: Crown },
-  { id: "dailies", label: "Missions", Icon: Star },
+  { id: "dailies", label: "Orders", Icon: Star },
   { id: "achievements", label: "Awards", Icon: Trophy },
   { id: "reincarnation", label: "Reincarnation", Icon: Sparkles },
   { id: "settings", label: "Save", Icon: Settings }
@@ -1010,7 +1019,7 @@ function getMessageFeedback(message: string, isError: boolean) {
   if (/upgraded to level|Building upgraded/i.test(message)) {
     return {
       Icon: Hammer,
-      title: "Town Upgrade",
+      title: "Guildhall Upgrade",
       flavor: "Fresh beams, sharper tools, and better numbers for the next run.",
       className: "border-amber-400/70 text-amber-100",
       iconClassName: "text-amber-300"
@@ -1126,6 +1135,60 @@ function MessagePanel({ store, suppressNonError = false }: { store: GameStore; s
         </div>
       </button>
     </div>
+  );
+}
+
+function EventBanner({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
+  const summary = getEventBannerSummary(state, now);
+  if (!summary || !summary.active) return null;
+
+  const totalTarget = summary.tiers.at(-1)?.targetParticipation ?? 0;
+  const progressPercent = totalTarget > 0 ? Math.min(100, Math.floor((summary.progress.participation / totalTarget) * 100)) : 0;
+  const claimableTiers = summary.tiers.filter((tier) => tier.claimable);
+  const nextTier = summary.tiers.find((tier) => !tier.claimed && !tier.claimable) ?? null;
+  const visibleTiers = [...claimableTiers, ...(nextTier ? [nextTier] : [])].slice(0, 2);
+
+  return (
+    <GameCard density="compact" className="border-amber-950/10 surface-card-elevated">
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.65fr)] lg:items-center">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase text-mystic">Live Event</p>
+            <Pill className="border-amber-400 bg-amber-50 text-amber-900">
+              <CalendarDays size={13} /> {formatMs(summary.endsInMs)}
+            </Pill>
+          </div>
+          <h3 className="mt-1 text-sm font-black text-ink sm:text-base">{summary.event.name}</h3>
+          <p className="mt-1 line-clamp-2 text-xs font-semibold text-stone-700">{summary.event.description}</p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded bg-stone-200">
+            <div className="h-full bg-royal transition-all" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p className="mt-1 text-xs font-bold text-stone-600">
+            Participation {formatNumber(summary.progress.participation)}/{formatNumber(totalTarget)}
+          </p>
+        </div>
+        <div className="grid gap-1.5">
+          {visibleTiers.map((tier) => (
+            <div key={`${summary.event.id}-${tier.rewardIndex}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-ink/10 bg-parchment/70 px-2.5 py-1.5">
+              <div className="min-w-0 text-xs font-semibold text-stone-700">
+                <p className="font-black text-ink">Tier {tier.tier}: {tier.label}</p>
+                <p>{formatMissionReward(tier.reward)}</p>
+              </div>
+              {tier.claimed ? (
+                <Pill className="border-emerald-300 bg-emerald-50 text-emerald">Claimed</Pill>
+              ) : tier.claimable ? (
+                <PrimaryButton className="!min-h-8 px-2.5 py-1 text-xs" onClick={() => store.claimEventReward(summary.event.id, tier.rewardIndex)}>
+                  Claim
+                </PrimaryButton>
+              ) : (
+                <Pill className="border-royal/20 bg-blue-50 text-royal">{formatNumber(tier.remaining)} to go</Pill>
+              )}
+            </div>
+          ))}
+          {visibleTiers.length === 0 && <p className="rounded-md border border-ink/10 bg-parchment/70 px-2.5 py-1.5 text-xs font-bold text-stone-700">All event tiers claimed.</p>}
+        </div>
+      </div>
+    </GameCard>
   );
 }
 
@@ -2443,7 +2506,7 @@ function FirstSessionMilestones({ state }: { state: GameState }) {
     { label: "Clear", done: state.lifetime.expeditionsSucceeded > 0, Icon: Swords },
     { label: "Equip", done: Object.values(state.equipment).some(Boolean), Icon: Backpack },
     { label: "Upgrade", done: hasAnyItemUpgrade(state), Icon: Flame },
-    { label: "Town", done: getBuildingLevelTotal(state) > 0, Icon: Hammer },
+    { label: "Guildhall", done: getBuildingLevelTotal(state) > 0, Icon: Hammer },
     { label: "Boss", done: boss ? hasCleared(state, boss.id) : false, Icon: Crown },
     { label: "Craft", done: state.lifetime.totalItemsCrafted > 0, Icon: Sparkles }
   ];
@@ -2543,7 +2606,7 @@ function OnboardingGuide({
     detail = "You now have the core loop. Explore tabs at your own pace.";
     action = (
       <SecondaryButton onClick={() => onSelectTab("town")}>
-        <Hammer size={16} /> Open Town
+        <Hammer size={16} /> Open Guildhall
       </SecondaryButton>
     );
   }
@@ -2861,7 +2924,19 @@ function ExpeditionsScreen({
     <div className="space-y-3 sm:space-y-4">
       {onboardingFocused ? <OnboardingGuide state={state} now={now} store={store} onSelectTab={onSelectTab} /> : <FirstSessionMilestones state={state} />}
 
+      {!onboardingFocused && (
+        <CommandCenter
+          state={state}
+          now={now}
+          offlineSummary={store.lastOfflineSummary}
+          expeditionResult={store.lastExpeditionResult}
+          onSelectTab={(next) => onSelectTab(next as TabId)}
+        />
+      )}
+
       {!onboardingFocused && <ActiveExpeditionPanel state={state} now={now} store={store} />}
+      {!onboardingFocused && <FrontierMap state={state} onSelectTab={(next) => onSelectTab(next as TabId)} />}
+      {!onboardingFocused && <WarRoomPanel state={state} onSelectTab={(next) => onSelectTab(next)} />}
 
       <div className="space-y-4">
         {selectedRegion ? <RegionExpeditionsView state={state} store={store} region={selectedRegion} onBack={handleBackToRegions} /> : <RegionCarousel regions={regions} onSelectRegion={handleSelectRegion} />}
@@ -3453,7 +3528,7 @@ function getTownBuildingFeedback(state: GameState, buildingId: BuildingId): stri
     case "tavern": {
       const ready = state.dailies.tasks.filter((task) => !task.claimed && task.progress >= task.target).length;
       const focusReady = state.dailyFocus.focusChargesBanked > 0 && state.dailyFocus.focusChargeProgress >= 3 ? "Daily Focus ready" : "Daily Focus charging";
-      const missionText = state.accountRank.accountRank >= 2 ? `${ready}/${state.dailies.tasks.length} missions ready` : "Daily Missions at Account Rank 2";
+      const missionText = state.accountRank.accountRank >= 2 ? `${ready}/${state.dailies.tasks.length} orders ready` : "Daily Orders at Account Rank 2";
       return `${focusReady}; ${missionText}; rumor: ${getNextGoal(state)}`;
     }
     case "market": {
@@ -3528,95 +3603,17 @@ function ActiveConstructionPanel({ state, now, store }: { state: GameState; now:
 }
 
 function TownScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
-  const totalLevels = getBuildingLevelTotal(state);
-  const hasActiveConstruction = Boolean(state.construction.activeBuildingId);
-  const nextAffordable = BUILDINGS.find((building) => state.town[building.id] < building.maxLevel && canAffordConstructionCost(state, getBuildingConstructionCost(state, building.id)));
   return (
     <div className="space-y-4">
       <ActiveConstructionPanel state={state} now={now} store={store} />
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-black">Town Buildings</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Total building levels {totalLevels}/72. One construction can run at a time; timers survive Reincarnation.</p>
-          </div>
-          <Pill className={nextAffordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-stone-200 bg-stone-100 text-stone-700"}>
-            {hasActiveConstruction ? "Slot occupied" : nextAffordable ? `${nextAffordable.name} ready` : "No build ready"}
-          </Pill>
-        </div>
-      </Card>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {BUILDINGS.map((building) => {
-          const level = state.town[building.id];
-          const cost = getBuildingConstructionCost(state, building.id);
-          const affordable = canAffordConstructionCost(state, cost);
-          const maxed = level >= building.maxLevel;
-          const activeHere = state.construction.activeBuildingId === building.id;
-          const targetLevel = level + 1;
-          const durationMs = getBuildingConstructionDurationMs(building.id, targetLevel);
-          const progress = Math.floor((level / building.maxLevel) * 100);
-          return (
-            <Card key={building.id}>
-              <div className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-black">{building.name}</h3>
-                    <p className="text-xs font-semibold text-stone-700 sm:text-sm">{building.purpose}</p>
-                  </div>
-                  <Pill className={maxed ? "border-amber-300 bg-amber-100 text-amber-900" : affordable ? "border-emerald/30 bg-emerald-100 text-emerald" : "border-royal/20 bg-blue-50 text-royal"}>
-                    {level}/{building.maxLevel}
-                  </Pill>
-                </div>
-                <p className="text-xs font-semibold text-stone-700">
-                  <span className="font-black text-ink">Build cost:</span> {maxed ? "Maxed" : formatConstructionCost(cost)}
-                </p>
-                {!maxed && (
-                  <p className="text-xs font-semibold text-stone-600">
-                    <span className="font-black text-ink">Timer:</span> {formatMs(durationMs)}
-                  </p>
-                )}
-                {activeHere && (
-                  <p className="rounded-md border border-royal/20 bg-blue-50 px-2 py-1 text-xs font-bold text-royal">
-                    This upgrade is under construction.
-                  </p>
-                )}
-                <PrimaryButton className="w-full" onClick={() => store.buyBuilding(building.id as BuildingId)} disabled={!affordable || maxed || hasActiveConstruction}>
-                  <Hammer size={16} /> {maxed ? "Maxed" : activeHere ? "Building" : hasActiveConstruction ? "Slot Occupied" : affordable ? "Start Build" : "Need Resources"}
-                </PrimaryButton>
-                {!maxed && (
-                  <p className="text-[0.68rem] font-semibold text-stone-500">
-                    Regional stock: {formatRegionMaterials(state.regionProgress.materials)}
-                  </p>
-                )}
-                <details className="rounded-md border border-stone-200 bg-white px-3 py-2">
-                  <summary className="cursor-pointer text-xs font-black uppercase text-stone-600">Details & milestones</summary>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-stone-200">
-                    <div className="h-full rounded-full bg-royal" style={{ width: `${progress}%` }} />
-                  </div>
-                  <p className="mt-2 rounded-md bg-parchment/70 px-3 py-2 text-xs font-bold text-stone-700">{getTownBuildingFeedback(state, building.id)}</p>
-                  <p className="mt-2 text-xs font-semibold text-stone-600">{building.description}</p>
-                  <div className="mt-2 grid gap-2 text-xs font-semibold text-stone-700">
-                    <p><span className="font-black text-ink">Current benefit:</span> {building.effectText(level)}</p>
-                    <p><span className="font-black text-ink">Next level:</span> {maxed ? "Maxed" : building.effectText(level + 1)}</p>
-                  </div>
-                  <div className="mt-2 grid gap-2">
-                    {building.milestones.map((milestone) => {
-                      const reached = level >= milestone.level;
-                      return (
-                        <div key={`${building.id}-${milestone.level}`} className="flex items-center gap-2 rounded-md border border-stone-200 bg-parchment/60 px-3 py-2 text-xs font-bold text-stone-700">
-                          {reached ? <CheckCircle2 size={14} className="text-emerald" /> : <Clock size={14} className="text-stone-500" />}
-                          <span className="shrink-0 text-stone-500">{milestone.level === 0 ? "Base" : `Lv${milestone.level}`}</span>
-                          <span>{milestone.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      <GuildhallSlotGrid
+        state={state}
+        now={now}
+        onBuild={store.buyBuilding}
+        onClaim={store.claimConstruction}
+        onCancel={store.cancelConstruction}
+        onAccelerate={store.accelerateConstruction}
+      />
     </div>
   );
 }
@@ -3917,7 +3914,7 @@ function AccountShowcaseScreen({ state, store }: { state: GameState; store: Game
   );
 }
 
-function DailiesScreen({ state, now, store }: { state: GameState; now: number; store: GameStore }) {
+function DailiesScreen({ state, now, store, onSelectTab }: { state: GameState; now: number; store: GameStore; onSelectTab: (tab: TabId) => void }) {
   const timeLeft = Math.max(0, state.dailies.nextResetAt - now);
   const weeklyTimeLeft = Math.max(0, state.weeklyQuest.nextResetAt - now);
   const completed = state.dailies.tasks.filter((task) => task.progress >= task.target).length;
@@ -3931,19 +3928,28 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
   const dailyMissionsUnlocked = state.accountRank.accountRank >= 2;
   return (
     <div className="space-y-4">
+      <OrdersBoard
+        state={state}
+        now={now}
+        onSelectTab={(next) => onSelectTab(next as TabId)}
+        onClaimDailyFocus={store.claimDailyFocus}
+        onClaimDaily={store.claimDaily}
+        onClaimWeeklyQuest={store.claimWeeklyQuest}
+      />
+      <EventBanner state={state} now={now} store={store} />
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black">Mission Board</h2>
+            <h2 className="text-lg font-black">Orders Board Details</h2>
             <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-              Daily Focus, Daily Missions, and the weekly charter. {DAILY_RESET_HOUR_LOCAL}:00 local mission reset.
+              Daily Focus, Daily Orders, and the weekly charter. {DAILY_RESET_HOUR_LOCAL}:00 local order reset.
             </p>
             <p className="mt-2 text-xs font-bold text-royal sm:text-sm">
-              Daily Missions reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
+              Daily Orders reset in {formatMs(timeLeft)} · next at {formatLocalClock(state.dailies.nextResetAt)}
             </p>
           </div>
           <Pill className="border-royal/20 bg-blue-50 text-royal">
-            {dailyMissionsUnlocked ? `${completed}/${state.dailies.tasks.length} done · ${claimed} claimed` : "Daily Missions Rank 2"}
+            {dailyMissionsUnlocked ? `${completed}/${state.dailies.tasks.length} done · ${claimed} claimed` : "Daily Orders Rank 2"}
           </Pill>
         </div>
       </Card>
@@ -4049,7 +4055,7 @@ function DailiesScreen({ state, now, store }: { state: GameState; now: number; s
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-black">Daily Missions</h3>
+              <h3 className="font-black">Daily Orders</h3>
               <p className="text-xs font-semibold text-stone-700 sm:text-sm">Unlocks at Account Rank 2.</p>
             </div>
             <Pill className="border-stone-200 bg-stone-50 text-stone-700">Rank {state.accountRank.accountRank}/2</Pill>
@@ -4070,7 +4076,7 @@ function AchievementsScreen({ state }: { state: GameState }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Achievements</h2>
-            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Track progression milestones across expeditions, loot, town upgrades, and reincarnation cycles.</p>
+            <p className="text-xs font-semibold text-stone-700 sm:text-sm">Track progression milestones across expeditions, loot, Guildhall upgrades, and reincarnation cycles.</p>
           </div>
           <Pill className="border-violet-400 bg-violet-50 text-violet-950">
             <Trophy size={13} /> {unlockedCount}/{ACHIEVEMENTS.length}
@@ -4134,8 +4140,8 @@ function ReincarnationScreen({
   const clearedGateRoute = gateRoute.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0).length;
   const levelProgress = Math.min(100, Math.floor((state.hero.level / REINCARNATION_LEVEL_REQUIREMENT) * 100));
   const bossProgress = bossClear ? 100 : Math.min(99, Math.floor((clearedGateRoute / Math.max(1, gateRoute.length)) * 100));
-  const resetItems = ["Hero level, XP, and base stats", "Gold, run materials, inventory, and equipment", "Dungeon clears, active expedition, and missions"];
-  const persistItems = ["Persistent Town buildings", "Focus, Soul Marks, and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
+  const resetItems = ["Hero level, XP, and base stats", "Gold, run materials, inventory, and equipment", "Dungeon clears, active expedition, and orders"];
+  const persistItems = ["Persistent Guildhall buildings", "Focus, Soul Marks, and purchased permanent upgrades", "Hero name, class, settings, achievements, and lifetime stats", "Total reincarnations and total Soul Marks earned"];
   const reincarnationPanels: Array<{ id: ReincarnationSubviewId; content: React.ReactNode }> = [
     {
       id: "overview",
@@ -4255,8 +4261,8 @@ function ReincarnationScreen({
               <p className="text-xs font-black uppercase text-mystic">Confirm Reincarnation</p>
               <h3 className="text-base font-black">Start a New Cycle?</h3>
               <p className="text-xs font-semibold text-stone-700 sm:text-sm">
-                This resets this run&apos;s level, resources, gear, dungeon clears, expedition, and missions.
-                Persistent Town, Focus, Soul Marks, upgrades, achievements, and lifetime stats persist.
+                This resets this run&apos;s level, resources, gear, dungeon clears, expedition, and orders.
+                Persistent Guildhall, Focus, Soul Marks, upgrades, achievements, and lifetime stats persist.
               </p>
               <p className="text-xs font-semibold text-stone-700">
                 You gain <span className="font-black text-ink">+{gain} Soul Marks</span> from this reincarnation.
@@ -4288,6 +4294,31 @@ function SettingsScreen({ state, store }: { state: GameState; store: GameStore }
   const [exportText, setExportText] = useState("");
   const [importText, setImportText] = useState("");
   const showDebugBalance = process.env.NODE_ENV !== "production";
+  const notificationsSupported = isClient && "Notification" in window;
+  const notificationPermission = notificationsSupported ? Notification.permission : "unsupported";
+
+  const setCompletionNotifications = (enabled: boolean) => {
+    if (!enabled) {
+      store.setCompletionNotificationsOptIn(false);
+      return;
+    }
+    if (!notificationsSupported) {
+      store.setCompletionNotificationsOptIn(false);
+      return;
+    }
+    if (notificationPermission === "granted") {
+      store.setCompletionNotificationsOptIn(true);
+      return;
+    }
+    if (notificationPermission === "denied") {
+      store.setCompletionNotificationsOptIn(false);
+      return;
+    }
+    void Notification.requestPermission().then((permission) => {
+      store.setCompletionNotificationsOptIn(permission === "granted");
+    });
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -4316,6 +4347,27 @@ function SettingsScreen({ state, store }: { state: GameState; store: GameStore }
             Reduced motion
             <input type="checkbox" checked={state.settings.reducedMotion} onChange={(event) => store.setReducedMotion(event.target.checked)} />
           </label>
+          <label className="flex items-center justify-between rounded-lg border border-ink/10 bg-white p-3 text-sm font-bold">
+            <span className="inline-flex items-center gap-2">
+              <BellRing size={15} /> Completion notifications
+            </span>
+            <input
+              type="checkbox"
+              checked={state.settings.completionNotificationsOptIn}
+              onChange={(event) => setCompletionNotifications(event.target.checked)}
+              disabled={!notificationsSupported}
+            />
+          </label>
+          <p className="text-xs font-semibold text-stone-600">
+            Optional. Only used for Caravan/Construction completion and never required for progression.
+            {!notificationsSupported
+              ? " Notifications are unavailable in this browser."
+              : notificationPermission === "denied"
+                ? " Browser permission is denied."
+                : notificationPermission === "default"
+                  ? " Browser permission will be requested when enabling."
+                  : " Browser permission granted."}
+          </p>
           {showDebugBalance ? (
             <label className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-bold text-amber-900">
               Debug balance (dev only)
@@ -4377,7 +4429,7 @@ function DesktopSide({ state, now }: { state: GameState; now: number }) {
         )}
       </Card>
       <Card>
-        <h3 className="text-[0.94rem] font-black">Mission Board</h3>
+        <h3 className="text-[0.94rem] font-black">Orders Board</h3>
         <p className="mt-2 text-sm font-semibold text-stone-700">
           Focus {state.dailyFocus.focusChargeProgress}/3 · Weekly {state.weeklyQuest.questClaimed ? "claimed" : "active"}
         </p>
@@ -4434,6 +4486,7 @@ export default function Home() {
   const store = useGameStore();
   const now = useNow();
   const hasRehydratedRef = useRef(false);
+  const completionNotificationRef = useRef<string | null>(null);
   const [tab, setTab] = useState<TabId>("expeditions");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [expeditionSubview, setExpeditionSubview] = useState<ExpeditionSubviewId>("routes");
@@ -4463,6 +4516,41 @@ export default function Home() {
       : hasOverlayMessage
         ? "message"
         : "none";
+
+  useEffect(() => {
+    if (!isClient || !state.settings.completionNotificationsOptIn) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const summary = store.lastOfflineSummary;
+    if (!summary) return;
+
+    const caravanReady = Boolean(summary.caravan?.completed);
+    const constructionReady = Boolean(summary.construction?.completed);
+    if (!caravanReady && !constructionReady) return;
+
+    const notificationKey = [
+      summary.elapsedMs,
+      summary.caravan?.regionId ?? "none",
+      summary.caravan?.completed ? "caravan-ready" : "caravan-pending",
+      summary.construction?.buildingId ?? "none",
+      summary.construction?.completed ? "construction-ready" : "construction-pending"
+    ].join(":");
+    if (completionNotificationRef.current === notificationKey) return;
+    completionNotificationRef.current = notificationKey;
+
+    const parts = ["Forge Idle update:"];
+    if (constructionReady && summary.construction) {
+      parts.push(`construction for ${summary.construction.buildingId} is ready to claim.`);
+    }
+    if (caravanReady && summary.caravan) {
+      parts.push(`${summary.caravan.regionId} Caravan returned and is ready.`);
+    }
+
+    try {
+      new Notification("Forge Idle", { body: parts.join(" "), tag: "forgeidle-completion" });
+    } catch {
+      // Ignore notification errors; opt-in should never block gameplay flow.
+    }
+  }, [isClient, state.settings.completionNotificationsOptIn, store.lastOfflineSummary]);
 
   useEffect(() => {
     if (!mobileSecondaryTabs.includes(tab)) {
@@ -4528,7 +4616,7 @@ export default function Home() {
       screen = <AccountShowcaseScreen state={state} store={store} />;
       break;
     case "dailies":
-      screen = <DailiesScreen state={state} now={now} store={store} />;
+      screen = <DailiesScreen state={state} now={now} store={store} onSelectTab={setTab} />;
       break;
     case "achievements":
       screen = <AchievementsScreen state={state} />;
@@ -4575,9 +4663,18 @@ export default function Home() {
       )}
       <div className="mx-auto grid min-w-0 max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-4">
-          {overlayFocus === "offline" && <OfflineSummaryPanel store={store} onSelectTab={setTab} />}
+          {(overlayFocus === "offline" || overlayFocus === "result") && (
+            <GuildReportPanel
+              state={state}
+              now={now}
+              offlineSummary={store.lastOfflineSummary}
+              expeditionResult={store.lastExpeditionResult}
+              onSelectTab={(next) => setTab(next as TabId)}
+              onDismissOffline={store.dismissOfflineSummary}
+              onDismissExpedition={store.dismissExpeditionResult}
+            />
+          )}
           {overlayFocus === "message" && <MessagePanel store={store} suppressNonError={onboardingFocused} />}
-          {overlayFocus === "result" && <ExpeditionResultPanel state={state} store={store} onSelectTab={setTab} />}
           {screen}
         </div>
         <DesktopSide state={state} now={now} />

@@ -2,149 +2,102 @@
 
 ## Fantasía principal actual
 
-Jugador controla **un solo héroe** en un RPG idle de expediciones:
+El jugador controla un único héroe en un RPG idle local-first de expediciones, progreso de cuenta y resets de run:
 
-- sale a dungeons con timer,
-- resuelve recompensas determinísticas,
-- mejora equipo e infraestructura,
-- completa contracts,
-- usa vigor como boost,
-- hace reincarnación para progreso permanente.
-
-## Referencias de diseño presentes en el proyecto
-
-No hay referencias en código, pero sí en documentación existente (`docs/PRODUCT_SPEC.md` y serie `docs/00..07`):
-
-- idle RPG timer-based,
-- loot-driven progression,
-- loop de reincarnación.
+- corre rutas por región con timer,
+- recibe progreso de Mastery + Account Rank en cada resultado,
+- construye Town persistente,
+- prepara y enfrenta bosses con amenazas,
+- usa Focus para acelerar decisiones clave,
+- reincarna para convertir progreso en Soul Marks permanentes.
 
 ## Core loop actual implementado
 
 1. Crear héroe (nombre + clase).
-2. Elegir dungeon desbloqueado.
-3. Iniciar expedición (opcional boost de vigor).
-4. Esperar timer.
-5. Resolver expedición con panel dedicado de resultado (éxito/fracaso, XP, oro, materiales, vigor boost, level-up, loot, comparación de equipo, boss clear y unlocks).
-6. Equipar / vender / salvear.
-7. Craftear o mejorar ítems en Forge.
-8. Subir edificios del pueblo.
-9. Completar/claim contracts.
-10. Reincarnar al cumplir gate (Lv10 + boss región 3).
+2. Elegir una ruta desbloqueada (o planear Caravan por región).
+3. Iniciar expedición.
+4. Reclamar resultado (normal o `Claim x2` con Focus si alcanza).
+5. Procesar progreso permanente del run:
+   - Mastery por dungeon,
+   - Account XP/rank,
+   - materiales regionales,
+   - colección/diario/títulos/trofeos cuando aplica.
+6. Resolver decisiones de inventario/build:
+   - equip/sell/salvage,
+   - traits/family resonance,
+   - presets.
+7. Gastar economía en Forge/Town/Prep/Outpost.
+8. Escalar hacia boss/reincarnation/class change según estado.
 
-## Sistemas existentes reales (implementados)
+## Estado de implementación por fases (`implementation_4_2_1`)
 
-- Creación de héroe: nombre + clase (`warrior/rogue/mage`).
-- Stats base + crecimiento por nivel.
-- Pasivas por clase (niveles 5/10/15).
-- 5 regiones y 20 dungeons (4 por región, boss al final).
-- 1 expedición activa a la vez.
-- Resolución determinística con seed.
-- Resultado visible post-claim con momentos destacados:
-  primera arma garantizada, rare+ drops, boss loot, level-ups, first boss clear y desbloqueos de dungeon/región.
-- Resultado post-claim compacto con una línea de rewards, chips de momentos importantes, aviso de Vigor x2, level-up destacado, Awards agrupados y rareza visible de loot.
-- Siguiente acción contextual después del claim:
-  equipar item mejor, intentar siguiente dungeon/boss, abrir contracts, Forge o Town.
-- Feedback global de acciones:
-  mensajes tipo notice/toast para errores, Forge, Town upgrades, equip/sell/salvage, contracts y reincarnation.
-- Loot:
-  - 5 slots (`weapon/helm/armor/boots/relic`),
-  - 4 rarezas,
-  - 32 afijos con stats y efectos de utilidad equipados,
-  - nombres por rareza + base de slot + prefijo/sufijo de afijo,
-  - comparación por Item Power, delta total, delta de stats y delta de utilidad,
-  - Loot Focus en Inventory para sesgar drops de expedición hacia un slot,
-  - pity de drop después de rachas sin loot,
-  - anti-duplicado temprano por peso de slots recientes.
-- Inventario con cap 30, barra de capacidad y warning desde 24.
-- Overflow de loot: auto-salvage con aviso explícito cuando inventario está lleno.
-- Economía de ítems: equip/sell/salvage con valor visible de venta y materiales visibles de salvage.
-- Forge:
-  - craft random (slot opcional + class bias),
-  - upgrade de ítem (+0 a +10),
-  - salvage de inventario con retorno visible,
-  - reroll de un afijo por vez desde Forge nivel 3.
-- Town con 6 edificios como pilar central de progresión:
-  - propósito claro,
-  - costo/current/next visibles,
-  - milestones por edificio,
-  - feedback de estado y upgrade.
-- Contracts:
-  - 1 contrato Main + 2 Side por día,
-  - reset 23:00 hora local,
-  - weekly chest con 3 hitos por contratos reclamados,
-  - claim único,
-  - sin streak penalties, ads, premium currency ni battle pass.
-- Vigor:
-  - cap 100,
-  - regen +1/5m,
-  - boost de expedición (base 20 vigor, x2 rewards),
-  - algunos afijos equipados reducen el costo efectivo del boost.
-- Offline progress:
-  - cap 8h,
-  - resolución expedición,
-  - progreso/payout de Caravan si hay job activo,
-  - vigor regen,
-  - reset de Contracts.
-- Reincarnación:
-  - gate: nivel 10 + `curator-of-blue-fire`,
-  - Soul Marks (internamente `renown`),
-  - upgrades permanentes simples,
-  - pantalla explica requirements, reset/persist, currency gained y por qué el siguiente run acelera,
-  - barras de progreso para level gate y ruta al boss gate.
-- UI/feedback:
-  - texto + cards mobile-first,
-  - navegación móvil horizontal compacta,
-  - Next Goal visible en header, milestones y sidebar desktop,
-  - empty states con flavor corto,
-  - resource/Vigor chips compactos con labels cortos y números estables,
-  - inventario compacto con badges, Item Power, comparación, preview de 1-2 afijos y acciones cortas,
-  - Forge con filas estables para nombres largos y botones de upgrade/reroll/salvage alineados,
-  - rare/epic/legendary con tratamiento visual semántico, tint/borde controlado y hover sutil,
-  - sólo microfeedback CSS/Tailwind; sin sprites, canvas, motores de juego ni animaciones complejas.
-- Save local:
-  - autosave localStorage,
-  - export/import JSON,
-  - validación de envelope.
-- Awards con unlock automático.
+- Phase 0: schema + migración a Focus + boundaries persistentes implementados.
+- Phase 1: first-run, mastery, panel de resultado y Account Rank skeleton implementados.
+- Phase 2: Daily Focus, daily missions, weekly quest y Account Showcase local implementados.
+- Phase 3: materiales regionales activos, sinks regionales, region completion y collections implementados.
+- Phase 4: bosses nombrados, scout/prep, amenazas y failure intel implementados.
+- Phase 5A: construcción persistente con aceleración por Focus y claim implementada.
+- Phase 5B: Caravan por región + bloqueo de expediciones concurrentes implementado.
+- Phase 5C: outposts regionales implementados.
+- Phase 5D: class change temprano gratis + class change post-rebirth implementado.
+- Phase 6: traits, families, presets y locks implementados.
+- Phase 7: diaries, codex de traits/families y Caravan Mastery implementados.
+- Phase 8: regiones 3-5 activadas (Azure/Stormglass/First Forge), expansión de rewards y upgrades implementada.
+- Phase 9: activado en slice local-first (primer evento no punitivo + banner + reward schedule + notificaciones opcionales por opt-in para completions).
 
-## Sistemas parcialmente implementados
+## Sistemas reales implementados (snapshot 2026-05-16)
 
-- Terminología de reincarnación:
-  - UI usa “Reincarnation / Soul Marks”.
-  - Parte del código/tipos todavía usa nombres “prestige/renown”.
-  - Funcionalmente opera, pero hay inconsistencia de naming.
-- Awards existen en estado y motor (`src/game/achievements.ts`) y su estado se muestra en la UI.
+- 5 regiones, 20 dungeons, 5 bosses (`sunlit-marches` -> `first-forge`).
+- Focus (`cap 200` base, regen `1/15m`, boost opcional por claim).
+- Account Rank hasta 16 con expansión de cap de Focus.
+- Daily Missions + Weekly Quest + Weekly Contracts milestone chest.
+- Mastery tiers por dungeon con claim y recompensas permanentes.
+- Region materials activos:
+  - `sunlitTimber`,
+  - `emberResin`,
+  - `archiveGlyph`,
+  - `stormglassShard`,
+  - `oathEmber`.
+- Collections por región con pity, completion y recompensas permanentes.
+- Diaries por región con tareas y claim de tier.
+- Boss prep loop:
+  - scout (Focus),
+  - prep por amenaza (Focus + material regional),
+  - intel en derrota.
+- Town persistente con construcción por timer desde nivel 1.
+- Outposts con selección de bonus por región.
+- Caravan:
+  - una activa a la vez,
+  - bloquea nuevas expediciones mientras corre,
+  - mastery por región.
+- Loot/buildcraft:
+  - affixes,
+  - traits (tactical/regional/progress),
+  - families y resonance,
+  - equip best contextual,
+  - presets.
+- Rebirth/Reincarnation con Soul Marks, upgrades permanentes y class change rules.
+- Event layer Phase 9:
+  - primer evento no punitivo con participación por expedición,
+  - banner activo con progreso y tiers claimables,
+  - reward schedule temporal sin poder permanente exclusivo.
+- Notificaciones opcionales por opt-in explícito para completions de Caravan/Construction.
+- Save local con import/export + migración de saves legacy.
+- UI móvil/escritorio con navegación por tabs/subviews y overlays priorizados.
 
-## Sistemas planeados (sólo porque aparecen explícitos en docs existentes)
+## Sistemas no implementados (intencionalmente)
 
-Documentados como post-MVP en docs históricas del repo:
+- backend,
+- cuentas,
+- cloud save obligatorio,
+- PvP/social/chat,
+- monetización runtime,
+- web push/service-worker obligatorio para progresión,
+- eventos live obligatorios.
 
-- razas jugables,
-- pets,
-- class awakening,
-- PvP/social,
-- monetización runtime.
+## Guardrails de diseño vigentes
 
-No están implementados en `src/`.
-
-## Qué NO está implementado todavía
-
-- Backend/API de juego.
-- Cuentas de usuario.
-- Cloud save.
-- Multiplayer.
-- Chat.
-- PvP.
-- Monetización activa en cliente.
-- Inventario/grid drag&drop avanzado.
-- Múltiples héroes.
-
-## Principios de diseño recomendados (para seguir el estado actual)
-
-- Simple: agregar profundidad con números/sistemas existentes, no con subsistemas nuevos.
-- Adictivo: reforzar feedback del loop corto (expedición -> recompensa -> decisión).
-- Timer-based/idle: mantener el corazón del juego en timers + resolución determinística.
-- Modular: mantener reglas en `src/game`.
-- Evitar feature creep: usar `docs/06_TASKS.md` como guardrail.
-- Evitar duplicación: no reimplementar lógica de economy/contracts/vigor/save fuera de `src/game`.
+- Lógica en `src/game`, no en UI/store.
+- Persistencia local como fuente de verdad.
+- Cada fase debe dejar el juego jugable sin backend.
+- No introducir sistemas fuera del alcance de `docs/design/implementation_4_2_1.md`.

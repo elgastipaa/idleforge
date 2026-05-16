@@ -9,6 +9,7 @@ import {
   buyBuildingUpgrade,
   claimDailyTask,
   claimDailyFocus,
+  claimEventReward,
   claimWeeklyQuest,
   claimWeeklyContractMilestone,
   cancelCaravanJob,
@@ -47,6 +48,7 @@ import {
   startCaravanJob,
   startExpedition,
   dismissAccountShowcaseDiscovery,
+  getEventBannerSummary,
   toggleShowcaseTrophy,
   toggleItemLock,
   upgradeItem,
@@ -93,6 +95,7 @@ export type GameStore = {
   claimDaily: (taskId: string) => void;
   claimWeeklyQuest: () => void;
   claimWeeklyContract: (milestoneIndex: number) => void;
+  claimEventReward: (eventId: string, rewardTierIndex: number) => void;
   claimMasteryTier: (dungeonId: string) => void;
   fundRegionalProject: (sinkId: string) => void;
   claimRegionDiary: (regionId: string) => void;
@@ -111,6 +114,7 @@ export type GameStore = {
   dismissAccountShowcaseDiscovery: () => void;
   setDebugBalance: (enabled: boolean) => void;
   setReducedMotion: (enabled: boolean) => void;
+  setCompletionNotificationsOptIn: (enabled: boolean) => void;
   dismissOnboarding: () => void;
   exportSave: () => string;
   importSaveRaw: (raw: string) => void;
@@ -456,6 +460,15 @@ export const useGameStore = create<GameStore>()(
         set({ state: result.state, error: null, lastMessage: result.message ?? "Weekly milestone claimed." });
       },
 
+      claimEventReward: (eventId, rewardTierIndex) => {
+        const result = claimEventReward(get().state, eventId, rewardTierIndex, Date.now());
+        if (!result.ok) {
+          set({ error: result.error });
+          return;
+        }
+        set({ state: result.state, error: null, lastMessage: result.message ?? "Event reward claimed." });
+      },
+
       claimMasteryTier: (dungeonId) => {
         const now = Date.now();
         const result = claimMasteryTier(get().state, dungeonId, now);
@@ -615,6 +628,22 @@ export const useGameStore = create<GameStore>()(
         state.settings.reducedMotion = enabled;
         state.updatedAt = Date.now();
         set({ state, error: null });
+      },
+
+      setCompletionNotificationsOptIn: (enabled) => {
+        const state = structuredClone(get().state) as GameState;
+        state.settings.completionNotificationsOptIn = enabled;
+        state.updatedAt = Date.now();
+        const activeEvent = getEventBannerSummary(state, Date.now());
+        set({
+          state,
+          error: null,
+          lastMessage: enabled
+            ? activeEvent
+              ? "Completion notifications enabled. Event progress can be claimed from the banner."
+              : "Completion notifications enabled."
+            : "Completion notifications disabled."
+        });
       },
 
       dismissOnboarding: () => {

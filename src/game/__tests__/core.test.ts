@@ -8,6 +8,7 @@ import {
   BOSS_DEFINITIONS,
   DAILY_RESET_HOUR_LOCAL,
   DUNGEONS,
+  EVENT_DEFINITIONS,
   EXPEDITION_PROGRESS_REWARDS,
   FORGE_AFFIX_REROLL_REQUIRED_LEVEL,
   HERO_CLASSES,
@@ -45,6 +46,7 @@ import {
   claimBuildingConstruction,
   claimCaravanJob,
   claimCaravanMasteryTier,
+  claimEventReward,
   claimMasteryTier,
   claimRegionDiaryReward,
   claimWeeklyQuest,
@@ -65,9 +67,11 @@ import {
   getBossViewSummary,
   getBuildingConstructionDurationMs,
   getBuildingCost,
+  getCommandCenterSummary,
   getCraftCost,
   getDerivedStats,
   getDurationMs,
+  getEventBannerSummary,
   getDailyWindowStartAt,
   getGoldMultiplier,
   getItemUpgradeCost,
@@ -79,6 +83,7 @@ import {
   getNextGoal,
   getNextClaimableMasteryTier,
   getPinnedTrophyEntries,
+  getGuildhallSlotSummaries,
   getSelectedTitleDefinition,
   getSellMultiplier,
   getSuccessChance,
@@ -89,8 +94,12 @@ import {
   getItemTraitDefinition,
   getCaravanMasterySummary,
   getRegionCompletionSummary,
+  getRegionFrontSummaries,
   getRegionCollectionSummary,
   getRegionDiarySummary,
+  getReturnReportSummary,
+  getOrdersBoardSummary,
+  getWarRoomSummary,
   getVisibleRegionCollectionSummaries,
   getWeeklyWindowStartAt,
   getXpMultiplier,
@@ -930,6 +939,56 @@ describe("town, dailies, offline, and saves", () => {
     expect(progressed.completionPercent).toBeGreaterThan(0);
   });
 
+  it("builds technical direction summaries from existing state only", () => {
+    let state = makeReadyState("direction-summaries");
+    state.accountRank.accountRank = 2;
+    state.resources.gold = 1_000;
+    state.regionProgress.materials.sunlitTimber = 20;
+    state = ensureDailies(state, NOW).state;
+
+    const slots = getGuildhallSlotSummaries(state, NOW);
+    expect(slots).toHaveLength(BUILDINGS.length);
+    expect(slots.find((slot) => slot.buildingId === "forge")).toMatchObject({
+      level: 0,
+      status: "foundation",
+      canUpgrade: true
+    });
+
+    const fronts = getRegionFrontSummaries(state);
+    expect(fronts).toHaveLength(ZONES.length);
+    expect(fronts[0]).toMatchObject({
+      zoneId: "sunlit-marches",
+      unlocked: true,
+      routesTotal: 4
+    });
+
+    const orders = getOrdersBoardSummary(state, NOW);
+    expect(orders.orders.some((order) => order.source === "weekly")).toBe(true);
+    expect(orders.orders.some((order) => order.source === "caravan")).toBe(true);
+
+    const warRoom = getWarRoomSummary(state);
+    expect(warRoom.totalCount).toBe(BOSS_DEFINITIONS.length);
+    expect(warRoom.nextBoss?.boss.id).toBe("bramblecrown");
+
+    const command = getCommandCenterSummary(state, NOW);
+    expect(command.guildhallSlots).toHaveLength(BUILDINGS.length);
+    expect(command.frontier).toHaveLength(ZONES.length);
+    expect(command.primaryAction.label.length).toBeGreaterThan(3);
+
+    const emptyReport = getReturnReportSummary(state, null, null, NOW);
+    expect(emptyReport.kind).toBe("empty");
+  });
+
+  it("summarizes expedition return reports without mutating save state", () => {
+    const resolved = completeFirstExpedition();
+    const report = getReturnReportSummary(resolved.state, null, resolved.summary, NOW + 60_000);
+
+    expect(report.kind).toBe("expedition");
+    expect(report.headline).toContain(resolved.summary.dungeon.name);
+    expect(report.rows.some((row) => row.id === "rewards")).toBe(true);
+    expect(report.actions.some((action) => action.tab === "expeditions")).toBe(true);
+  });
+
   it("spends active regional materials through Phase 3A sinks", () => {
     const state = makeReadyState("phase-3a-sinks");
     state.regionProgress.materials.sunlitTimber = 6;
@@ -1159,6 +1218,79 @@ describe("town, dailies, offline, and saves", () => {
     expect(getDurationMs(durationState, stormglass)).toBeLessThan(baseDuration);
   });
 
+  it("applies Phase 9 event bonuses only while the event is active", () => {
+    const event = EVENT_DEFINITIONS[0];
+    expect(event).toBeTruthy();
+    if (!event) throw new Error("missing phase 9 event");
+
+    const dungeon = DUNGEONS.find((entry) => entry.id === "ashdoor-antechamber");
+    expect(dungeon).toBeTruthy();
+    if (!dungeon) throw new Error("missing first forge route");
+
+    const inactiveNow = event.startsAt - 60_000;
+    const activeNow = event.startsAt + 60_000;
+
+    const inactiveState = createInitialState("phase-9-inactive", inactiveNow);
+    inactiveState.settings.heroCreated = true;
+    const inactiveProgress = applyExpeditionProgress(inactiveState, dungeon, true, false, inactiveNow);
+
+    const activeState = createInitialState("phase-9-active", activeNow);
+    activeState.settings.heroCreated = true;
+    const activeProgress = applyExpeditionProgress(activeState, dungeon, true, false, activeNow);
+
+    expect(activeProgress.masteryXpGained).toBeGreaterThan(inactiveProgress.masteryXpGained);
+    expect(activeProgress.regionalMaterials.oathEmber ?? 0).toBeGreaterThan(inactiveProgress.regionalMaterials.oathEmber ?? 0);
+  });
+
+  it("tracks Phase 9 non-punitive event participation and reward schedule claims", () => {
+    const event = EVENT_DEFINITIONS[0];
+    expect(event).toBeTruthy();
+    if (!event) throw new Error("missing phase 9 event");
+
+    const eventNow = event.startsAt + 120_000;
+    let state = createInitialState("phase-9-claims", eventNow);
+    state.settings.heroCreated = true;
+    state = ensureDailies(state, eventNow).state;
+
+    const dungeon = DUNGEONS.find((entry) => entry.id === "tollroad-of-trinkets");
+    expect(dungeon).toBeTruthy();
+    if (!dungeon) throw new Error("missing event participation route");
+
+    applyExpeditionProgress(state, dungeon, true, false, eventNow + 1);
+    applyExpeditionProgress(state, dungeon, false, false, eventNow + 2);
+    applyExpeditionProgress(state, dungeon, true, false, eventNow + 3);
+    applyExpeditionProgress(state, dungeon, false, false, eventNow + 4);
+
+    const banner = getEventBannerSummary(state, eventNow + 5);
+    expect(banner).toBeTruthy();
+    if (!banner) throw new Error("event banner missing");
+    expect(banner.progress.participation).toBe(4);
+
+    const tierOne = banner.tiers.find((tier) => tier.tier === 1);
+    expect(tierOne?.claimable).toBe(true);
+    if (!tierOne) throw new Error("missing tier 1");
+
+    const before = {
+      gold: state.resources.gold,
+      fragments: state.resources.fragments,
+      focus: state.focus.current,
+      renown: state.resources.renown,
+      upgrades: structuredClone(state.prestige.upgrades)
+    };
+
+    const claimed = claimEventReward(state, banner.event.id, tierOne.rewardIndex, eventNow + 6);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("event reward claim failed");
+    expect(claimed.state.resources.gold).toBeGreaterThan(before.gold);
+    expect(claimed.state.resources.fragments).toBeGreaterThan(before.fragments);
+    expect(claimed.state.focus.current).toBeGreaterThanOrEqual(before.focus);
+    expect(claimed.state.resources.renown).toBe(before.renown);
+    expect(claimed.state.prestige.upgrades).toEqual(before.upgrades);
+
+    const duplicate = claimEventReward(claimed.state, banner.event.id, tierOne.rewardIndex, eventNow + 7);
+    expect(duplicate.ok).toBe(false);
+  });
+
   it("scouts and prepares boss threats with Focus and regional materials", () => {
     const state = makeReadyState("phase-4-scout-prep");
     state.focus.current = 200;
@@ -1301,6 +1433,39 @@ describe("town, dailies, offline, and saves", () => {
     expect(claimed.state.focus.current).toBe(beforeFocus);
     expect(claimed.state.accountRank.accountXp).toBeGreaterThan(beforeAccountXp);
     expect(claimDailyTask(claimed.state, claimable.id, NOW + 5).ok).toBe(false);
+  });
+
+  it("only offers Caravan daily missions after Caravan is meaningfully unlocked", () => {
+    let early = makeReadyState("caravan-daily-locked");
+    applyAccountXp(early, 100, NOW + 1);
+    early.hero.level = 2;
+    early = ensureDailies(early, NOW + 2).state;
+    expect(early.dailies.tasks.some((task) => task.kind === "complete_caravan")).toBe(false);
+
+    let eligible = makeReadyState("caravan-daily-unlocked");
+    applyAccountXp(eligible, 100, NOW + 1);
+    eligible.hero.level = 3;
+    eligible = ensureDailies(eligible, NOW + 2).state;
+    expect(eligible.dailies.tasks.some((task) => task.kind === "complete_caravan")).toBe(true);
+  });
+
+  it("progresses Caravan daily missions when a real Caravan is claimed", () => {
+    let state = makeReadyState("caravan-daily-progress");
+    applyAccountXp(state, 100, NOW + 1);
+    state.hero.level = 3;
+    state = ensureDailies(state, NOW + 2).state;
+    const task = state.dailies.tasks.find((entry) => entry.kind === "complete_caravan");
+    expect(task).toBeDefined();
+    if (!task) throw new Error("complete_caravan daily missing");
+
+    const planned = startCaravanJob(state, "gold", 60 * 60 * 1000, NOW + 3);
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) throw new Error("caravan plan failed");
+
+    const claimed = claimCaravanJob(planned.state, NOW + 60 * 60 * 1000 + 3);
+    expect(claimed.ok).toBe(true);
+    if (!claimed.ok) throw new Error("caravan claim failed");
+    expect(claimed.state.dailies.tasks.find((entry) => entry.kind === "complete_caravan")?.progress).toBe(1);
   });
 
   it("tracks and claims the day-one Weekly Quest fallback", () => {

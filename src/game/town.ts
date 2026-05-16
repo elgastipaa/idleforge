@@ -6,6 +6,7 @@ import { recordRegionDiaryProgress } from "./diaries";
 import { cloneState, createEmptyConstruction } from "./state";
 import type {
   ActionResult,
+  BuildingDefinition,
   BuildingConstructionCost,
   BuildingId,
   ConstructionProgressSummary,
@@ -23,6 +24,31 @@ export const CONSTRUCTION_CANCEL_REFUND_RATE = 0.8;
 
 type BuildingConstructionSeed = BuildingConstructionCost & {
   durationMs: number;
+};
+
+export type GuildhallSlotStatus = "foundation" | "ready" | "needs_resources" | "building" | "ready_to_claim" | "blocked" | "maxed";
+
+export type GuildhallSlotSummary = {
+  building: BuildingDefinition;
+  buildingId: BuildingId;
+  name: string;
+  purpose: string;
+  description: string;
+  level: number;
+  maxLevel: number;
+  targetLevel: number | null;
+  status: GuildhallSlotStatus;
+  canUpgrade: boolean;
+  blockedByActiveConstruction: boolean;
+  activeHere: boolean;
+  cost: BuildingConstructionCost | null;
+  durationMs: number | null;
+  constructionProgress: ConstructionProgressSummary | null;
+  lockedReason: string | null;
+  currentEffect: string;
+  nextEffect: string | null;
+  levelProgressPercent: number;
+  milestoneLabels: { level: number; label: string; reached: boolean }[];
 };
 
 const BUILDING_CONSTRUCTION_SEEDS: Record<BuildingId, Record<number, BuildingConstructionSeed>> = {
@@ -200,6 +226,71 @@ export function getActiveConstructionProgress(state: GameState, now: number): Co
     progress: construction.baseDurationMs === 0 ? 1 : Math.min(1, elapsedMs / construction.baseDurationMs),
     ready: remainingMs === 0
   };
+}
+
+export function getGuildhallSlotSummaries(state: GameState, now: number): GuildhallSlotSummary[] {
+  const activeProgress = getActiveConstructionProgress(state, now);
+  const activeBuildingId = state.construction.activeBuildingId;
+
+  return BUILDINGS.map((building) => {
+    const buildingId = building.id;
+    const level = state.town[buildingId];
+    const maxed = level >= building.maxLevel;
+    const targetLevel = maxed ? null : level + 1;
+    const activeHere = activeBuildingId === buildingId;
+    const blockedByActiveConstruction = Boolean(activeBuildingId && !activeHere);
+    const cost = targetLevel ? getBuildingConstructionCostForLevel(buildingId, targetLevel) : null;
+    const durationMs = targetLevel ? getBuildingConstructionDurationMs(buildingId, targetLevel) : null;
+    const affordable = cost ? canAffordConstructionCost(state, cost) : false;
+    const canUpgrade = !maxed && !activeBuildingId && affordable;
+
+    let status: GuildhallSlotStatus;
+    let lockedReason: string | null = null;
+    if (maxed) {
+      status = "maxed";
+    } else if (activeHere && activeProgress?.ready) {
+      status = "ready_to_claim";
+    } else if (activeHere) {
+      status = "building";
+    } else if (blockedByActiveConstruction) {
+      status = "blocked";
+      lockedReason = "Another guild project is already active.";
+    } else if (!affordable) {
+      status = "needs_resources";
+      lockedReason = "Needs more resources or regional materials.";
+    } else if (level === 0) {
+      status = "foundation";
+    } else {
+      status = "ready";
+    }
+
+    return {
+      building,
+      buildingId,
+      name: building.name,
+      purpose: building.purpose,
+      description: building.description,
+      level,
+      maxLevel: building.maxLevel,
+      targetLevel,
+      status,
+      canUpgrade,
+      blockedByActiveConstruction,
+      activeHere,
+      cost,
+      durationMs,
+      constructionProgress: activeHere ? activeProgress : null,
+      lockedReason,
+      currentEffect: building.effectText(level),
+      nextEffect: targetLevel ? building.effectText(targetLevel) : null,
+      levelProgressPercent: Math.floor((level / building.maxLevel) * 100),
+      milestoneLabels: building.milestones.map((milestone) => ({
+        level: milestone.level,
+        label: milestone.label,
+        reached: level >= milestone.level
+      }))
+    };
+  });
 }
 
 export function markConstructionReady(state: GameState, now: number): ConstructionProgressSummary | null {

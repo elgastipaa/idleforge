@@ -1,7 +1,8 @@
-import { DUNGEONS } from "./content";
-import { MASTERY_TIERS } from "./progression";
+import { DUNGEONS, ZONES } from "./content";
+import { getUnlockText, isDungeonUnlocked } from "./expeditions";
+import { MASTERY_TIERS, REGION_MATERIAL_LABELS } from "./progression";
 import { cloneState } from "./state";
-import type { ActionResult, GameState, RegionCompletionSummary, RegionMaterialId, RegionalMaterialSinkDefinition } from "./types";
+import type { ActionResult, DungeonDefinition, GameState, RegionCompletionSummary, RegionMaterialId, RegionalMaterialSinkDefinition, ZoneDefinition } from "./types";
 
 const ACTIVE_REGION_MATERIAL_ENTRIES: { regionId: string; materialId: RegionMaterialId }[] = [
   { regionId: "sunlit-marches", materialId: "sunlitTimber" },
@@ -67,6 +68,30 @@ export const REGIONAL_MATERIAL_SINKS: RegionalMaterialSinkDefinition[] = [
   }
 ];
 
+export type RegionFrontStatus = "locked" | "contested" | "boss_ready" | "secured";
+
+export type RegionFrontSummary = {
+  zone: ZoneDefinition;
+  zoneId: string;
+  name: string;
+  subtitle: string;
+  status: RegionFrontStatus;
+  unlocked: boolean;
+  unlockHint: string | null;
+  dungeons: DungeonDefinition[];
+  routesCleared: number;
+  routesTotal: number;
+  availableRoutes: number;
+  completionPercent: number;
+  materialId: RegionMaterialId | null;
+  materialName: string | null;
+  materialAmount: number;
+  boss: DungeonDefinition | null;
+  bossStatus: "locked" | "available" | "defeated" | "none";
+  recommendedDungeon: DungeonDefinition | null;
+  outpostStatus: "locked" | "available" | "selected";
+};
+
 export function getRegionMaterialId(regionId: string): RegionMaterialId | null {
   return REGION_MATERIAL_BY_REGION_ID[regionId] ?? null;
 }
@@ -106,6 +131,46 @@ export function getRegionCompletionSummary(state: GameState, regionId: string): 
     completionPercent,
     outpost: state.regionProgress.outposts[regionId] ?? null
   };
+}
+
+export function getRegionFrontSummaries(state: GameState): RegionFrontSummary[] {
+  return ZONES.map((zone) => {
+    const dungeons = DUNGEONS.filter((dungeon) => dungeon.zoneId === zone.id);
+    const unlockedDungeons = dungeons.filter((dungeon) => isDungeonUnlocked(state, dungeon));
+    const clearedDungeons = dungeons.filter((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) > 0);
+    const boss = dungeons.find((dungeon) => dungeon.boss) ?? null;
+    const bossUnlocked = Boolean(boss && isDungeonUnlocked(state, boss));
+    const bossDefeated = Boolean(boss && (state.dungeonClears[boss.id] ?? 0) > 0);
+    const recommendedDungeon = unlockedDungeons.find((dungeon) => (state.dungeonClears[dungeon.id] ?? 0) === 0) ?? unlockedDungeons.at(-1) ?? null;
+    const firstLockedDungeon = dungeons.find((dungeon) => !isDungeonUnlocked(state, dungeon)) ?? null;
+    const completion = getRegionCompletionSummary(state, zone.id);
+    const outpost = state.regionProgress.outposts[zone.id] ?? null;
+    const unlocked = unlockedDungeons.length > 0;
+    const bossStatus = !boss ? "none" : bossDefeated ? "defeated" : bossUnlocked ? "available" : "locked";
+    const status: RegionFrontStatus = !unlocked ? "locked" : bossStatus === "available" ? "boss_ready" : bossDefeated ? "secured" : "contested";
+
+    return {
+      zone,
+      zoneId: zone.id,
+      name: zone.name,
+      subtitle: zone.subtitle,
+      status,
+      unlocked,
+      unlockHint: unlocked ? null : firstLockedDungeon ? getUnlockText(state, firstLockedDungeon) : "Progress through earlier fronts.",
+      dungeons,
+      routesCleared: clearedDungeons.length,
+      routesTotal: dungeons.length,
+      availableRoutes: unlockedDungeons.length,
+      completionPercent: completion.completionPercent,
+      materialId: completion.materialId,
+      materialName: completion.materialId ? REGION_MATERIAL_LABELS[completion.materialId] : null,
+      materialAmount: completion.materialAmount,
+      boss,
+      bossStatus,
+      recommendedDungeon,
+      outpostStatus: !bossDefeated ? "locked" : outpost?.selectedBonusId ? "selected" : "available"
+    };
+  });
 }
 
 function getRegionalMaterialSinkDefinition(sinkId: string): RegionalMaterialSinkDefinition | null {

@@ -1,6 +1,7 @@
 import { FOCUS_MAX } from "./constants";
 import { DUNGEONS } from "./content";
 import { getRegionDiaryMasteryXpBonus, getRegionDiaryRegionalMaterialYieldBonus } from "./diaries";
+import { getEventMasteryXpMultiplier, getEventRegionalMaterialMultiplier, recordEventParticipation } from "./events";
 import { getRegionalMaterialYieldMultiplier } from "./outposts";
 import {
   getEquippedTraitAccountXpBonus,
@@ -636,23 +637,32 @@ function isCollectionCompleted(state: GameState, collectionId: string): boolean 
   return Boolean(state.regionProgress.collections[collectionId]?.completedAt);
 }
 
-function getMasteryXpWithCollectionBonus(state: GameState, dungeon: DungeonDefinition, baseMasteryXp: number): number {
+function getMasteryXpWithCollectionBonus(state: GameState, dungeon: DungeonDefinition, baseMasteryXp: number, now: number): number {
   const materialId = COLLECTION_REGION_MATERIAL_BY_REGION_ID[dungeon.zoneId] ?? null;
   const bonus = materialId ? COLLECTION_COMPLETION_BONUSES[materialId] : null;
   const collectionMultiplier = bonus && bonus.regionId === dungeon.zoneId && isCollectionCompleted(state, bonus.collectionId) ? bonus.masteryXpMultiplier : 1;
   const multiplier =
-    collectionMultiplier +
+    (collectionMultiplier +
     getEquippedTraitMasteryBonus(state, dungeon.zoneId) +
     getFamilyMasteryBonus(state, dungeon.zoneId) +
-    getRegionDiaryMasteryXpBonus(state, dungeon.zoneId);
+    getRegionDiaryMasteryXpBonus(state, dungeon.zoneId)) *
+    getEventMasteryXpMultiplier(state, dungeon.zoneId, now);
   return Math.floor(baseMasteryXp * multiplier);
 }
 
-function getRegionalMaterialAmountWithCollectionBonus(state: GameState, regionId: string, materialId: RegionMaterialId, baseAmount: number, includeOutpostBonus: boolean): number {
+function getRegionalMaterialAmountWithCollectionBonus(
+  state: GameState,
+  regionId: string,
+  materialId: RegionMaterialId,
+  baseAmount: number,
+  includeOutpostBonus: boolean,
+  now: number
+): number {
   const bonus = COLLECTION_COMPLETION_BONUSES[materialId];
   const collectionMultiplier = bonus && isCollectionCompleted(state, bonus.collectionId) ? bonus.materialYieldMultiplier : 1;
   const multiplier =
     collectionMultiplier *
+    getEventRegionalMaterialMultiplier(state, regionId, now) *
     (includeOutpostBonus ? getRegionalMaterialYieldMultiplier(state, regionId) : 1) *
     (1 +
       getEquippedTraitRegionalMaterialBonus(state, materialId) +
@@ -678,7 +688,7 @@ export function applyExpeditionProgress(
   const trophiesUnlocked: TrophyDefinition[] = [];
 
   const baseMasteryXpGained = reward ? (success ? reward.successMasteryXp : reward.failureMasteryXp) : 0;
-  const masteryXpGained = getMasteryXpWithCollectionBonus(state, dungeon, baseMasteryXpGained);
+  const masteryXpGained = getMasteryXpWithCollectionBonus(state, dungeon, baseMasteryXpGained, now);
   const baseAccountXpGained = reward ? (success ? reward.successAccountXp : reward.failureAccountXp) : 0;
   const firstClearAccountXp = success && firstClear ? (reward?.firstClearAccountXp ?? 0) : 0;
   const accountXpGained = Math.floor((baseAccountXpGained + firstClearAccountXp) * (1 + getEquippedTraitAccountXpBonus(state)));
@@ -690,7 +700,7 @@ export function applyExpeditionProgress(
 
   const regionalReward = reward ? (success ? reward.successRegionalMaterial : reward.failureRegionalMaterial) : undefined;
   if (regionalReward) {
-    const amount = getRegionalMaterialAmountWithCollectionBonus(state, dungeon.zoneId, regionalReward.id, regionalReward.amount, success);
+    const amount = getRegionalMaterialAmountWithCollectionBonus(state, dungeon.zoneId, regionalReward.id, regionalReward.amount, success, now);
     mergeRegionalMaterials(regionalMaterials, addRegionalMaterials(state, { [regionalReward.id]: amount }));
   }
 
@@ -713,6 +723,7 @@ export function applyExpeditionProgress(
   const progress = getMasteryProgress(state, dungeon.id);
   const nextAccountRank = getNextAccountRankDefinition(account.afterXp);
   state.accountPersonalRecords.lifetimeExpeditionsCompleted += 1;
+  recordEventParticipation(state, now, 1);
 
   return {
     masteryXpGained,

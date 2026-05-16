@@ -2,66 +2,76 @@
 
 ## Test Strategy
 
-Focus on deterministic simulation correctness first, then UI integration smoke checks.
+Priorizar simulación determinística del dominio (`src/game`) y usar UI checks como smoke/manual QA.
 
-## Required Unit Test Areas (`src/game`)
+## Current Automated Baseline
 
-- State initialization determinism.
-- Seeded RNG determinism.
-- Expedition unlock logic.
-- Expedition start/resolve rules.
-- Success chance bounds.
-- Reward calculation.
-- Failure reward scale calculation.
-- Loot rarity and affix generation determinism.
-- Inventory cap behavior at 30.
-- Inventory overflow handling at cap.
-- Equip/sell/salvage actions.
-- Forge craft and item upgrade actions.
-- Town upgrade costs/effects.
-- Class passive unlock and effect application.
-- Contract generation and reset at 23:00 local.
-- Contract role mix: 1 Main + 2 Side per day.
-- No streak penalty behavior across resets.
-- Vigor regen (+1/5m, cap 100).
-- Vigor spend (20 cost, 2.0x reward multiplier).
-- Offline cap behavior (8h).
-- Combined offline cap behavior for expedition + Caravan + vigor.
-- Reincarnation reset/persist rules.
-- Reincarnation gate check (level 10 + region 3 boss clear).
-- Save export/import validation.
+- Runner: Vitest
+- Suite actual: `src/game/__tests__/core.test.ts`
+- Cobertura funcional (snapshot): 59 tests
+
+## Required Unit Coverage Areas
+
+- Inicialización de estado + normalización de saves legacy.
+- RNG determinístico y ausencia de `Math.random` en dominio.
+- Reglas de unlock de dungeons/regiones.
+- Start/resolve/claim de expediciones.
+- Mastery tiers y account rank progression.
+- Focus regen/cap/spend (claim boost + sinks relevantes).
+- Boss systems:
+  - scout,
+  - prep,
+  - threat coverage,
+  - failure intel.
+- Region materials, sinks, outposts y completion summaries.
+- Collections:
+  - eligibility,
+  - pity,
+  - completion rewards.
+- Region diaries task tracking + claim.
+- Caravan:
+  - start/cancel/claim,
+  - reward scaling,
+  - mastery tiers.
+- Construction:
+  - start,
+  - accelerate,
+  - cancel,
+  - claim.
+- Reincarnation/class-change rules.
+- Inventory/forge/trait/family/preset interactions.
+- Dailies/weekly contracts/weekly quest reset behavior.
+- Events:
+  - active banner summary visibility,
+  - temporary event multipliers,
+  - non-punitive participation progression,
+  - reward tier claiming and duplicate-claim protection.
+- Save export/import validation and migration safety.
 
 ## Determinism Assertions
 
-- Same seed + same state + same run id -> same result.
-- No `Math.random` in simulation modules.
-- Import failure does not mutate state.
+- Mismo seed + mismo estado + mismo run id => mismo resultado.
+- Fallos de import o acciones inválidas no mutan estado.
+- Recompensas y progresión dependen solo de inputs de estado/tiempo/RNG seeded.
 
-## Integration Smoke Tests
+## Integration / Manual Smoke
 
-- First character creation flow.
-- First expedition complete and reward modal.
-- Equip item and see stat delta.
-- Upgrade first town building.
-- Claim one contract reward.
-- Verify contract reset at 23:00 local with deterministic clock input.
-- Perform first reincarnation from prepared state.
+- Flujo nueva partida -> primer clear -> start again.
+- Primer boss con scout/prep/intel visible.
+- Flujo de construcción y Caravan con retorno offline.
+- Unlock + claim de milestones (mastery, colección, diario, outpost).
+- Rebirth + class change path.
 
-## Balance Regression Checks
-
-- First 5-minute progression remains possible.
-- First major unlock remains 5-10 minutes.
-- First reincarnation remains 30-60 minutes in production config.
-- Debug config reaches first reincarnation in 5-10 minutes.
+Checklist operativo manual: `docs/manual_test_phase_5_6.md`.
 
 ## Build Gates
 
-- `npm run test` passes.
-- `npm run typecheck` passes.
-- `npm run build` passes.
+- `npm test`
+- `npm run typecheck`
+- `npm run build`
 
 ## Done When
 
-- Critical gameplay systems have deterministic tests.
-- Reincarnation, contracts, vigor, and offline caps are covered by tests.
-- First-session path invariants have at least one regression test each.
+- Sistemas core de Phase 0-9 local-first están cubiertos por regresión automatizada.
+- Futuros cambios opcionales (cloud showcase/push real) no deben alterar invariantes determinísticos de progresión local.
+- Cambios de balance/estado se acompañan con actualización de tests y docs.

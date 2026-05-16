@@ -25,5 +25,7 @@ export * from "./traits";
 export * from "./diaries";
 export * from "./showcase";
 export * from "./caravan";
+export * from "./events";
 export * from "./offline";
+export * from "./command-center";
 export * from "./save";

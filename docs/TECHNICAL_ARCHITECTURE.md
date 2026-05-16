@@ -2,137 +2,108 @@
 
 ## Canonical Planning Rule
 
-- `docs/` is the single planning source.
-- Do not keep duplicate planning specs at repository root.
+- `docs/` is the canonical planning source.
+- `docs/design/implementation_4_2_1.md` is the Launch Candidate baseline spec.
+- `docs/00..07` tracks real implementation state.
 
 ## Stack
 
-- Next.js
-- TypeScript
-- Tailwind
+- Next.js 15
+- TypeScript (strict)
+- Tailwind CSS
 - Zustand
 - Vitest
 - localStorage
 
-## Architecture Layers
+## Runtime Layers
 
 `src/game`:
 
-- Pure deterministic simulation.
-- Content definitions.
-- Formula engine.
-- Save/import validation helpers.
-- Offline progression calculator.
+- Deterministic domain simulation.
+- Content and progression tables.
+- Economy/balance formulas.
+- Save import/normalization.
+- Offline progression.
 
 `src/store`:
 
-- Zustand store.
-- Hydration.
-- localStorage persistence.
-- Action wrappers calling `src/game`.
+- Zustand state container.
+- Hydration/persist orchestration.
+- UI action wrappers around domain transitions.
 
-`src/app` and `src/components`:
+`src/app`:
 
-- Rendering and interaction only.
-- No business formulas.
-
-Forbidden in MVP architecture:
-
-- API routes for gameplay.
-- server-side persistence dependencies.
-- payment or ad SDK integration.
+- Presentation and interaction (`game-view.tsx`).
+- No core formulas or authoritative state transitions.
 
 ## Determinism Rules
 
-- No `Math.random()` in simulation.
-- Use seeded RNG with input:
-  - save seed
-  - expedition id
-  - run id
-- State updates must be pure and testable.
+- No `Math.random()` in simulation modules.
+- Seeded RNG via `src/game/rng.ts`.
+- Transition functions return typed results (`ActionResult`, `ResolveResult`, etc.).
+- Failed import or failed action must not mutate active state.
 
-## Suggested `src/game` Modules
+## Current Domain Module Set
 
-- `types.ts`
-- `constants.ts`
-- `content.ts`
-- `state.ts`
-- `engine.ts`
-- `expeditions.ts`
-- `loot.ts`
-- `heroes.ts`
-- `town.ts`
-- `caravan.ts`
-- `prestige.ts`
-- `achievements.ts`
-- `dailies.ts`
-- `vigor.ts`
-- `save.ts`
-- `offline.ts`
-- `balance.ts`
+- Core: `types`, `constants`, `content`, `state`, `rng`, `balance`, `engine`
+- Gameplay loops: `expeditions`, `loot`, `inventory`, `forge`, `town`, `focus`, `offline`
+- Meta progression: `progression`, `prestige`, `showcase`, `achievements`, `dailies`, `events`
+- Regional systems: `regions`, `bosses`, `collections`, `outposts`, `diaries`, `traits`, `caravan`
+- Persistence: `save`
 
-## Core Data Contracts
+## Core Data Contract (simplified)
 
 ```ts
 type GameState = {
   version: 1;
   seed: string;
+  mode: "standard" | "debug";
   updatedAt: number;
   hero: HeroState;
   resources: ResourceState;
-  vigor: { current: number; max: 100; lastTickAt: number };
+  focus: FocusState;
   inventory: Item[];
   equipment: EquipmentState;
+  buildPresets: BuildPresetMap;
   loot: LootState;
   activeExpedition: ActiveExpedition | null;
-  dungeonClears: Record<string, number>;
-  town: TownState;
+  town: BuildingState;
   caravan: CaravanState;
-  dailies: DailyState; // UI label: Contracts
-  reincarnation: ReincarnationState;
+  dailies: DailyState;
+  dungeonMastery: Record<string, DungeonMasteryState>;
+  accountRank: AccountRankState;
+  regionProgress: RegionProgressState;
+  bossPrep: Record<string, BossPrepState>;
+  construction: ConstructionState;
+  prestige: PrestigeState;
+  soulMarks: SoulMarksState;
+  classChange: ClassChangeState;
+  traitCodex: Record<string, TraitDiscoveryState>;
+  familyCodex: Record<string, FamilyDiscoveryState>;
+  accountShowcase: AccountShowcaseState;
+  titles: Record<string, TitleState>;
+  trophies: Record<string, TrophyState>;
   settings: SettingsState;
 };
 ```
 
-## Save System
+## Save / Offline / Reset Contracts
 
-- localStorage save key is versioned.
-- Export/import via JSON envelope.
-- Failed import must never mutate current state.
+- Save envelope versioned in `save.ts`.
+- Offline simulation capped at 8h.
+- Daily reset hour is local-time based (`DAILY_RESET_HOUR_LOCAL = 4`).
+- Weekly contract milestones and weekly quest state advance through the same deterministic state machine.
+- Event progression and reward claims remain local-state transitions (no cloud-required path).
 
-## Offline System
+## Architecture Risks
 
-Apply capped simulation on load:
+1. `game-view.tsx` size and change-surface breadth.
+2. Legacy naming overlap (`renown/prestige` vs `Soul Marks/Reincarnation`).
+3. Single large test file for many subsystems.
 
-- Expedition completion.
-- Caravan progress and payout if an active job completes.
-- Vigor regeneration.
+## Non-goals in current architecture
 
-Cap:
-
-- 8h maximum elapsed time for offline calculations.
-
-## Contracts Reset System
-
-- Reset schedule: 23:00 local time.
-- Fixed 3 contracts/day: 1 main + 2 side.
-- Weekly chest tracks claimed daily contracts across 3 milestones.
-- No streak tracking in MVP.
-
-## UI Integration Contracts
-
-- UI calls store actions only.
-- Store action -> game function -> validated state transition -> persist.
-- UI displays derived selectors from `src/game`.
-
-## MVP Reliability Gates
-
-- TypeScript strict.
-- Core simulation covered by Vitest.
-- Build and typecheck pass.
-
-## Done When
-
-- The boundaries prevent UI/business logic leakage.
-- Core systems are deterministic and persistence-safe.
-- Architecture does not require backend services to run core gameplay.
+- server-authoritative gameplay,
+- cloud-required progression,
+- social/PvP infrastructure,
+- monetization runtime dependencies.

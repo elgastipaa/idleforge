@@ -1,24 +1,18 @@
 # 03 - Database / Persistencia
 
-## Estado actual: NO hay base de datos
+## Estado actual
 
-No existe motor de DB, ORM, migraciones ni backend.
+No existe base de datos ni backend para gameplay.
 
-## Persistencia real implementada
+La persistencia es local-first:
 
-La persistencia actual es local:
+- storage: `window.localStorage`
+- save key: `relic-forge-idle:v1`
+- theme key: `relic-forge-idle:theme`
+- serialización/import/migración: `src/game/save.ts`
+- hidratación/persist: `src/store/useGameStore.ts`
 
-- mecanismo: `window.localStorage`
-- key: `relic-forge-idle:v1` (`SAVE_KEY`)
-- key de preferencia visual: `relic-forge-idle:theme`
-- archivo principal: `src/store/useGameStore.ts`
-- serialización/validación: `src/game/save.ts`
-
-Nota:
-
-- `relic-forge-idle:theme` guarda sólo `"light"` o `"dark"` para la UI. No forma parte del save envelope ni del modelo `GameState`.
-
-## Envelope real guardado
+## Save envelope real
 
 ```ts
 type SaveEnvelope = {
@@ -29,118 +23,51 @@ type SaveEnvelope = {
 };
 ```
 
-## Modelo persistido (GameState) - resumen
+## `GameState` persistido (snapshot)
 
-Campos raíz relevantes:
+Campos raíz actuales:
 
-- `version`
-- `seed`
-- `mode`
-- `createdAt`
-- `updatedAt`
-- `nextRunId`
-- `hero`
-- `resources`
-- `vigor`
-- `inventory`
-- `equipment`
-- `loot`
-- `activeExpedition`
-- `dungeonClears`
-- `town`
-- `caravan`
-- `dailies` (UI: Contracts)
-- `achievements`
-- `prestige`
-- `lifetime`
-- `settings`
+- metadatos: `version`, `seed`, `mode`, `createdAt`, `updatedAt`, `nextRunId`
+- hero y economía: `hero`, `resources`, `focus`
+- build/loot: `inventory`, `equipment`, `buildPresets`, `loot`
+- run actual: `activeExpedition`, `dungeonClears`
+- meta loops: `town`, `caravan`, `dailies`, `dailyFocus`, `weeklyQuest`
+- progreso permanente: `prestige`, `rebirth`, `soulMarks`, `accountRank`
+- progreso regional: `regionProgress`, `dungeonMastery`, `bossPrep`, `construction`, `classChange`
+- colecciones/codex/showcase: `traitCodex`, `familyCodex`, `accountShowcase`, `titles`, `trophies`
+- tracking/auxiliares: `achievements`, `accountPersonalRecords`, `eventProgress`, `lifetime`, `settings`
 
-Definición completa: `src/game/types.ts`.
+Notas relevantes de los campos nuevos de Phase 9:
 
-## Modelo persistido relevante para loot
+- `eventProgress`: progreso por evento activo (`participation`, `claimedRewards`).
+- `settings.completionNotificationsOptIn`: opt-in explícito para notificaciones de completion (Caravan/Construction).
 
-Los ítems de `inventory` y `equipment` se guardan completos dentro de `GameState`.
-Además, `loot` guarda la dirección de drops y el contador de pity:
+## Normalización y migración de saves
 
-```ts
-type LootState = {
-  focusSlot: "any" | "weapon" | "helm" | "armor" | "boots" | "relic";
-  missesSinceDrop: number;
-  recentSlots: EquipmentSlot[];
-};
-```
+`save.ts` no solo valida shape; también migra saves legacy:
 
-```ts
-type Item = {
-  id: string;
-  name: string;
-  slot: "weapon" | "helm" | "armor" | "boots" | "relic";
-  rarity: "common" | "rare" | "epic" | "legendary";
-  itemLevel: number;
-  upgradeLevel: number;
-  stats: Partial<Stats>;
-  affixes: Affix[];
-  sellValue: number;
-  salvageValue: Partial<MaterialBundle>;
-  sourceDungeonId: string;
-  createdAtRunId: number;
-};
-```
+- `vigor` -> `focus`.
+- recursos legacy (`ore`, `crystal`, `rune`, `relicFragment`) -> `fragments`.
+- wiring de tareas legacy (`spend_vigor` -> `spend_focus`).
+- normalización de campos nuevos (collections/diaries/outposts/mastery/codex/showcase/etc.) si no existían.
+- normalización de `eventProgress` por evento (participation entero no negativo + tiers ya reclamados).
 
-Los afijos también son parte del save porque quedan embebidos en cada `Item`:
+## Reglas de import/seguridad
 
-```ts
-type Affix = {
-  id: string;
-  name: string;
-  stats: Partial<Stats>;
-  effects?: AffixEffects;
-  description: string;
-  prefix?: string;
-  suffix?: string;
-  slots?: EquipmentSlot[];
-};
-```
+- import inválido no muta el estado activo.
+- valores numéricos se clamp/normalizan a rangos seguros.
+- `equipment`/`inventory` se limpian y normalizan en import.
+- duración de caravan y estructura de construcción se revalidan.
 
-`AffixEffects` puede incluir modificadores de XP, oro, oro por zona, materiales, materiales por recurso, rare drop chance, loot chance, boss rewards, success chance, boss success, short mission success, long mission loot, forge discount, costo de Vigor, sell value, salvage, rune gains, duración y failure reward scale.
+## Riesgos actuales
 
-## Lecturas/escrituras reales
+1. `saveVersion` sigue en `1`; la compatibilidad depende de normalizadores internos.
+2. La validación es robusta en estructura, pero no garantiza coherencia de balance en datos editados manualmente.
+3. El crecimiento del `GameState` aumenta costo de mantenimiento del normalizador.
 
-- Hidratación inicial: `useGameStore.hydrate()`.
-- Autosave después de acciones exitosas: `persist()` en store.
-- Export: `serializeSave`.
-- Import: `importSave` + `normalizeImportedState`.
-- Reset: `localStorage.removeItem(SAVE_KEY)`.
+## Fuera de alcance actual
 
-## Validaciones actuales de import/save
-
-`src/game/save.ts` valida:
-
-- `game` y `saveVersion`.
-- shape base de `GameState`.
-- clases, dungeon activo, slots de equipment y límite de inventario.
-- loot focus/pity/recent slots.
-- Caravan activa opcional.
-- vigor (`0..max`, `max<=100`).
-- dailies/Contracts (`1 Main + 2 Side` + tipos válidos + weekly milestones).
-- upgrades de progreso permanente.
-
-## Riesgos / inconsistencias de persistencia
-
-1. No hay estrategia de migración multi-versión más allá de `saveVersion` fijo.
-2. Si cambian tipos de estado, hay riesgo de romper imports viejos sin migrador.
-3. Validación de reward de Contracts es superficial (shape básica; no valida todos los rangos numéricos finos).
-4. No se valida en profundidad la forma interna completa de cada `item` de inventario/equipment durante import, incluyendo `affixes.effects`.
-
-## Futura DB sugerida (NO implementada)
-
-Solo como propuesta futura, no código actual:
-
-- motor sugerido: PostgreSQL.
-- capa sugerida: Prisma.
-- entidades mínimas:
-  - `players` (si hay cuentas),
-  - `saves` (jsonb versionado),
-  - `telemetry_runs` (si se mide balance).
-
-Todo lo anterior está **fuera del estado actual del repo**.
+- cloud save,
+- profiles de usuario remotos,
+- DB relacional/NoSQL,
+- sincronización multi-dispositivo.

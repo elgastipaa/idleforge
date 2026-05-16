@@ -327,7 +327,8 @@ export function createInitialState(seed: string, now: number, classId: HeroClass
       reducedMotion: false,
       debugBalance: false,
       onboardingDismissed: false,
-      heroCreated: false
+      heroCreated: false,
+      completionNotificationsOptIn: false
     }
   };
 }

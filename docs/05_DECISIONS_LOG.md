@@ -1,5 +1,105 @@
 # Decisions Log
 
+Nota: este archivo es histórico por fecha. Para estado operativo actual, priorizar la entrada más reciente.
+
+## 2026-05-16
+
+### Decision: reset diario vigente pasa a `04:00 local` en la baseline actual
+Descripción:
+La referencia operativa de reset diario para Missions/Contracts/Weekly windows en código activo queda en `DAILY_RESET_HOUR_LOCAL = 4`.
+Motivo:
+Evitar drift entre documentación histórica y runtime actual; había entradas previas que fijaban `23:00 local` para etapas anteriores.
+Impacto:
+Los cálculos de ventana diaria/semanal y los tests de reset deben considerar `04:00 local` como regla vigente.
+Archivos relacionados:
+- `src/game/constants.ts`
+- `src/game/state.ts`
+- `src/game/dailies.ts`
+- `src/game/__tests__/core.test.ts`
+
+### Decision: se activa Phase 9 local-first con evento no punitivo
+Descripción:
+Se implementa el primer evento de Launch Candidate (`Guild Foundry Festival`) con participación por expedición, banner visible y reward schedule por tiers reclamables.
+Motivo:
+Cumplir la fase de polish sin introducir dependencia de backend ni presión de login diario.
+Impacto:
+`eventProgress` deja de ser placeholder y pasa a estado funcional, con bonuses temporales de mastery/material regional mientras el evento está activo y recompensas temporales sin poder permanente exclusivo.
+Archivos relacionados:
+- `src/game/events.ts`
+- `src/game/progression.ts`
+- `src/game/types.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/game/__tests__/core.test.ts`
+
+### Decision: notificaciones de completion quedan opcionales y explícitas (opt-in)
+Descripción:
+Se agrega un toggle de notificaciones opcionales sólo para completions de Construction/Caravan, condicionado a permiso explícito del navegador.
+Motivo:
+Mantener la regla de Phase 9: las notificaciones no pueden ser requisito de retención ni de progresión.
+Impacto:
+No hay dependencia de push para avanzar; si el usuario no habilita permiso, el loop funciona igual. El sistema evita notificaciones para otros tipos de progreso.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `src/store/useGameStore.ts`
+- `src/game/types.ts`
+- `src/game/save.ts`
+
+### Decision: Se activa Phase 8 completa en baseline jugable
+Descripción:
+Se habilitan en runtime las regiones `azure-vaults`, `stormglass-peaks` y `first-forge` con sus recompensas de progreso, colecciones, diarios y efectos de economía permanente asociados a Soul Marks.
+Motivo:
+Cerrar el tramo core de contenido de `implementation_4_2_1` y dejar el mundo completo (5 regiones) operando en cliente local-first antes de cualquier trabajo de eventos/cloud/push.
+Impacto:
+El juego queda en estado post-Phase 8: materiales regionales de las cinco regiones activos, tabla de Account Rank extendida hasta 16 con cap de Focus hasta 300, expansión de recompensas de mastery/account/regional materials, y upgrades permanentes con efecto en economías tardías.
+Archivos relacionados:
+- `src/game/progression.ts`
+- `src/game/regions.ts`
+- `src/game/collections.ts`
+- `src/game/diaries.ts`
+- `src/game/traits.ts`
+- `src/game/prestige.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/game/__tests__/core.test.ts`
+
+### Decision: Post-Phase-8 stabilization prioriza claridad de guía y regresión de contenido
+Descripción:
+Después de habilitar Phase 8, se realiza un ajuste de estabilidad sobre copy/guías de juego y validación para asegurar que la orientación visible del jugador coincida con el nuevo estado de contenido.
+Motivo:
+Evitar deuda de UX documental: con regiones y sistemas nuevos activos, textos y señales de next-step que queden en estado previo generan confusión de progresión.
+Impacto:
+Se corrigen mensajes de guidance en expeditions/town/UI y se refuerza cobertura de tests de contenido para evitar regressions de ruta, milestones y expectations de pacing.
+Archivos relacionados:
+- `src/app/game-view.tsx`
+- `src/game/expeditions.ts`
+- `src/game/town.ts`
+- `src/game/__tests__/core.test.ts`
+
+## 2026-05-15
+
+### Decision: Phase 5-7 pasa de diseño a implementación integrada
+Descripción:
+Se implementan en código productivo los slices de Phase 5A/5B/5C/5D, Phase 6 y Phase 7 como parte del loop principal (sin depender de backend ni features sociales).
+Motivo:
+Consolidar la columna de retención de mediano plazo definida en `implementation_4_2_1`: construcción persistente, caravan/offline commitment, outposts, class-change safety net, buildcraft legible y metas largas por región.
+Impacto:
+El estado del juego incorpora construcción con aceleración por Focus, Caravan regional, Outposts, class change temprano/post-rebirth, traits/families/presets/locks, codex y diarios regionales, más cobertura de regresión para esos sistemas.
+Archivos relacionados:
+- `src/game/town.ts`
+- `src/game/caravan.ts`
+- `src/game/outposts.ts`
+- `src/game/prestige.ts`
+- `src/game/traits.ts`
+- `src/game/diaries.ts`
+- `src/game/collections.ts`
+- `src/game/bosses.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/app/game-view.tsx`
+- `src/store/useGameStore.ts`
+- `src/game/__tests__/core.test.ts`
+
 ## 2026-05-12
 
 ### Decision: `implementation_4_2_1.md` pasa a ser Launch Candidate baseline

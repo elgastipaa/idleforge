@@ -19,9 +19,9 @@ const screens = [
   { name: "hero", label: "Hero" },
   { name: "inventory", label: "Inventory" },
   { name: "forge", label: "Forge" },
-  { name: "town", label: "Town" },
-  { name: "dailies", label: "Dailies" },
-  { name: "reincarnation", label: "Rebirth" },
+  { name: "town", label: "Guildhall" },
+  { name: "dailies", label: "Orders" },
+  { name: "reincarnation", label: "Reincarnation" },
   { name: "settings", label: "Save" }
 ];
 

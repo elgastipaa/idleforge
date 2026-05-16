@@ -452,12 +452,12 @@ export const BUILDINGS: BuildingDefinition[] = [
     id: "mine",
     name: "Mine",
     description: "Increases materials recovered from successful expeditions.",
-    purpose: "Boost expedition materials and generate passive offline materials.",
+    purpose: "Boost expedition materials and Caravan supply hauls.",
     maxLevel: 12,
     baseCost: { gold: 75, fragments: 4 },
     effectText: (level) => `+${level * 8}% expedition materials`,
     milestones: [
-      { level: 1, label: "Offline Fragment generation" },
+      { level: 1, label: "Caravan and expedition material boost" },
       { level: 4, label: "+32% expedition materials" },
       { level: 8, label: "+64% expedition materials" },
       { level: 12, label: "Maximum Mine material bonus" }

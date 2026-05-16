@@ -1,5 +1,151 @@
 # Changelog
 
+Nota: leer de arriba hacia abajo; las entradas más recientes representan el estado vigente.
+
+## 2026-05-16 (Phase 9 Local-First Events Activation)
+
+### Added
+- Added `src/game/events.ts` as the Phase 9 event domain module:
+  - active event definitions,
+  - reward schedules,
+  - participation tracking,
+  - temporary event multipliers,
+  - event reward claiming.
+- Added event banner UI and event tier claim actions in `src/app/game-view.tsx`.
+- Added optional completion notifications opt-in (Caravan/Construction only), including browser permission gating.
+- Added Phase 9 regression tests in `src/game/__tests__/core.test.ts`:
+  - active-window event bonus behavior,
+  - non-punitive participation + reward claim schedule.
+
+### Changed
+- Extended `GameState`/save normalization to support typed `eventProgress` and `completionNotificationsOptIn`.
+- Integrated event multipliers and participation recording into expedition progression.
+- Extended store API with `claimEventReward` and completion-notification settings action.
+
+### Files
+- `src/game/events.ts`
+- `src/game/progression.ts`
+- `src/game/types.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/game/index.ts`
+- `src/store/useGameStore.ts`
+- `src/app/game-view.tsx`
+- `src/game/__tests__/core.test.ts`
+
+### Notes
+- No backend dependency introduced.
+- No rewards for sharing introduced.
+- No exclusive permanent power added to event rewards.
+
+## 2026-05-16 (Docs Sync - Post Phase 8 Baseline)
+
+### Changed
+- Updated canonical living docs to match current implementation status after Launch Candidate Phase 8:
+  - `docs/01_GAME_DESIGN.md`
+  - `docs/02_ARCHITECTURE.md`
+  - `docs/03_DATABASE.md`
+  - `docs/04_CONSTANTS_AND_BALANCE.md`
+  - `docs/05_DECISIONS_LOG.md`
+  - `docs/06_TASKS.md`
+  - `docs/07_CHANGELOG.md`
+- Updated architecture/testing reference docs so they match the current module set and `focus` terminology:
+  - `docs/TECHNICAL_ARCHITECTURE.md`
+  - `docs/TESTING_PLAN.md`
+- Documented current daily reset runtime rule as `DAILY_RESET_HOUR_LOCAL = 4` (superseding historical 23:00 planning-era references).
+- Expanded manual QA checklist coverage from Phase 5/6 only to Phase 5-8:
+  - `docs/manual_test_phase_5_6.md`
+
+### Notes
+- Documentation-only update.
+- No gameplay logic, save schema, runtime behavior, or dependencies changed.
+
+## 2026-05-16 (Stabilize Launch Candidate Guidance)
+
+### Changed
+- Stabilized player-facing progression guidance copy and next-step messaging after the Phase 8 content expansion.
+- Adjusted expedition/town guidance surfaces to better match the active world scope and unlocked system expectations.
+- Added regression expectations for the stabilization pass in `core.test.ts`.
+
+### Files
+- `src/app/game-view.tsx`
+- `src/game/expeditions.ts`
+- `src/game/town.ts`
+- `src/game/__tests__/core.test.ts`
+
+## 2026-05-16 (Implement Launch Candidate Phase 8)
+
+### Added
+- Added full Phase 8 progression/content wiring across the late-world regions:
+  - Azure Vaults,
+  - Stormglass Peaks,
+  - First Forge.
+- Added/extended progression tables and state coverage for new regional rewards and permanent effects.
+- Added regression tests covering Phase 8 activation, rewards, diaries, collections, and Soul Mark upgrade extension effects.
+
+### Changed
+- Extended progression/economy data and feature coupling across:
+  - `progression`,
+  - `regions`,
+  - `collections`,
+  - `diaries`,
+  - `traits`,
+  - `prestige`,
+  - save normalization and initial state defaults.
+
+### Files
+- `src/game/progression.ts`
+- `src/game/regions.ts`
+- `src/game/collections.ts`
+- `src/game/diaries.ts`
+- `src/game/traits.ts`
+- `src/game/prestige.ts`
+- `src/game/state.ts`
+- `src/game/save.ts`
+- `src/game/balance.ts`
+- `src/game/bosses.ts`
+- `src/game/caravan.ts`
+- `src/game/heroes.ts`
+- `src/game/types.ts`
+- `src/game/__tests__/core.test.ts`
+
+## 2026-05-15 (Phase 5-7 Systems Integration)
+
+### Added
+- Added region-level progression systems and supporting modules:
+  - `src/game/bosses.ts`
+  - `src/game/collections.ts`
+  - `src/game/outposts.ts`
+  - `src/game/regions.ts`
+  - `src/game/traits.ts`
+- Added manual QA checklist for construction/caravan/traits/presets flows in `docs/manual_test_phase_5_6.md`.
+
+### Changed
+- Integrated Phase 5/6/7 systems into the main game/store/UI flow:
+  - construction and construction claim flow,
+  - caravan regional rewards and progression hooks,
+  - outpost selection and regional bonus wiring,
+  - trait/family/preset/build-state interactions,
+  - save normalization for newly introduced state slices.
+- Expanded domain regression coverage in `src/game/__tests__/core.test.ts`.
+
+### Files
+- `src/app/game-view.tsx`
+- `src/store/useGameStore.ts`
+- `src/game/engine.ts`
+- `src/game/town.ts`
+- `src/game/caravan.ts`
+- `src/game/outposts.ts`
+- `src/game/traits.ts`
+- `src/game/collections.ts`
+- `src/game/bosses.ts`
+- `src/game/save.ts`
+- `src/game/state.ts`
+- `src/game/types.ts`
+- `src/game/progression.ts`
+- `src/game/content.ts`
+- `src/game/__tests__/core.test.ts`
+
 ## 2026-05-10 (Caravan, Contracts, Loot Direction Lite)
 
 ### Added

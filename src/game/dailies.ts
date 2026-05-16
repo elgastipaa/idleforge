@@ -1,6 +1,7 @@
 import { DAILY_RESET_HOUR_LOCAL, DAILY_TASK_COUNT, DAY_MS } from "./constants";
 import { REGION_COLLECTIONS, isCollectionVisible } from "./collections";
 import { DUNGEONS, ZONES } from "./content";
+import { getEventBannerSummary } from "./events";
 import { isDungeonUnlocked } from "./expeditions";
 import { applyAccountXp, getFirstClaimableMasteryRoute, unlockTitle, unlockTrophy } from "./progression";
 import { createRng } from "./rng";
@@ -35,6 +36,31 @@ type DailyMissionTemplate = {
   fragments?: number;
   getRegionId?: (state: GameState) => string | undefined;
   isAvailable: (state: GameState) => boolean;
+};
+
+export type OrdersBoardOrderSource = "daily_focus" | "daily" | "weekly" | "event" | "construction" | "caravan" | "mastery" | "boss";
+export type OrdersBoardOrderStatus = "ready" | "active" | "blocked" | "claimed" | "locked";
+
+export type OrdersBoardOrder = {
+  id: string;
+  source: OrdersBoardOrderSource;
+  label: string;
+  detail: string;
+  progress: number;
+  target: number;
+  status: OrdersBoardOrderStatus;
+  rewardLabel: string | null;
+  ctaTab: "expeditions" | "town" | "dailies" | "forge" | "hero" | "inventory" | "account" | "reincarnation" | "settings";
+  priority: number;
+};
+
+export type OrdersBoardSummary = {
+  orders: OrdersBoardOrder[];
+  readyCount: number;
+  activeCount: number;
+  claimableDailyCount: number;
+  dailyResetAt: number;
+  weeklyResetAt: number;
 };
 
 export function getDailyWindowStartAt(now: number): number {
@@ -148,8 +174,11 @@ function hasBossAttemptAvailable(state: GameState): boolean {
   return DUNGEONS.some((dungeon) => dungeon.boss && isDungeonUnlocked(state, dungeon));
 }
 
-function hasCaravanDailyObjectiveUnlocked(_state: GameState): boolean {
-  return false;
+function hasCaravanDailyObjectiveUnlocked(state: GameState): boolean {
+  if (state.accountRank.accountRank < 2 || state.hero.level < 3) {
+    return false;
+  }
+  return DUNGEONS.some((dungeon) => !dungeon.boss && isDungeonUnlocked(state, dungeon));
 }
 
 const DAILY_MISSION_TEMPLATES: DailyMissionTemplate[] = [
@@ -458,6 +487,170 @@ export function ensureDailies(state: GameState, now: number): { state: GameState
   }
   next.updatedAt = now;
   return { state: next, reset: dailyFocus.reset || weeklyQuest.reset || needsMissionReset || needsLegacyWeeklyReset };
+}
+
+function getOrderStatus(progress: number, target: number, claimed = false): OrdersBoardOrderStatus {
+  if (claimed) return "claimed";
+  return progress >= target ? "ready" : "active";
+}
+
+export function getOrdersBoardSummary(state: GameState, now: number): OrdersBoardSummary {
+  const orders: OrdersBoardOrder[] = [];
+  const dailyFocusTarget = DAILY_FOCUS_TARGET_EXPEDITIONS;
+  const dailyFocusProgress = Math.min(state.dailyFocus.focusChargeProgress, dailyFocusTarget);
+  if (state.dailyFocus.focusChargesBanked > 0) {
+    orders.push({
+      id: "daily-focus",
+      source: "daily_focus",
+      label: "Daily Focus",
+      detail: `Complete ${dailyFocusTarget} expeditions to claim +${DAILY_FOCUS_REWARD} Focus.`,
+      progress: dailyFocusProgress,
+      target: dailyFocusTarget,
+      status: dailyFocusProgress >= dailyFocusTarget ? "ready" : "active",
+      rewardLabel: `+${DAILY_FOCUS_REWARD} Focus`,
+      ctaTab: "dailies",
+      priority: dailyFocusProgress >= dailyFocusTarget ? 100 : 40
+    });
+  }
+
+  state.dailies.tasks.forEach((task, index) => {
+    const status = getOrderStatus(task.progress, task.target, task.claimed);
+    orders.push({
+      id: task.id,
+      source: "daily",
+      label: task.label,
+      detail: `${task.difficulty} daily order.`,
+      progress: Math.min(task.progress, task.target),
+      target: task.target,
+      status,
+      rewardLabel: task.reward.accountXp > 0 ? `+${task.reward.accountXp} Account XP` : null,
+      ctaTab: "dailies",
+      priority: status === "ready" ? 95 - index : status === "active" ? 35 - index : 5
+    });
+  });
+
+  const weeklyTarget = state.weeklyQuest.steps.reduce((total, step) => total + step.target, 0);
+  const weeklyProgress = state.weeklyQuest.steps.reduce((total, step) => total + Math.min(step.progress, step.target), 0);
+  const weeklyStatus = getOrderStatus(weeklyProgress, weeklyTarget, state.weeklyQuest.questClaimed);
+  orders.push({
+    id: state.weeklyQuest.questId,
+    source: "weekly",
+    label: "Weekly Charter",
+    detail: state.weeklyQuest.title,
+    progress: weeklyProgress,
+    target: weeklyTarget,
+    status: weeklyStatus,
+    rewardLabel: state.weeklyQuest.reward.accountXp > 0 ? `+${state.weeklyQuest.reward.accountXp} Account XP` : null,
+    ctaTab: "dailies",
+    priority: weeklyStatus === "ready" ? 90 : weeklyStatus === "active" ? 30 : 4
+  });
+
+  const event = getEventBannerSummary(state, now);
+  const claimableEventTier = event?.tiers.find((tier) => tier.claimable);
+  const nextEventTier = event?.tiers.find((tier) => !tier.claimed) ?? event?.tiers.at(-1) ?? null;
+  if (event && nextEventTier) {
+    orders.push({
+      id: `${event.event.id}-${nextEventTier.rewardIndex}`,
+      source: "event",
+      label: event.event.name,
+      detail: claimableEventTier ? `${claimableEventTier.label} is ready to claim.` : nextEventTier.label,
+      progress: Math.min(event.progress.participation, nextEventTier.targetParticipation),
+      target: nextEventTier.targetParticipation,
+      status: claimableEventTier ? "ready" : "active",
+      rewardLabel: "Festival tier reward",
+      ctaTab: "dailies",
+      priority: claimableEventTier ? 98 : 45
+    });
+  }
+
+  if (state.construction.activeBuildingId) {
+    const constructionReadyAt =
+      state.construction.completedAt ??
+      (state.construction.startedAt !== null ? state.construction.startedAt + Math.max(0, state.construction.baseDurationMs - state.construction.focusSpentMs) : Number.POSITIVE_INFINITY);
+    const constructionReady = constructionReadyAt <= now;
+    orders.push({
+      id: "guild-project",
+      source: "construction",
+      label: "Guild Project",
+      detail: constructionReady ? "Construction is ready to complete." : "A guild project is under construction.",
+      progress: constructionReady ? 1 : 0,
+      target: 1,
+      status: constructionReady ? "ready" : "active",
+      rewardLabel: state.construction.targetLevel ? `Level ${state.construction.targetLevel}` : null,
+      ctaTab: "town",
+      priority: constructionReady ? 96 : 25
+    });
+  }
+
+  if (state.caravan.activeJob) {
+    const ready = state.caravan.activeJob.endsAt <= now;
+    orders.push({
+      id: "caravan",
+      source: "caravan",
+      label: "Caravan Order",
+      detail: ready ? "Caravan returned and is ready to claim." : "Caravan is traveling offline.",
+      progress: ready ? 1 : 0,
+      target: 1,
+      status: ready ? "ready" : "active",
+      rewardLabel: state.caravan.activeJob.focusId,
+      ctaTab: "expeditions",
+      priority: ready ? 94 : 28
+    });
+  } else {
+    orders.push({
+      id: "caravan-ready",
+      source: "caravan",
+      label: "Plan a Caravan",
+      detail: state.activeExpedition ? "Finish the active expedition before sending the Caravan." : "Send a Caravan when you are ready to step away.",
+      progress: 0,
+      target: 1,
+      status: state.activeExpedition ? "blocked" : "active",
+      rewardLabel: "Offline job",
+      ctaTab: "expeditions",
+      priority: state.activeExpedition ? 8 : 18
+    });
+  }
+
+  const claimableMastery = getFirstClaimableMasteryRoute(state);
+  if (claimableMastery) {
+    orders.push({
+      id: `mastery-${claimableMastery.dungeon.id}`,
+      source: "mastery",
+      label: "Claim Route Mastery",
+      detail: `${claimableMastery.tier.label} is ready.`,
+      progress: 1,
+      target: 1,
+      status: "ready",
+      rewardLabel: "Account XP",
+      ctaTab: "expeditions",
+      priority: 88
+    });
+  }
+
+  if (hasBossAttemptAvailable(state)) {
+    orders.push({
+      id: "boss-prep",
+      source: "boss",
+      label: "War Room Review",
+      detail: "A boss route is available. Check scouting and threat prep.",
+      progress: 0,
+      target: 1,
+      status: "active",
+      rewardLabel: "Boss progress",
+      ctaTab: "expeditions",
+      priority: 20
+    });
+  }
+
+  const sortedOrders = orders.sort((a, b) => b.priority - a.priority);
+  return {
+    orders: sortedOrders,
+    readyCount: sortedOrders.filter((order) => order.status === "ready").length,
+    activeCount: sortedOrders.filter((order) => order.status === "active").length,
+    claimableDailyCount: state.dailies.tasks.filter((task) => task.progress >= task.target && !task.claimed).length,
+    dailyResetAt: state.dailies.nextResetAt,
+    weeklyResetAt: state.weeklyQuest.nextResetAt
+  };
 }
 
 function addMaterials(state: GameState, materials: Partial<MaterialBundle>) {

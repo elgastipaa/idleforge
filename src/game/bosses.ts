@@ -1,5 +1,7 @@
 import { getEquippedAffixes } from "./affixes";
+import { DUNGEONS } from "./content";
 import { recordRegionDiaryProgress } from "./diaries";
+import { isDungeonUnlocked } from "./expeditions";
 import { regenerateFocus } from "./focus";
 import { getOutpostScoutRevealBonus, getOutpostThreatCoverage } from "./outposts";
 import { unlockTrophy } from "./progression";
@@ -254,6 +256,38 @@ export const BOSS_DEFINITIONS: BossDefinition[] = [
   }
 ];
 
+export type WarRoomThreatSummary = {
+  threatId: ExpeditionThreatId;
+  name: string;
+  revealed: boolean;
+  coverage: number;
+  impact: BossThreatStatus["successImpact"];
+  canPrepare: boolean;
+  prepFocusCost: number;
+  prepMaterialCost: number;
+  prepCharges: number;
+};
+
+export type WarRoomBossSummary = {
+  boss: BossDefinition;
+  dungeon: DungeonDefinition;
+  unlocked: boolean;
+  defeated: boolean;
+  scoutState: "locked" | "unscouted" | "partial" | "scouted" | "defeated";
+  readinessPercent: number;
+  revealedThreats: number;
+  totalThreats: number;
+  threats: WarRoomThreatSummary[];
+  recommendedAction: string;
+};
+
+export type WarRoomSummary = {
+  nextBoss: WarRoomBossSummary | null;
+  bosses: WarRoomBossSummary[];
+  defeatedCount: number;
+  totalCount: number;
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -398,6 +432,75 @@ export function getBossViewSummary(state: GameState, dungeon: DungeonDefinition,
     prepState: getBossPrepState(state, dungeon.id),
     statuses: getBossThreatStatuses(state, boss),
     adjustedSuccessChance: baseSuccessChance
+  };
+}
+
+export function getWarRoomSummary(state: GameState): WarRoomSummary {
+  const bosses = BOSS_DEFINITIONS.map<WarRoomBossSummary | null>((boss) => {
+    const dungeon = DUNGEONS.find((entry) => entry.id === boss.dungeonId);
+    if (!dungeon) return null;
+    const unlocked = isDungeonUnlocked(state, dungeon);
+    const defeated = (state.dungeonClears[dungeon.id] ?? 0) > 0;
+    const statuses = getBossThreatStatuses(state, boss);
+    const revealedThreats = statuses.filter((status) => status.revealed).length;
+    const totalThreats = statuses.length;
+    const readinessPercent =
+      totalThreats > 0 ? Math.floor((statuses.reduce((total, status) => total + status.coverage, 0) / totalThreats) * 100) : 100;
+    const scoutState = defeated
+      ? "defeated"
+      : !unlocked
+        ? "locked"
+        : revealedThreats === 0
+          ? "unscouted"
+          : revealedThreats >= totalThreats
+            ? "scouted"
+            : "partial";
+    const materialId = getRegionMaterialId(boss.regionId);
+    const materialAvailable = materialId ? state.regionProgress.materials[materialId] ?? 0 : 0;
+    const threats = statuses.map((status) => {
+      const prepMaterialCost = getBossPrepMaterialCost(state, boss, status.threat);
+      return {
+        threatId: status.threat.id,
+        name: status.threat.name,
+        revealed: status.revealed,
+        coverage: status.coverage,
+        impact: status.successImpact,
+        canPrepare: unlocked && status.revealed && state.focus.current >= boss.prepFocusCost && materialAvailable >= prepMaterialCost,
+        prepFocusCost: boss.prepFocusCost,
+        prepMaterialCost,
+        prepCharges: status.prepCharges
+      };
+    });
+    const uncovered = threats.find((threat) => threat.revealed && threat.coverage < 1);
+    const recommendedAction = defeated
+      ? "Secured. Push the next frontier."
+      : !unlocked
+        ? "Clear earlier routes to unlock this boss."
+        : revealedThreats === 0
+          ? "Scout this boss before committing resources."
+          : uncovered
+            ? `Prepare ${uncovered.name} before the next attempt.`
+            : "Ready to attempt with current coverage.";
+
+    return {
+      boss,
+      dungeon,
+      unlocked,
+      defeated,
+      scoutState,
+      readinessPercent,
+      revealedThreats,
+      totalThreats,
+      threats,
+      recommendedAction
+    };
+  }).filter((summary): summary is WarRoomBossSummary => summary !== null);
+
+  return {
+    nextBoss: bosses.find((boss) => boss.unlocked && !boss.defeated) ?? bosses.find((boss) => !boss.defeated) ?? bosses.at(-1) ?? null,
+    bosses,
+    defeatedCount: bosses.filter((boss) => boss.defeated).length,
+    totalCount: bosses.length
   };
 }
 
