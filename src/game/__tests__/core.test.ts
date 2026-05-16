@@ -63,6 +63,7 @@ import {
   getAffixRerollCost,
   getActiveRegionIds,
   getBossViewSummary,
+  getBuildingConstructionDurationMs,
   getBuildingCost,
   getCraftCost,
   getDerivedStats,
@@ -459,6 +460,13 @@ describe("expeditions, focus, and loot", () => {
     afterEarlySpends.resources.gold -= (itemUpgradeCost.gold ?? 0) + (forgeBuildingCost.gold ?? 0);
     afterEarlySpends.resources.fragments -= (itemUpgradeCost.fragments ?? 0) + (forgeBuildingCost.fragments ?? 0);
     expect(canAfford(afterEarlySpends.resources, getCraftCost(afterEarlySpends))).toBe(true);
+
+    const constructionHint = makeReadyState("first-session-construction-hint");
+    constructionHint.dungeonClears["tollroad-of-trinkets"] = 1;
+    constructionHint.resources.gold = 10_000;
+    expect(getNextGoal(constructionHint)).toContain("Clear Mossbright Cellar");
+    constructionHint.regionProgress.materials.sunlitTimber = 3;
+    expect(getNextGoal(constructionHint)).toContain("Upgrade the Forge");
   });
 
   it("puts early rare-drop pressure inside the 5-10 minute window without guaranteeing every run", () => {
@@ -832,6 +840,15 @@ describe("town, dailies, offline, and saves", () => {
     expect(canceled.state.construction.activeBuildingId).toBeNull();
     expect(canceled.state.focus.current).toBe(19);
     expect(canceled.state.regionProgress.materials.sunlitTimber).toBe(9);
+  });
+
+  it("keeps construction timers non-decreasing by building", () => {
+    BUILDINGS.forEach((building) => {
+      const durations = Array.from({ length: building.maxLevel }, (_, index) => getBuildingConstructionDurationMs(building.id, index + 1));
+      durations.slice(1).forEach((duration, index) => {
+        expect(duration).toBeGreaterThanOrEqual(durations[index]);
+      });
+    });
   });
 
   it("keeps building effect text aligned with balance formulas", () => {
@@ -1589,8 +1606,14 @@ describe("reincarnation gate and pacing checks", () => {
     const state = makeReadyState("rebirth");
     state.hero.level = REINCARNATION_LEVEL_REQUIREMENT;
     expect(canPrestige(state)).toBe(false);
-    state.dungeonClears[REINCARNATION_GATE_BOSS_ID] = 1;
+    for (const dungeon of DUNGEONS) {
+      state.dungeonClears[dungeon.id] = 1;
+      if (dungeon.id === REINCARNATION_GATE_BOSS_ID) break;
+    }
     expect(canPrestige(state)).toBe(true);
+    expect(getNextGoal(state)).not.toContain("Reincarnation is ready");
+    state.dungeonClears["crown-of-the-first-forge"] = 1;
+    expect(getNextGoal(state)).toContain("Reincarnation is ready");
     const result = performPrestige(state, NOW + 1);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("reincarnation failed");

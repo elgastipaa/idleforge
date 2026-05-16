@@ -1,7 +1,7 @@
 import { FINAL_DUNGEON_ID, REINCARNATION_GATE_BOSS_ID, REINCARNATION_LEVEL_REQUIREMENT } from "./constants";
 import { BUILDINGS, DUNGEONS, ZONES } from "./content";
 import { getDerivedStats, getDungeon, getDurationMs, getItemScore, getSuccessChance } from "./balance";
-import { canAfford, getBuildingCost } from "./town";
+import { canAffordConstructionCost, getBuildingConstructionCost } from "./town";
 import { getFirstClaimableMasteryRoute } from "./progression";
 import type { DungeonDefinition, GameState, Item, ResourceState } from "./types";
 
@@ -93,7 +93,7 @@ function getAffordableGearUpgradeCandidate(state: GameState): Item | null {
 }
 
 function getAffordableTownBuilding(state: GameState) {
-  return BUILDINGS.find((building) => state.town[building.id] < building.maxLevel && canAfford(state.resources, getBuildingCost(state, building.id))) ?? null;
+  return BUILDINGS.find((building) => state.town[building.id] < building.maxLevel && canAffordConstructionCost(state, getBuildingConstructionCost(state, building.id))) ?? null;
 }
 
 function getBestUnlockedDungeon(state: GameState): DungeonDefinition {
@@ -113,10 +113,6 @@ function canAffordStarterCraft(state: GameState): boolean {
 export function getNextGoal(state: GameState): string {
   if (!state.settings.heroCreated) {
     return "Create your hero to open the first expedition.";
-  }
-
-  if ((state.dungeonClears[REINCARNATION_GATE_BOSS_ID] ?? 0) > 0 && state.hero.level >= REINCARNATION_LEVEL_REQUIREMENT) {
-    return "Reincarnation is ready. Spend Soul Marks in the Reincarnation tab.";
   }
 
   const active = state.activeExpedition ? getDungeon(state.activeExpedition.dungeonId) : null;
@@ -170,15 +166,17 @@ export function getNextGoal(state: GameState): string {
     return `Unlock ${firstBoss.name}: ${getUnlockText(state, firstBoss)}`;
   }
 
+  if ((state.dungeonClears[FINAL_DUNGEON_ID] ?? 0) > 0) {
+    return state.hero.level >= REINCARNATION_LEVEL_REQUIREMENT && (state.dungeonClears[REINCARNATION_GATE_BOSS_ID] ?? 0) > 0
+      ? "Final forge cleared. Reincarnation is ready in the Reincarnation tab."
+      : "Final forge cleared. Push levels and prepare for reincarnation.";
+  }
+
   if (state.lifetime.totalItemsCrafted === 0) {
     if (canAffordStarterCraft(state)) {
       return "Craft a new item in the Forge with your boss rewards.";
     }
     return "Run the latest dungeon for the Gold and Fragments needed to craft.";
-  }
-
-  if ((state.dungeonClears[FINAL_DUNGEON_ID] ?? 0) > 0) {
-    return "Final forge cleared. Push levels and prepare for reincarnation.";
   }
 
   const nextLocked = getNextLockedDungeon(state);

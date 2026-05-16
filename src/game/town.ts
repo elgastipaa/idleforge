@@ -129,7 +129,8 @@ export function getBuildingConstructionDurationMs(buildingId: BuildingId, target
   const seeded = BUILDING_CONSTRUCTION_SEEDS[buildingId][targetLevel];
   if (seeded) return seeded.durationMs;
   const levelOffset = Math.max(0, targetLevel - 4);
-  return Math.min(8 * 60 * MINUTE_MS, Math.floor(30 * MINUTE_MS * Math.pow(1.75, levelOffset)));
+  const seededFloor = BUILDING_CONSTRUCTION_SEEDS[buildingId][3]?.durationMs ?? 0;
+  return Math.max(seededFloor, Math.min(8 * 60 * MINUTE_MS, Math.floor(30 * MINUTE_MS * Math.pow(1.75, levelOffset))));
 }
 
 export function canAfford(resources: ResourceState, cost: Partial<ResourceState>): boolean {

@@ -3481,6 +3481,7 @@ function ActiveConstructionPanel({ state, now, store }: { state: GameState; now:
   const skipOneHour = Math.min(CONSTRUCTION_FOCUS_PER_HOUR, focusToFinish);
   const canSkipOneHour = skipOneHour > 0 && state.focus.current >= skipOneHour;
   const canSkipAll = focusToFinish > 0 && state.focus.current >= focusToFinish;
+  const finishUsesMostFocus = focusToFinish > state.focus.cap * 0.5;
 
   return (
     <Card className={canClaim ? "border-emerald/30 bg-emerald-50/80" : "border-royal/20 bg-blue-50/70"}>
@@ -3516,6 +3517,11 @@ function ActiveConstructionPanel({ state, now, store }: { state: GameState; now:
             <XCircle size={15} /> Cancel
           </DangerButton>
         </div>
+        {!canClaim && finishUsesMostFocus && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+            Finishing now uses most of your Focus. Skipping 1h keeps more Focus available for expeditions and boss prep.
+          </p>
+        )}
       </div>
     </Card>
   );
